@@ -22,7 +22,7 @@ def replace_function(text, name, replacement):
 def use_private_key_environment(source):
     for name in ("obsctun", "obsctcp", "obscmux", "obscws"):
         path = source / "src" / f"{name}.c"
-        text = path.read_text()
+        text = path.read_text(encoding="utf-8")
         marker = re.search(r"(?m)^    if ?\(!gL\|\|!gR\|\|!gA\|\|!gP\|\|!gk", text)
         if marker is None:
             raise ValueError(f"{name}: key validation was not found")
@@ -32,11 +32,11 @@ def use_private_key_environment(source):
             '        gk = keyhex != NULL && *keyhex != 0;\n'
             '    }\n'
         ) + text[marker.start():]
-        path.write_text(text)
+        path.write_bytes(text.encode("utf-8"))
 
     for name, key in (("omnistripe", "key"), ("omniackless", "psk")):
         path = source / "src" / name / "main.go"
-        body = path.read_text()
+        body = path.read_text(encoding="utf-8")
         old = "\tflag.Parse()"
         body = replace_once(body, old, old + (
             f'\n\tif *{key} == "" {{\n\t\t*{key} = os.Getenv("BACKPACK_OMNI_KEY")\n\t}}'
@@ -58,11 +58,11 @@ func backpackStateDir() string {
             body = replace_once(body, "tn.runServer(*basePort,", "tn.runServer(*localIP, *basePort,")
             body = replace_once(body, 'fmt.Fprintf(os.Stderr, "omnistripe: listen %s: %v\\n", addr, err)\n\t\t\tcontinue',
                                 'fmt.Fprintf(os.Stderr, "omnistripe: listen %s: %v\\n", addr, err)\n\t\t\tos.Exit(1)')
-        path.write_text(body)
+        path.write_bytes(body.encode("utf-8"))
 
 
 def manager(source):
-    text = source.read_text()
+    text = source.read_text(encoding="utf-8")
     text = replace_once(text, "\nset -euo pipefail\n", "\nset -euo pipefail\numask 077\n")
     for old, new in (
         ('ROOT_DIR="/etc/omnitunnel"', 'ROOT_DIR="/etc/backpack/omnitunnel"'),
@@ -213,6 +213,22 @@ inst_enable() {
 
 
 def hysteria_tls(text):
+    # Keep the relay path used by existing units. Refresh the old generated
+    # script atomically when their forwards are next reconciled.
+    text = replace_function(text, "hy_write_relay_script", r'''
+hy_write_relay_script() {
+    local source="$SCRIPT_DIR/bin/socksfwd.py" tmp
+    [[ -r "$source" ]] || die "missing bundled Hysteria TCP forwarder"
+    cmp -s "$source" "$HY_RELAY" && return 0
+    mkdir -p "$(dirname "$HY_RELAY")" || return 1
+    tmp="$(mktemp "${HY_RELAY}.XXXXXX")" || return 1
+    if install -m 0755 "$source" "$tmp" && mv -fT -- "$tmp" "$HY_RELAY"; then
+        return 0
+    fi
+    rm -f -- "$tmp"
+    return 1
+}
+''')
     text = replace_once(text, 'ExecStart=$HYSTERIA_BIN $mode',
                         'Environment=HYSTERIA_DISABLE_UPDATE_CHECK=1\nExecStart=$HYSTERIA_BIN $mode')
     text = text.replace("  maxIdleTimeout: 90s\n", "  maxIdleTimeout: 20s\n")
@@ -438,4 +454,4 @@ if __name__ == "__main__":
     use_private_key_environment(root)
     body = manager(root / "omnitunnel.sh")
     body = commands(reverse_mux(hysteria_tls(lifecycle(kernel_links(body)))))
-    output.write_text(body)
+    output.write_bytes(body.encode("utf-8"))

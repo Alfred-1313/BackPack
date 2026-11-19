@@ -8,6 +8,7 @@ install_omnitunnel() (
     local final="$root/$revision-$ARCH"
     local adapter="$SCRIPT_DIR/scripts/adapt-omnitunnel.py"
     local -a checksum helpers=(omnitun omnistripe omniackless hysteria chisel)
+    local relay="$SCRIPT_DIR/scripts/omni-socks-forward.py"
     local helper adapter_digest complete=1
     if command -v sha256sum >/dev/null; then checksum=(sha256sum); else checksum=(shasum -a 256); fi
     adapter_digest="$("${checksum[@]}" "$adapter" | awk '{print $1}')"
@@ -22,6 +23,7 @@ install_omnitunnel() (
     for helper in "${helpers[@]}"; do
         [[ -f "$final/bin/$helper" && ! -L "$final/bin/$helper" && -x "$final/bin/$helper" ]] || complete=0
     done
+    cmp -s "$relay" "$final/bin/socksfwd.py" || complete=0
     if [[ "$complete" == 1 && -f "$final/manager" && ! -L "$final/manager" && -x "$final/manager" ]] &&
         [[ "$(cat "$final/.adapter-sha256" 2>/dev/null)" == "$adapter_digest" ]]; then
         info "OmniTunnel helper already installed: $final"
@@ -51,6 +53,7 @@ install_omnitunnel() (
     for helper in hysteria chisel; do
         install -m 0755 "$source/bin/$helper-$ARCH" "$payload/bin/$helper"
     done
+    install -m 0755 "$relay" "$payload/bin/socksfwd.py"
     install -m 0644 "$source/LICENSE" "$payload/LICENSE"
     chmod 0755 "$payload" "$payload/bin" "$payload/manager"
     printf '%s\n' "$adapter_digest" > "$payload/.adapter-sha256"
@@ -62,6 +65,7 @@ install_omnitunnel() (
         for helper in "${helpers[@]}"; do
             mv -fT -- "$payload/bin/$helper" "$final/bin/$helper"
         done
+        mv -fT -- "$payload/bin/socksfwd.py" "$final/bin/socksfwd.py"
         mv -fT -- "$payload/LICENSE" "$final/LICENSE"
         mv -fT -- "$payload/manager" "$final/manager"
         mv -fT -- "$payload/.adapter-sha256" "$final/.adapter-sha256"
