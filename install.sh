@@ -30,6 +30,14 @@ err()  { echo -e "${RED}[x]${NC} $*" >&2; }
 
 REPO="Alfred-1313/BackPack"
 BIN_PATH="/usr/local/bin/backpack"
+# An upgrade can validate the candidate before replacing a running engine.
+if [[ -n "${BP_BUILD_OUTPUT:-}" ]]; then
+  [[ "${BP_BUILD_FROM_SOURCE:-0}" == 1 && "$BP_BUILD_OUTPUT" == /* ]] || {
+    err 'BP_BUILD_OUTPUT requires a source build and an absolute output path'
+    exit 2
+  }
+  BIN_PATH="$BP_BUILD_OUTPUT"
+fi
 INSTALL_DIR="/root/BackPack"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-/tmp}")" 2>/dev/null && pwd || echo /tmp)"
 

@@ -175,6 +175,10 @@ jobs:
           cache: true
       - name: Build the verified OmniTunnel helpers
         run: sudo env "PATH=$PATH" BP_BUILD_FROM_SOURCE=1 BP_HELPERS=omni bash ./install.sh
+      - name: Verify generated units and Hysteria TCP forwarding
+        run: |
+          python3 scripts/test-omnitunnel-relay.py
+          bash scripts/test-omnitunnel-structure.sh /usr/local/lib/backpack/helpers/omnitunnel/acf4e6e5bacc4aa841320e39cff4b51e3f2a9eec-amd64/manager
       - name: Verify restart, token retry and instance config validation
         run: sudo bash scripts/test-omnitunnel-lifecycle.sh /usr/local/lib/backpack/helpers/omnitunnel/acf4e6e5bacc4aa841320e39cff4b51e3f2a9eec-amd64/manager
       - name: Verify FoU and VXLAN in two Linux network namespaces
