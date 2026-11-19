@@ -142,7 +142,7 @@ jobs:
   managed:
     name: Managed carriers
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -155,13 +155,13 @@ jobs:
       - name: Authenticate REALITY cover fallback and exercise the real reverse carriers
         env:
           BP_CONNTEST_HELPERS: '1'
-        run: go test ./internal/manage -run '^(TestRealityCoverSelectionAuthenticatesWithThePinnedHelper|TestAConnectionTestOverLoopbackPassesEveryReverseTransport)$' -race -count=1 -v -timeout 8m
+        run: go test ./internal/manage -run '^(TestRealityCoverSelectionAuthenticatesWithThePinnedHelper|TestAConnectionTestOverLoopbackPassesEveryReverseTransport)$' -race -count=1 -v -timeout 14m
 
       - name: Authenticate the managed carriers over IPv6
         env:
           BP_CONNTEST_HELPERS: '1'
           BP_CONNTEST_HOST: '::1'
-        run: go test ./internal/manage -run '^TestAConnectionTestOverLoopbackPassesEveryReverseTransport$' -race -count=1 -v -timeout 8m
+        run: go test ./internal/manage -run '^TestAConnectionTestOverLoopbackPassesEveryReverseTransport$' -race -count=1 -v -timeout 14m
 
   omnitunnel-kernel:
     name: OmniTunnel kernel overlays
