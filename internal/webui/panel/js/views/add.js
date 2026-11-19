@@ -83,7 +83,7 @@ export function addView(ctx) {
          put a key in the config that transport never reads. */
       const isMux = t => ['tcpmux', 'wsmux', 'wssmux', 'kcp', 'xdi', 'spoof', 'pck'].includes(t);
       const isKCP = t => ['kcp', 'xdi', 'spoof', 'pck'].includes(t);
-      const isHTTPS = t => ['naive', 'xhttp', 'reality'].includes(t);
+      const isManaged = t => ['naive', 'xhttp', 'reality', 'gost'].includes(t);
       const needsTLS = t => ['wss', 'wssmux'].includes(t);
       /* Both taken from internal/manage/config.go, because the server refuses
          these combinations by name and a form that offers them is a form that
@@ -112,11 +112,14 @@ export function addView(ctx) {
         if (pk) { pk.hidden = t !== 'pck'; if (t !== 'pck') pk.classList.remove('open'); }
 
 
-        /* The HTTPS transports: built here on the Iran side only, so their
+        /* Managed transports are built here on the Iran side only, so their
            note, and REALITY's cover, show only there. */
-        const https = isHTTPS(t) && chosen.side === 'server';
+        const https = isManaged(t) && chosen.side === 'server';
         const hr = root.querySelector('#httpsRow');
-        if (hr) hr.hidden = !https;
+        if (hr) {
+          hr.hidden = !https;
+          hr.querySelector('code').textContent = t === 'gost' ? 'BP_HELPERS=gost' : 'BP_HELPERS=naive,xray';
+        }
         const cr = root.querySelector('#coverRow');
         if (cr) cr.hidden = !(https && t === 'reality');
         const tn = root.querySelector('#tlsNameRow');
@@ -135,17 +138,17 @@ export function addView(ctx) {
         const set = (sel, yes) => { const r = row(sel); if (r) r.hidden = !yes; };
         const proxyOK = ['tcp', 'tcpmux', 'kcp', 'wsmux', 'wssmux', 'stealth', 'quic', 'pck'].includes(t);
         set('[data-name="proxyProtocol"]', iran && proxyOK);
-        // udp forwards UDP ports by nature; the HTTPS helpers carry TCP only.
-        set('#ft-acceptUDP', t !== 'udp' && !isHTTPS(t));
+        // udp forwards UDP ports by nature; the managed helpers carry TCP only.
+        set('#ft-acceptUDP', t !== 'udp' && !isManaged(t));
         set('#ft-zeroCopy', t === 'tcp');
         set('#ft-mss', !isDatagram(t));
         // The pool is the dialling side's; Iran never opens one.
         set('#ft-connectionPool', !iran);
         set('#ft-aggressivePool', !iran);
         // What the setup link hands the kharej: an edge only means anything
-        // to a websocket transport, and the HTTPS helpers take no backups.
+        // to a websocket transport, and the managed helpers take no backups.
         set('[name="kharejEdge"]', isWS(t));
-        set('[name="kharejBackups"]', !isHTTPS(t));
+        set('[name="kharejBackups"]', !isManaged(t));
       }
 
       /* Throughput is offered only where it applies — presetSuitsTransport. */
@@ -179,7 +182,7 @@ export function addView(ctx) {
       function paintFamilies() {
         const row = root.querySelector('.fam');
         if (!row || !opts.families?.length) return;
-        /* HTTPS is built on the Iran side only; the kharej takes the link. */
+        /* Managed transports are built on Iran; Kharej takes the link. */
         if (opts.families[chosen.family ?? 0]?.iranOnly && chosen.side !== 'server') chosen.family = 0;
         row.innerHTML = opts.families.map((f, i) =>
           `<button class="${i === (chosen.family ?? 0) ? 'on' : ''}" data-fn="setFam" data-args="'${i}'"

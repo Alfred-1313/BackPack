@@ -18,7 +18,10 @@ func ctProbeHTTPS(parent context.Context, spec TunnelSpec) string {
 	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
 	defer cancel()
 	endpoint, serverName, caFile := spec.XrayClient.Server, spec.XrayClient.ServerName, spec.XrayClient.CAFile
-	if spec.NaiveClient.Enabled() {
+	if spec.GostClient.Enabled() {
+		endpoint, caFile = spec.GostClient.Server, spec.GostClient.CAFile
+		serverName, _, _ = net.SplitHostPort(endpoint)
+	} else if spec.NaiveClient.Enabled() {
 		endpoint, caFile = spec.NaiveClient.Server, spec.NaiveClient.CAFile
 		serverName, _, _ = net.SplitHostPort(endpoint) // Naive uses the IP endpoint, without a DNS SNI
 	}
@@ -44,13 +47,17 @@ func ctProbeHTTPS(parent context.Context, spec TunnelSpec) string {
 				return result
 			}
 			stopClose := context.AfterFunc(attempt, func() { conn.Close() })
-			client := tls.Client(conn, &tls.Config{ServerName: serverName, RootCAs: roots, NextProtos: []string{"h2"}, MinVersion: tls.VersionTLS12})
+			cfg := &tls.Config{ServerName: serverName, RootCAs: roots, MinVersion: tls.VersionTLS12}
+			if !spec.GostClient.Enabled() {
+				cfg.NextProtos = []string{"h2"}
+			}
+			client := tls.Client(conn, cfg)
 			err = client.HandshakeContext(attempt)
 			conn.Close()
 			stopClose()
 			stopAttempt()
 			if err == nil {
-				if client.ConnectionState().NegotiatedProtocol == "h2" {
+				if spec.GostClient.Enabled() || client.ConnectionState().NegotiatedProtocol == "h2" {
 					return "tls-ok"
 				}
 				return result
@@ -77,7 +84,7 @@ func ctValidHTTPSProbe(tr, probe string) bool {
 	case "tcp-ok":
 		return tr == "reality"
 	case "tls-ok", "tls-failed":
-		return tr == "naive" || tr == "xhttp"
+		return tr == "naive" || tr == "xhttp" || tr == "gost"
 	}
 	return false
 }

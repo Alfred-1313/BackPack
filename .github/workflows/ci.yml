@@ -140,7 +140,7 @@ jobs:
           check internal/manage/health  40 "tunnel health, the watchdog and the Health Check"
 
   managed:
-    name: Managed HTTPS carriers
+    name: Managed carriers
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -151,13 +151,13 @@ jobs:
           cache: true
       - uses: ./.github/actions/libpcap
       - name: Install the verified pinned helpers
-        run: sudo env "PATH=$PATH" BP_BUILD_FROM_SOURCE=1 BP_HELPERS=naive,xray bash ./install.sh
+        run: sudo env "PATH=$PATH" BP_BUILD_FROM_SOURCE=1 BP_HELPERS=naive,xray,gost bash ./install.sh
       - name: Authenticate REALITY cover fallback and exercise the real reverse carriers
         env:
           BP_CONNTEST_HELPERS: '1'
         run: go test ./internal/manage -run '^(TestRealityCoverSelectionAuthenticatesWithThePinnedHelper|TestAConnectionTestOverLoopbackPassesEveryReverseTransport)$' -race -count=1 -v -timeout 8m
 
-      - name: Authenticate the managed HTTPS carriers over IPv6
+      - name: Authenticate the managed carriers over IPv6
         env:
           BP_CONNTEST_HELPERS: '1'
           BP_CONNTEST_HOST: '::1'

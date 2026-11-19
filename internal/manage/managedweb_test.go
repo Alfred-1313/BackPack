@@ -29,7 +29,7 @@ import (
 func fakeHTTPSHelpers(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	for _, tool := range []string{"sing-box", "xray", "naive"} {
+	for _, tool := range []string{"sing-box", "xray", "naive", "gost"} {
 		if err := os.WriteFile(filepath.Join(dir, tool), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -91,10 +91,10 @@ func freeHTTPSPort(t *testing.T) string {
 // The panel builds the Iran end of each HTTPS transport from the form it
 // already has, and the setup link it shows carries what the kharej end needs:
 // the same credentials, read back through the link the kharej applies.
-func TestThePanelBuildsTheIranEndOfEachHTTPSTransport(t *testing.T) {
+func TestThePanelBuildsTheIranEndOfEachManagedTransport(t *testing.T) {
 	fakeHTTPSHelpers(t)
 	const host = "203.0.113.7"
-	for _, tr := range []string{"naive", "xhttp", "reality"} {
+	for _, tr := range []string{"naive", "xhttp", "reality", "gost"} {
 		t.Run(tr, func(t *testing.T) {
 			public := freeHTTPSPort(t)
 			n := NewTunnel{Role: "server", Transport: tr, Name: "https-" + tr, TunnelPort: public,
@@ -136,6 +136,13 @@ func TestThePanelBuildsTheIranEndOfEachHTTPSTransport(t *testing.T) {
 				t.Fatalf("the kharej cannot apply the link: %v", err)
 			}
 			switch tr {
+			case "gost":
+				if kharej.GostClient.Password != s.GostServer.Password || kharej.GostClient.Username != s.GostServer.Username {
+					t.Error("the kharej received different GOST credentials from Iran's")
+				}
+				if link.HelperCA == "" || strings.Contains(link.HelperCA, "PRIVATE KEY") {
+					t.Error("the setup link must contain only the public certificate")
+				}
 			case "naive":
 				if kharej.NaiveClient.Password != s.NaiveServer.Password || kharej.NaiveClient.Username != s.NaiveServer.Username {
 					t.Error("the kharej got other Naive credentials than Iran's")

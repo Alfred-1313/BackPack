@@ -30,7 +30,7 @@ var ctTransportNames = map[string]string{
 	"tcp": "TCP", "tcpmux": "TCP MUX", "stealth": "Stealth", "pck": "PCK",
 	"ws": "WS", "wss": "WSS", "wsmux": "WS MUX", "wssmux": "WSS MUX",
 	"kcp": "KCP FEC", "quic": "QUIC", "udp": "UDP", "xdi": "xDi", ctXdiFEC: "xDi + FEC", "sni": "SNI", "gre": "GRE",
-	"naive": "Naive / HTTP2", "xhttp": "XHTTP / TLS", "reality": "REALITY / Vision",
+	"naive": "Naive / HTTP2", "xhttp": "XHTTP / TLS", "reality": "REALITY / Vision", "gost": "GOST v3",
 	ctSpoofToKharej: "Iran→Kharej", ctSpoofToIran: "Kharej→Iran",
 }
 
@@ -170,7 +170,11 @@ func ctHTTPSNotes(out io.Writer, results []ConnTestResult) {
 			fmt.Fprint(out, "\nHTTPS path checks (separate connections):\n\n")
 			shown = true
 		}
-		fmt.Fprintf(out, "  %-16s :%-5d %s\n", ctName(r.Transport), r.TestPort, ctHTTPSProbeLabel(r.HTTPSProbe))
+		label := ctHTTPSProbeLabel(r.HTTPSProbe)
+		if r.Transport == "gost" {
+			label = strings.ReplaceAll(label, "/HTTP2", "")
+		}
+		fmt.Fprintf(out, "  %-16s :%-5d %s\n", ctName(r.Transport), r.TestPort, label)
 	}
 	if shown {
 		fmt.Fprintln(out, "  Tunnel status above requires real authenticated, sustained traffic.")

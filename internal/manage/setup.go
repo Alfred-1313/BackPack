@@ -69,14 +69,21 @@ func cliTransportGroups() []transportGroup {
 			{"XHTTP / TLS", "HTTP/2 streaming — certificate or a private trust file", "xhttp"},
 			{"REALITY / Vision", "TLS cover endpoint — no local certificate required", "reality"},
 		},
+	}, transportGroup{
+		"GOST", "encrypted reverse TCP — Linux, GOST v3 on both sides", []transportEntry{
+			{"GOST v3 / Relay + TLS", "authenticated relay with verified TLS", "gost"},
+		},
 	})
 }
 
 func managedTransport(value string) bool {
-	return value == "naive" || value == "xhttp" || value == "reality"
+	return value == "naive" || value == "xhttp" || value == "reality" || value == "gost"
 }
 
 func selectedTransport(s TunnelSpec) string {
+	if s.GostServer.Enabled() || s.GostClient.Enabled() {
+		return "gost"
+	}
 	if s.NaiveServer.Enabled() || s.NaiveClient.Enabled() {
 		return "naive"
 	}
@@ -90,6 +97,12 @@ func selectedTransport(s TunnelSpec) string {
 }
 
 func managedEndpoint(s TunnelSpec) string {
+	if s.GostServer.Enabled() {
+		return s.GostServer.Listen
+	}
+	if s.GostClient.Enabled() {
+		return s.GostClient.Server
+	}
 	if s.Role == "server" {
 		if s.NaiveServer.Enabled() {
 			return s.NaiveServer.Listen
@@ -109,12 +122,13 @@ func managedEndpoint(s TunnelSpec) string {
 }
 
 func clearManagedTransport(s *TunnelSpec) {
+	s.GostServer, s.GostClient = config.GostServerConfig{}, config.GostClientConfig{}
 	s.NaiveServer, s.NaiveClient = config.NaiveServerConfig{}, config.NaiveClientConfig{}
 	s.XrayServer, s.XrayClient = config.XrayServerConfig{}, config.XrayClientConfig{}
 }
 
 func managedHelperPath(tool string) string {
-	version := map[string]string{"naive": "v154.0.8037.49-5", "sing-box": "v1.14.2", "xray": "v26.3.27"}[tool]
+	version := map[string]string{"naive": "v154.0.8037.49-5", "sing-box": "v1.14.2", "xray": "v26.3.27", "gost": "v3.3.3"}[tool]
 	return filepath.Join("/usr/local/lib/backpack/helpers", tool, version+"-"+runtime.GOARCH, tool)
 }
 
@@ -140,7 +154,7 @@ func managedSecret(label, current, suggested string) string {
 }
 
 func managedCertificate(s TunnelSpec, host string, cert, key string) (string, string, bool) {
-	choice := tui.ChooseOpt("HTTPS Certificate", []tui.Option{
+	choice := tui.ChooseOpt("TLS Certificate", []tui.Option{
 		{Title: "Existing Certificate And Key", Desc: "use PEM files, including an existing Let's Encrypt certificate"},
 		{Title: "Generate Private Certificate", Desc: "copy its public PEM to Kharej and set the CA file there"},
 	})
@@ -202,7 +216,10 @@ func validateManagedSpec(s TunnelSpec) error {
 	if err := naive.Validate(&c); err != nil {
 		return err
 	}
-	return naive.ValidateXray(&c)
+	if err := naive.ValidateXray(&c); err != nil {
+		return err
+	}
+	return naive.ValidateGost(&c)
 }
 
 func managedEndpointClash(s TunnelSpec) string {
@@ -215,7 +232,7 @@ func managedEndpointClash(s TunnelSpec) string {
 			continue
 		}
 		if s.Role == "client" && strings.EqualFold(managedEndpoint(s), managedEndpoint(other)) {
-			return fmt.Sprintf("Tunnel %q already connects to this HTTPS endpoint; choose another endpoint.", t.Name)
+			return fmt.Sprintf("Tunnel %q already connects to this public endpoint; choose another endpoint.", t.Name)
 		}
 	}
 	return ""
@@ -229,11 +246,11 @@ func setupManagedCarrier(s *TunnelSpec, chosen, public, host string) bool {
 
 func setupManagedCarrierWithProbe(s *TunnelSpec, chosen, public, host string, probe realitySetupProbe) bool {
 	if !managedTransport(chosen) || (s.Role != "server" && s.Role != "client") {
-		tui.Error("Invalid managed HTTPS transport or tunnel role.")
+		tui.Error("Invalid managed transport or tunnel role.")
 		return false
 	}
 	if runtime.GOOS != "linux" {
-		tui.Error("Managed HTTPS transports require Linux.")
+		tui.Error("Managed transports require Linux.")
 		return false
 	}
 	if chosen == "reality" {
@@ -250,12 +267,12 @@ func setupManagedCarrierWithProbe(s *TunnelSpec, chosen, public, host string, pr
 		}
 	}
 	tui.Info("TCP Forwarding Only. Set The Same Internal Port And Security Token On Both Sides.")
-	if chosen == "reality" && n.Role == "server" && !wasManaged {
+	if (chosen == "reality" || chosen == "gost") && n.Role == "server" && !wasManaged {
 		internal = realityInternalPort(public, n.Ports)
 	}
 	internal = strings.TrimSpace(tui.PromptDefault("Internal Reverse Port On Iran (Must Match Kharej)", internal))
 	if !validPort(internal) || internal == addrPort(public) {
-		tui.Error("The internal port must be valid and differ from the public HTTPS port.")
+		tui.Error("The internal port must be valid and differ from the public transport port.")
 		return false
 	}
 	n.Transport = "tcp"
@@ -295,6 +312,10 @@ func setupManagedCarrierWithProbe(s *TunnelSpec, chosen, public, host string, pr
 			x.Password = managedSecret("Naive Password (From Iran)", x.Password, "")
 			x.CAFile = tui.PromptDefault("CA File (Required For A Private Certificate; Empty For Public TLS)", x.CAFile)
 			n.NaiveClient = x
+		}
+	} else if chosen == "gost" {
+		if !configureGost(&n, *s, public, host) {
+			return false
 		}
 	} else { // XHTTP retains its certificate and path questions.
 		id, serverName, path := "", host, ""
@@ -337,7 +358,7 @@ func setupManagedCarrierWithProbe(s *TunnelSpec, chosen, public, host string, pr
 	}
 	tui.StopIfInputGone()
 	if err := validateManagedSpec(n); err != nil {
-		tui.Error("HTTPS configuration: " + err.Error())
+		tui.Error("Managed transport configuration: " + err.Error())
 		return false
 	}
 	if why := managedEndpointClash(n); why != "" {
@@ -347,7 +368,7 @@ func setupManagedCarrierWithProbe(s *TunnelSpec, chosen, public, host string, pr
 	if n.Role == "server" && !fileExists(app.ConfigPath(n.Name)) {
 		for _, addr := range []string{public, n.BindAddr} {
 			if busy := reverseBusyPorts(n.Ports, addr, "tcp"); len(busy) > 0 {
-				tui.Error("HTTPS ports conflict with forwarded ports: " + strings.Join(busy, ", "))
+				tui.Error("The public or internal port conflicts with forwarded ports: " + strings.Join(busy, ", "))
 				return false
 			}
 			if portHeld(addr) {

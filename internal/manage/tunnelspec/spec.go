@@ -22,6 +22,8 @@ type Spec struct {
 	// They include credentials and must not enter generic JSON responses.
 	NaiveServer config.NaiveServerConfig `json:"-"`
 	NaiveClient config.NaiveClientConfig `json:"-"`
+	GostServer  config.GostServerConfig  `json:"-"`
+	GostClient  config.GostClientConfig  `json:"-"`
 	XrayServer  config.XrayServerConfig  `json:"-"`
 	XrayClient  config.XrayClientConfig  `json:"-"`
 
@@ -417,6 +419,13 @@ func (s Spec) Render() string {
 }
 
 func (s Spec) writeHelpers(b *strings.Builder) {
+	if s.Role == "server" && s.GostServer.Enabled() {
+		b.WriteString("\n[server.gost]\n")
+		_ = toml.NewEncoder(b).Encode(s.GostServer)
+	} else if s.Role == "client" && s.GostClient.Enabled() {
+		b.WriteString("\n[client.gost]\n")
+		_ = toml.NewEncoder(b).Encode(s.GostClient)
+	}
 	if s.Role == "server" && s.NaiveServer.Enabled() {
 		b.WriteString("\n[server.naive]\n")
 		_ = toml.NewEncoder(b).Encode(s.NaiveServer) // string fields into an infallible strings.Builder
@@ -466,6 +475,18 @@ func (s Spec) validateNaive() error {
 }
 
 func (s Spec) validateHelpers() error {
+	if s.GostServer.Enabled() || s.GostClient.Enabled() {
+		if s.GostServer.Enabled() != (s.Role == "server") || s.GostClient.Enabled() != (s.Role == "client") {
+			return fmt.Errorf("GOST helper settings do not match the tunnel role")
+		}
+		var cfg config.Config
+		if _, err := toml.Decode(s.Render(), &cfg); err != nil {
+			return err
+		}
+		if err := naive.ValidateGost(&cfg); err != nil {
+			return fmt.Errorf("GOST configuration: %w", err)
+		}
+	}
 	if err := s.validateNaive(); err != nil {
 		return fmt.Errorf("Naive configuration: %w", err)
 	}

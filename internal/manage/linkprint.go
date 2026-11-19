@@ -32,20 +32,32 @@ func InstallCommand(link string) string {
 // is where the Setup Link answer is in the kharej's menu, for the first.
 func printLinkBlock(link, menuPath string) {
 	command := InstallCommand(link)
+	helperList := "naive,xray"
 	if command == "" {
-		menuPath = "sudo backpack → Setup Kharej → Reverse → HTTPS → Same Protocol → Setup Link"
+		l, _ := DecodeShareLink(link)
+		menuPath = managedPeerMenu(l.Tr)
+		if l.Tr == "gost" {
+			helperList = "gost"
+		}
 	}
 	fmt.Println()
 	tui.Info("Setup Link (" + menuPath + "):")
 	fmt.Println(tui.Color(tui.Bold+tui.White, link))
 	fmt.Println()
 	if command == "" {
-		tui.Info("Install The Same BackPack Build On Kharej With BP_HELPERS=naive,xray, Then Apply:")
+		tui.Info("Install The Same BackPack Build On Kharej With BP_HELPERS=" + helperList + ", Then Apply:")
 		fmt.Println(tui.Color(tui.Bold+tui.White, "sudo backpack link apply '"+link+"'"))
 	} else {
 		tui.Info("Install BackPack And Set Up This Tunnel (Kharej Without BackPack, As Root):")
 		fmt.Println(tui.Color(tui.Bold+tui.White, command))
 	}
+}
+
+func managedPeerMenu(transport string) string {
+	if transport == "gost" {
+		return "sudo backpack → Setup Kharej → Reverse → GOST → Relay + TLS → Setup Link"
+	}
+	return "sudo backpack → Setup Kharej → Reverse → HTTPS → Same Protocol → Setup Link"
 }
 
 // askLinkBackupHosts asks for this server's other addresses, which the setup

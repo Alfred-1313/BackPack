@@ -54,6 +54,11 @@ git clone --depth 1 --branch main https://github.com/Alfred-1313/BackPack.git &&
 دفعات بعد هر وقت خواستی با `sudo backpack` بازش کن.
 برای استفاده از PCK، پیش از ساخت، هدرهای توسعهٔ libpcap و کامپایلر C را نصب کن.
 
+برای **GOST v3**، هنگام نصب روی هر دو سرور `BP_HELPERS=gost` را کنار
+`BP_BUILD_FROM_SOURCE=1` بگذار. در منو، مسیر **Reverse → GOST → Relay + TLS**
+را انتخاب کن. ابتدا ایران را راه‌اندازی کن و لینک تنظیمات را در سمت خارج وارد کن.
+[راهنمای GOST v3](docs/transports.md#gost-v3-relay-over-tls)
+
 > **سرور به اینترنت دسترسی ندارد؟** اگر فورک ریلیز باینری دارد، می‌توانی
 > آرشیو همان ریلیز را روی یک دستگاه دیگر بگیری و آفلاین نصب کنی.
 > **← [راهنمای کامل نصب](docs/install.md)**

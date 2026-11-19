@@ -750,8 +750,12 @@ func EditTunnelSettings(name string, e TunnelEdit) error {
 // editTransport switches the transport and drops what belonged to the old one.
 func (e TunnelEdit) editTransport(s *TunnelSpec) (bool, error) {
 	t := strings.ToLower(strings.TrimSpace(e.Transport))
-	if t == "" || t == s.Transport {
+	current := selectedTransport(*s)
+	if t == "" || t == current || (current != "gost" && t == s.Transport) {
 		return false, nil
+	}
+	if t == "gost" || current == "gost" {
+		return false, fmt.Errorf("use the terminal to switch a GOST transport and configure its credentials")
 	}
 	if err := switchTransport(s, t); err != nil {
 		return false, err
@@ -843,28 +847,37 @@ func (e TunnelEdit) editTunnelPort(s *TunnelSpec) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("the tunnel port is not valid: %w", err)
 	}
+	// The GOST form displays the public endpoint; preserve the engine's
+	// private listener and the port paired with the other engine.
+	serverAddr, clientAddr := &s.BindAddr, &s.RemoteAddr
+	if s.GostServer.Enabled() {
+		serverAddr = &s.GostServer.Listen
+	}
+	if s.GostClient.Enabled() {
+		clientAddr = &s.GostClient.Server
+	}
 	if s.Role == "server" {
 		// An address pins the tunnel to it; a bare port keeps whatever this
 		// tunnel already binds. Widening a pinned tunnel back to every
 		// interface is therefore said explicitly: 0.0.0.0:443.
-		want := net.JoinHostPort(addrHost(s.BindAddr, "0.0.0.0"), bind.Port)
+		want := net.JoinHostPort(addrHost(*serverAddr, "0.0.0.0"), bind.Port)
 		if bind.HasHost() {
 			want = bind.Addr(false)
 		}
-		if want == s.BindAddr {
+		if want == *serverAddr {
 			return false, nil
 		}
-		s.BindAddr = want
+		*serverAddr = want
 		return true, nil
 	}
 	if bind.HasHost() {
 		return false, fmt.Errorf("a client binds nothing — its tunnel port is the port on the " +
 			"server, so it takes a port alone. Change where it dials with the server address instead")
 	}
-	if addrPort(s.RemoteAddr) == bind.Port {
+	if addrPort(*clientAddr) == bind.Port {
 		return false, nil
 	}
-	s.RemoteAddr = net.JoinHostPort(addrHost(s.RemoteAddr, ""), bind.Port)
+	*clientAddr = net.JoinHostPort(addrHost(*clientAddr, ""), bind.Port)
 	return true, nil
 }
 
@@ -877,15 +890,19 @@ func (e TunnelEdit) editServerAddr(s *TunnelSpec) (bool, error) {
 	if s.Role != "client" {
 		return false, fmt.Errorf("the server address can only be changed on client tunnels")
 	}
-	p := addrPort(s.RemoteAddr)
+	endpoint := &s.RemoteAddr
+	if s.GostClient.Enabled() {
+		endpoint = &s.GostClient.Server
+	}
+	p := addrPort(*endpoint)
 	if !validPort(p) {
 		return false, fmt.Errorf("this tunnel has no valid server port")
 	}
 	addr := net.JoinHostPort(host, p)
-	if addr == s.RemoteAddr {
+	if addr == *endpoint {
 		return false, nil
 	}
-	s.RemoteAddr = addr
+	*endpoint = addr
 	return true, nil
 }
 
@@ -1016,12 +1033,20 @@ func TunnelSettingsOf(name string) (TunnelSettings, error) {
 		ACMEEmail:     s.ACMEEmail,
 	}
 	if s.Role == "server" {
-		out.TunnelPort = addrPort(s.BindAddr)
-		out.BindHost = bindHostOf(s.BindAddr)
+		endpoint := s.BindAddr
+		if s.GostServer.Enabled() {
+			out.Transport, endpoint = "gost", s.GostServer.Listen
+		}
+		out.TunnelPort = addrPort(endpoint)
+		out.BindHost = bindHostOf(endpoint)
 		out.Ports = VisiblePorts(s.Ports, s.Token)
 	} else {
-		out.TunnelPort = addrPort(s.RemoteAddr)
-		out.ServerHost = addrHost(s.RemoteAddr, "")
+		endpoint := s.RemoteAddr
+		if s.GostClient.Enabled() {
+			out.Transport, endpoint = "gost", s.GostClient.Server
+		}
+		out.TunnelPort = addrPort(endpoint)
+		out.ServerHost = addrHost(endpoint, "")
 	}
 	return out, nil
 }

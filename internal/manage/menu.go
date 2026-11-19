@@ -462,9 +462,9 @@ func editManagedSettings(name string, spec TunnelSpec, chosen string) {
 	if chosen == "reality" {
 		defer tui.QuickDefaults()()
 	}
-	label := "Public HTTPS Listen Address (IP:Port)"
+	label := "Public Listen Address (IP:Port)"
 	if spec.Role == "client" {
-		label = "Iran HTTPS Address (Hostname Or IP:Port)"
+		label = "Iran Public Address (Hostname Or IP:Port)"
 	}
 	public := tui.PromptDefault(label, managedEndpoint(spec))
 	host := addrHost(public, "")
@@ -473,7 +473,7 @@ func editManagedSettings(name string, spec TunnelSpec, chosen string) {
 	}
 	if spec.AcceptUDP || len(spec.FallbackAddrs) > 0 || len(spec.FallbackTransports) > 0 ||
 		spec.Proxy != "" || spec.Interface != "" || spec.LocalAddr != "" || spec.SOMark != 0 || spec.LoadBalance || spec.HealthFailover {
-		tui.Warn("This HTTPS Transport Supports TCP Only; UDP, Proxies, Routing Bindings And Fallbacks Will Be Disabled.")
+		tui.Warn("This Transport Supports TCP Only; UDP, Proxies, Routing Bindings And Fallbacks Will Be Disabled.")
 		if !tui.Confirm("Continue With TCP Forwarding Only", false) {
 			return
 		}
@@ -483,14 +483,14 @@ func editManagedSettings(name string, spec TunnelSpec, chosen string) {
 		return
 	}
 	summariseReverse(spec, "", "")
-	if !tui.Confirm("Save HTTPS Settings And Restart This Side", true) {
+	if !tui.Confirm("Save Transport Settings And Restart This Side", true) {
 		return
 	}
 	tui.StopIfInputGone()
 	if err := applySpec(spec); err != nil {
 		tui.Error("Failed: " + err.Error())
 	} else {
-		tui.Success("HTTPS Settings Saved — Restarted.")
+		tui.Success("Transport Settings Saved — Restarted.")
 		tui.Warn("Configure The Other Side With The Matching Settings.")
 	}
 	tui.PressEnter()
@@ -501,14 +501,14 @@ func editManagedSettings(name string, spec TunnelSpec, chosen string) {
 func editManagedTunnelMenu(name string, spec TunnelSpec) bool {
 	chosen := selectedTransport(spec)
 	tui.Info("Transport       : " + transportLabel(chosen))
-	tui.Info("HTTPS Endpoint  : " + managedEndpoint(spec))
+	tui.Info("Public Endpoint : " + managedEndpoint(spec))
 	internal := spec.BindAddr
 	if spec.Role == "client" {
 		internal = spec.RemoteAddr
 	}
 	tui.Info("Internal Target : " + internal)
 	opts := []tui.Option{
-		{Title: "HTTPS Settings", Desc: "public endpoint, internal port, certificate and credentials"},
+		{Title: "Connection Settings", Desc: "public endpoint, internal port, certificate and credentials"},
 		{Title: "Transport", Desc: "change the protocol on both sides"},
 		{Title: "Preset", Desc: "tune the TCP engine"},
 		{Title: "TCP MSS Clamp", Desc: "for a path that drops full-size packets"},

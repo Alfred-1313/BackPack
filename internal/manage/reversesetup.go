@@ -549,8 +549,8 @@ func summariseReverse(s TunnelSpec, host, link string) {
 			internal = s.RemoteAddr
 		}
 		row("Internal Target", internal)
-		tui.Info("Kharej Must Use The Same Internal Port, Security Token And HTTPS Credentials.")
-		tui.Info("Use Iran's Setup Link On Kharej To Copy The Paired HTTPS Settings.")
+		tui.Info("Kharej Must Use The Same Internal Port, Security Token And Helper Credentials.")
+		tui.Info("Use Iran's Setup Link On Kharej To Copy The Paired Settings.")
 	}
 	if link != "" {
 		printLinkBlock(link, "sudo backpack → Setup Kharej → Reverse → Setup Link")

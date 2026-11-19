@@ -182,7 +182,8 @@ function shapeForTransport(root, settings, tunnel) {
   // Which half of the tunnel this is decides the rest.
   show(byName('serverAddr'), !server);
   show(byName('ports'), server);
-  show(byName('tune.acceptUDP'), server);
+  show(byName('tune.acceptUDP'), server && t !== 'gost');
+  show('.sel[data-name="__family"], .sel[data-name="transport"]', t !== 'gost');
   show(byName('tune.channelSize'), server);
   show(byName('tune.connectionPool'), !server);
   show(byName('tune.aggressivePool'), !server);

@@ -334,7 +334,7 @@ func observeOutbound(info *TunnelInfo, t manage.Tunnel, th manage.Health, pair m
 	// ICMP one is not (it may simply be filtered), so a datagram
 	// tunnel's liveness rests on the socket check in AllHealth alone,
 	// never on ping.
-	if info.State == "online" && resolvable && !datagram && info.Ping < 0 {
+	if info.State == "online" && resolvable && !datagram && t.Transport != "gost" && info.Ping < 0 {
 		info.State = "offline"
 	}
 	// Geo is a lookup against providers this machine may not be

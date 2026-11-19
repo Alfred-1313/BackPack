@@ -279,6 +279,8 @@ type ServerConfig struct {
 	Naive NaiveServerConfig `toml:"naive"`
 	// Xray optionally wraps the loopback reverse TCP listener in XHTTP/TLS or RAW/REALITY using a tunnel-owned official helper.
 	Xray XrayServerConfig `toml:"xray"`
+	// Gost optionally exposes the reverse TCP listener through a managed GOST v3 TLS relay.
+	Gost GostServerConfig `toml:"gost"`
 	// BindAddr is the address and port this server listens on for the
 	// control channel — "0.0.0.0:443" for every interface, or one address to pin
 	// it to a single local IP. The client's remote_addr must name the same port.
@@ -462,6 +464,8 @@ type ClientConfig struct {
 	Naive NaiveClientConfig `toml:"naive"`
 	// Xray optionally reaches the loopback reverse target through a restricted tunnel-owned XHTTP/TLS or RAW/REALITY helper.
 	Xray XrayClientConfig `toml:"xray"`
+	// Gost optionally reaches the reverse TCP listener through the managed GOST v3 TLS relay.
+	Gost GostClientConfig `toml:"gost"`
 	// RemoteAddr is the server's address and port, as the client dials it. The
 	// port must match the server's bind_addr.
 	RemoteAddr string `toml:"remote_addr"`

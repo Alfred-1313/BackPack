@@ -54,7 +54,7 @@ func managedFromPanel(s *TunnelSpec, f managedForm, probe realitySetupProbe) err
 		return fmt.Errorf("set up the kharej end of a %s tunnel from the Iran server's setup link", f.chosen)
 	}
 	if runtime.GOOS != "linux" {
-		return fmt.Errorf("the HTTPS transports need Linux")
+		return fmt.Errorf("managed transports require Linux")
 	}
 	public := s.BindAddr
 	internal := realityInternalPort(public, s.Ports)
@@ -77,6 +77,18 @@ func managedFromPanel(s *TunnelSpec, f managedForm, probe realitySetupProbe) err
 
 	host := strings.Trim(strings.TrimSpace(f.host), "[]")
 	switch f.chosen {
+	case "gost":
+		binary, err := managedHelper("gost")
+		if err != nil {
+			return err
+		}
+		cert, key, err := panelCert(n.Name, host)
+		if err != nil {
+			return err
+		}
+		n.GostServer.Binary, n.GostServer.Listen = binary, public
+		n.GostServer.Username, n.GostServer.Password = "backpack", randomToken(32)
+		n.GostServer.Certificate, n.GostServer.Key = cert, key
 	case "naive":
 		binary, err := managedHelper("sing-box")
 		if err != nil {
@@ -139,16 +151,16 @@ func managedFromPanel(s *TunnelSpec, f managedForm, probe realitySetupProbe) err
 		x.Target, x.ServerName = target, sni
 		x.UUID, x.PrivateKey, x.ShortID = id, private, hex.EncodeToString(short[:])
 	default:
-		return fmt.Errorf("%q is not an HTTPS transport", f.chosen)
+		return fmt.Errorf("%q is not a managed transport", f.chosen)
 	}
 
 	if err := validateManagedSpec(n); err != nil {
-		return fmt.Errorf("HTTPS configuration: %w", err)
+		return fmt.Errorf("managed transport configuration: %w", err)
 	}
 	if !fileExists(app.ConfigPath(n.Name)) {
 		for _, addr := range []string{public, n.BindAddr} {
 			if busy := reverseBusyPorts(n.Ports, addr, "tcp"); len(busy) > 0 {
-				return fmt.Errorf("the HTTPS ports clash with the forwarded ports: %s", strings.Join(busy, ", "))
+				return fmt.Errorf("the public or internal port clashes with the forwarded ports: %s", strings.Join(busy, ", "))
 			}
 			if portHeld(addr) {
 				return fmt.Errorf("%s is already in use on this server", addr)
@@ -210,6 +222,9 @@ func managedHelper(tool string) (string, error) {
 }
 
 func helperMissing(tool, path string) error {
+	if tool == "gost" {
+		return fmt.Errorf("GOST is required at %s; install it with BP_HELPERS=gost bash install.sh", path)
+	}
 	return fmt.Errorf("the %s helper is not installed at %s — install it with BP_HELPERS=naive,xray bash install.sh", tool, path)
 }
 

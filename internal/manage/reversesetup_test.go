@@ -39,6 +39,16 @@ func TestManagedHTTPSChoicesReachBothReverseWizards(t *testing.T) {
 	}
 }
 
+func TestGOSTTransportIsSelectable(t *testing.T) {
+	restore := tui.SetInput(strings.NewReader(fmt.Sprintf("%d\n1\n", len(transportGroups)+2)))
+	defer restore()
+	var got string
+	capture(t, func() { got = chooseTransport() })
+	if got != "gost" {
+		t.Fatalf("GOST family selected %q", got)
+	}
+}
+
 func managedWizardFixture(t *testing.T) (binary, cert, key string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -86,7 +96,7 @@ func TestManagedHTTPSWizardProducesValidRoleConfigurations(t *testing.T) {
 		return addrPort(ln.Addr().String())
 	}
 	for _, role := range []string{"server", "client"} {
-		for _, chosen := range []string{"naive", "xhttp", "reality"} {
+		for _, chosen := range []string{"naive", "xhttp", "reality", "gost"} {
 			t.Run(role+"/"+chosen, func(t *testing.T) {
 				internal, outer, entry := port(), port(), port()
 				s := TunnelSpec{Name: "https-menu-proof", Role: role, Transport: "tcp", Token: "shared-token", Ports: []string{"127.0.0.1:" + entry + "=127.0.0.1:8081"}}
@@ -96,7 +106,7 @@ func TestManagedHTTPSWizardProducesValidRoleConfigurations(t *testing.T) {
 				s.Proxy = "socks5://127.0.0.1:1080"
 				public := "127.0.0.1:" + outer
 				var input []string
-				if chosen == "naive" {
+				if chosen == "naive" || chosen == "gost" {
 					input = []string{internal, binary, "user", "private-password"}
 					if role == "server" {
 						input = append(input, "1", cert, key)

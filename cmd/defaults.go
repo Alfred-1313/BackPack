@@ -224,6 +224,7 @@ func validateConfig(cfg *config.Config) error {
 	for _, check := range []func(*config.Config) error{
 		checkNaive,
 		checkXray,
+		naive.ValidateGost,
 		checkOutbound,
 		checkXdi,
 		checkSpoof,

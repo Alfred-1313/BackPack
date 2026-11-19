@@ -44,6 +44,16 @@ them both ends have to agree on. This says what exists.
 | `pck_gateway_mac` | `string` | PckGatewayMAC is the next hop's hardware address, used when frames are injected at the link layer. Empty means read it from the kernel's neighbour table, which is where it already is. Set it only where that lookup is wrong — some virtualised networks answer ARP with an address the hypervisor then rewrites. |
 | `pck_interface` | `string` | PckInterface pins the carrier to a named egress device. Empty — the normal case — lets the route to the peer choose, which is right on every host with one uplink and on most with several. |
 
+## [client.gost]
+
+| Key | Type | Description |
+|---|---|---|
+| `binary` | `string` | Binary is the absolute path to the GOST v3 executable. |
+| `ca_file` | `string` | CAFile is an optional absolute path to a private trust anchor in PEM format. |
+| `password` | `string` | Password is the GOST relay secret shared by both sides. |
+| `server` | `string` | Server is the public TLS endpoint the helper connects to and verifies. |
+| `username` | `string` | Username is the GOST relay account shared by both sides. |
+
 ## [client.naive]
 
 | Key | Type | Description |
@@ -81,6 +91,7 @@ them both ends have to agree on. This says what exists.
 | `fallback_addrs` | `[]string` | FallbackAddrs are additional server addresses tried in order whenever the primary cannot be reached (a filtered IP, a blocked port, a CDN edge). |
 | `fallback_dwell` | `int` | FallbackDwell is how many seconds one transport candidate is held before the next is tried. 0 uses DefaultFallbackDwell. |
 | `fallback_transports` | `[]TransportType` | FallbackTransports and FallbackDwell mirror the server's; see there. They must match the server's list for the two ends to meet. |
+| `gost` | `GostClientConfig` | Gost optionally reaches the reverse TCP listener through the managed GOST v3 TLS relay. |
 | `health_failover` | `bool` | HealthFailover scores every configured address on a timer and keeps traffic on the healthiest — the multi-exit gaming behaviour. It needs more than one address to do anything, and it overrides LoadBalance, because steering to one best exit is the opposite of spreading across all of them. |
 | `interface` | `string` | Interface pins those connections to a named device, for when the source address alone does not settle the route. Linux, and needs CAP_NET_RAW. |
 | `keepalive_period` | `int` | Keepalive is how often, in seconds, an idle connection is probed. It also decides how long a dead peer takes to notice — too low tears down a tunnel that is merely slow, which on a bad path is the difference between a working tunnel and one that flaps. |
@@ -186,6 +197,17 @@ them both ends have to agree on. This says what exists.
 | `spoof_uplink` | `string` | SpoofUplink and SpoofDownlink set the profile per direction, for a path whose filtering is not symmetric — e.g. ICMP survives client→server while UDP survives server→client. Uplink is client→server, downlink is server→client; both ends must set the same pair. Empty falls back to SpoofProfile, which is the symmetric case. |
 | `spoof_xdp_interface` | `string` | SpoofXDPInterface, when set to a NIC name (e.g. "eth0"), attaches an XDP/eBPF program to that device to receive the tunnel's forged-source packets in the kernel fast path, before the normal socket stack — higher throughput and lower CPU under load than the default raw-socket receive. Pure Go (no clang or libbpf), opt-in, and best-effort: if the kernel is too old or the attach or verifier fails, the carrier logs it and silently falls back to the ordinary raw/UDP receive, so a working tunnel is never lost to it. Empty disables it. Linux only; needs CAP_BPF/CAP_NET_ADMIN in addition to the carrier's CAP_NET_RAW. |
 
+## [server.gost]
+
+| Key | Type | Description |
+|---|---|---|
+| `binary` | `string` | Binary is the absolute path to the GOST v3 executable. |
+| `certificate` | `string` | Certificate is the absolute path to the public PEM certificate chain. |
+| `key` | `string` | Key is the absolute path to the PEM private key. |
+| `listen` | `string` | Listen is the public TLS address, separate from the loopback reverse listener. |
+| `password` | `string` | Password is the GOST relay secret, separate from the reverse tunnel token. |
+| `username` | `string` | Username is the account accepted by the GOST relay. |
+
 ## [server.naive]
 
 | Key | Type | Description |
@@ -226,6 +248,7 @@ them both ends have to agree on. This says what exists.
 | `channel_size` | `int` | ChannelSize is how many connections may queue between the accept loop and the handlers before new ones are dropped. A larger queue absorbs a burst; it does not make the tunnel faster. |
 | `fallback_dwell` | `int` | FallbackDwell is how many seconds the server holds one candidate before trying the next. 0 uses DefaultFallbackDwell. |
 | `fallback_transports` | `[]TransportType` | FallbackTransports are additional carriers this tunnel may fall back to when the configured one stops getting through. Both ends carry the same list and rotate through it — see internal/tunnel/chain for how they meet without negotiating — so a filtered carrier is recovered from without an operator. Empty (the default) means one transport, exactly as before. |
+| `gost` | `GostServerConfig` | Gost optionally exposes the reverse TCP listener through a managed GOST v3 TLS relay. |
 | `heartbeat` | `int` | Heartbeat is how often, in seconds, the server sends a liveness byte down the control channel. It is how a client notices a server that has gone away without closing the socket. The control channel beats at least every 10 seconds whatever is set here, so a client can give up on a crashed server in about 30 rather than waiting out its keepalive. The first beats on a new control channel come faster, starting a tenth of a second in, so this holds from the first moments of a connection too: 15 seconds until the steady rhythm is learnt. |
 | `keepalive_period` | `int` | Keepalive is how often, in seconds, an idle connection is probed. It also decides how long a dead peer takes to notice — too low tears down a tunnel that is merely slow, which on a bad path is the difference between a working tunnel and one that flaps. |
 | `log_format` | `string` | LogFormat is "" for human-readable output or "json" for machine parsing. |
@@ -283,4 +306,4 @@ them both ends have to agree on. This says what exists.
 
 ---
 
-*Generated from `config/` on 2026-11-15. Last verified against Backpack v2.0.0.*
+*Generated from `config/` on 2026-11-19. Last verified against Backpack v2.0.0.*

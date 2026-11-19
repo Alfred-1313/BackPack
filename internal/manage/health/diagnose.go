@@ -438,6 +438,10 @@ func tunnelChecksFor(t core.Tunnel, pairs [][2]string) []Check {
 			// remote_addr belongs to Iran behind CONNECT; a direct dial on
 			// this machine would inspect an unrelated local service.
 			out = append(out, naiveReachability(g, spec.NaiveClient.Server))
+		case spec.GostClient.Enabled():
+			out = append(out, Check{Group: g, Name: "Reachability", Level: CheckInfo,
+				Detail: "GOST Relay + TLS via " + spec.GostClient.Server,
+				Fix:    "check the live engine state and verify traffic through a forwarded TCP port"})
 		case spec.XrayClient.Enabled():
 			out = append(out, Check{Group: g, Name: "Reachability", Level: CheckInfo,
 				Detail: "managed Xray " + spec.XrayClient.Mode + " via " + spec.XrayClient.Server + "; remote_addr is the loopback target on Iran",
@@ -464,7 +468,7 @@ func tunnelChecksFor(t core.Tunnel, pairs [][2]string) []Check {
 	// full-sized packet. Only worth measuring on a tunnel that is up; on one
 	// that is not, the checks above already say why. See diagnose_path.go.
 	if h.State == "online" {
-		if spec.NaiveServer.Enabled() || spec.NaiveClient.Enabled() || spec.XrayServer.Enabled() || spec.XrayClient.Enabled() {
+		if spec.NaiveServer.Enabled() || spec.NaiveClient.Enabled() || spec.XrayServer.Enabled() || spec.XrayClient.Enabled() || spec.GostServer.Enabled() || spec.GostClient.Enabled() {
 			out = append(out, managedPathChecks(g, t)...)
 		} else {
 			out = append(out, pathChecks(g, t)...)
@@ -474,6 +478,9 @@ func tunnelChecksFor(t core.Tunnel, pairs [][2]string) []Check {
 	// TLS certificate validity for the transports that terminate TLS.
 	if t.Role == "server" && needsTLS(spec.Transport) {
 		out = append(out, certCheck(g, spec.TLSCert))
+	}
+	if t.Role == "server" && spec.GostServer.Enabled() {
+		out = append(out, certCheck(g, spec.GostServer.Certificate))
 	}
 	if t.Role == "server" && spec.NaiveServer.Enabled() {
 		out = append(out, certCheck(g, spec.NaiveServer.Certificate))

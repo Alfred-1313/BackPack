@@ -101,7 +101,7 @@ func (e *engineControl) setGeneration(stop func(), cfg *config.Config) {
 	e.restart = stop
 	e.role, e.transport = role, transport
 	e.helperReady = nil
-	if cfg.Server.Naive.Enabled() || cfg.Client.Naive.Enabled() || cfg.Server.Xray.Enabled() || cfg.Client.Xray.Enabled() {
+	if cfg.HasManagedHelper() {
 		ready := false
 		e.helperReady = &ready
 	}

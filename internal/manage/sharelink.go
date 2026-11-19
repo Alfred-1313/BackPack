@@ -656,7 +656,7 @@ func shareLinkWith(name, host string, cfg config.Config, x linkExtras) (string, 
 // shareLinkOf builds the link from a config in hand, which is how the direct
 // wizard shows it in its summary before the tunnel is written.
 func shareLinkOf(name, host string, cfg config.Config) (string, error) {
-	if cfg.Client.Naive.Enabled() || cfg.Client.Xray.Enabled() {
+	if cfg.Client.HasManagedHelper() {
 		return "", fmt.Errorf("generate the managed HTTPS setup link on Iran; server private keys cannot be reconstructed from Kharej")
 	}
 	l := ShareLink{Name: name, Host: strings.TrimSpace(host)}
@@ -737,10 +737,14 @@ func shareLinkOf(name, host string, cfg config.Config) (string, error) {
 	if l.Tok == "" && !(l.Kind == "direct" && l3.KernelCarrier(l.Tr)) {
 		return "", fmt.Errorf("%q has no token to hand over", name)
 	}
-	if cfg.Server.Naive.Enabled() || cfg.Server.Xray.Enabled() {
+	if cfg.Server.HasManagedHelper() {
 		l.InnerPort = l.Port
 		var cert string
-		if cfg.Server.Naive.Enabled() {
+		if cfg.Server.Gost.Enabled() {
+			g := cfg.Server.Gost
+			l.Tr, l.Port, l.HelperUser, l.HelperPassword = "gost", addrPort(g.Listen), g.Username, g.Password
+			cert = g.Certificate
+		} else if cfg.Server.Naive.Enabled() {
 			x := cfg.Server.Naive
 			l.Tr, l.Port, l.HelperUser, l.HelperPassword = "naive", addrPort(x.Listen), x.Username, x.Password
 			cert = x.Certificate
@@ -843,7 +847,7 @@ func prepareManagedLink(s TunnelSpec, link ShareLink) error {
 			return err
 		}
 		withoutCA := s
-		withoutCA.NaiveClient.CAFile, withoutCA.XrayClient.CAFile = "", ""
+		withoutCA.NaiveClient.CAFile, withoutCA.XrayClient.CAFile, withoutCA.GostClient.CAFile = "", "", ""
 		if err := validateManagedSpec(withoutCA); err != nil {
 			return err
 		}
@@ -860,7 +864,10 @@ func managedClientFromLink(s *TunnelSpec, link ShareLink, host string) {
 	s.FallbackAddrs, s.FallbackTransports = nil, nil
 	s.FallbackDwell = 0
 	public := net.JoinHostPort(host, link.Port)
-	if link.Tr == "naive" {
+	if link.Tr == "gost" {
+		s.GostClient = config.GostClientConfig{Binary: managedHelperPath("gost"), Server: public,
+			Username: link.HelperUser, Password: link.HelperPassword, CAFile: managedLinkCAPath(link.HelperCA)}
+	} else if link.Tr == "naive" {
 		s.NaiveClient = config.NaiveClientConfig{Binary: managedHelperPath("naive"), Server: public,
 			Username: link.HelperUser, Password: link.HelperPassword, CAFile: managedLinkCAPath(link.HelperCA)}
 	} else {

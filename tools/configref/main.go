@@ -154,6 +154,10 @@ func sectionOf(name string) string {
 		return "[direct] — removed in v2.0.0, read only to refuse it"
 	case "L3Config":
 		return "[l3]"
+	case "GostClientConfig":
+		return "[client.gost]"
+	case "GostServerConfig":
+		return "[server.gost]"
 	case "NaiveClientConfig":
 		return "[client.naive]"
 	case "NaiveServerConfig":

@@ -20,7 +20,7 @@ type Tunnel struct {
 	Name      string
 	Role      string // "server" or "client"
 	Transport string
-	Addr      string   // bind_addr (server) or remote_addr (client)
+	Addr      string   // listener or dial target visible to the peer
 	Ports     []string // server only
 	Service   string
 
@@ -64,10 +64,16 @@ func tunnelOf(name string, cfg config.Config) (Tunnel, bool) {
 		t.Transport = string(cfg.Server.Transport)
 		t.Addr = cfg.Server.BindAddr
 		t.Ports = cfg.Server.Ports
+		if cfg.Server.Gost.Enabled() {
+			t.Transport, t.Addr = "gost", cfg.Server.Gost.Listen
+		}
 	case cfg.Client.RemoteAddr != "":
 		t.Role = "client"
 		t.Transport = string(cfg.Client.Transport)
 		t.Addr = cfg.Client.RemoteAddr
+		if cfg.Client.Gost.Enabled() {
+			t.Transport, t.Addr = "gost", cfg.Client.Gost.Server
+		}
 	// A direct tunnel is listed on the same terms as a reverse tunnel, so it
 	// can be started, stopped, watched and deleted from the same menu.
 	// Without this it would run perfectly well and be invisible to every

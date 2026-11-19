@@ -17,6 +17,33 @@ directory; `BP_HELPERS=naive,xray` installs both sets. Existing helper directori
 are retained. No helper is started by the installer. Xray transport settings
 require a Backpack build that implements the managed Xray wrapper.
 
+## GOST v3 Relay over TLS
+
+GOST v3 carries the existing reverse engine through an authenticated relay
+over verified TLS. The public relay has a single destination, the reverse
+engine on Iran's loopback interface. The engine forwards TCP ports through
+one endpoint.
+
+1. On both Linux machines, enable the [GOST helper](install.md#gost-v3-helper)
+   when installing this build.
+2. On Iran, open **Setup Iran → Reverse → GOST → GOST v3 / Relay + TLS**.
+   Set the public TLS port and the ports to forward. Use an existing certificate
+   for the IP or hostname Kharej will dial, or generate a private certificate
+   in the wizard.
+3. On Kharej, open **Setup Kharej → Reverse → GOST → GOST v3 / Relay + TLS
+   → Setup Link**. Paste the link from Iran. The link carries the public
+   endpoint, internal port, credentials and any private certificate trust.
+   Keep it private. You can also apply it from the terminal with
+   `sudo backpack link apply '<setup-link>'`.
+
+The web panel can create the Iran end with a generated private certificate.
+The Kharej setup link is applied from the terminal. The Connection Test runs
+a separate TLS check and verifies traffic over the relay.
+
+The configuration uses `[server.gost]` and `[client.gost]` alongside the
+existing `transport = "tcp"` reverse settings. See the
+[configuration reference](config-reference.md#servergost).
+
 ## Managed HTTPS carriers
 
 Use a build containing these changes on both machines. From its source checkout,

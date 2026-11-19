@@ -254,15 +254,17 @@ func TestAConnectionTestOverLoopbackPassesEveryReverseTransport(t *testing.T) {
 			t.Fatal(err)
 		}
 		// The test's trust file is disposable; persistent setup uses its hash.
+		production.GostClient.CAFile = testPeer.GostClient.CAFile
 		production.NaiveClient.CAFile = testPeer.NaiveClient.CAFile
 		production.XrayClient.CAFile = testPeer.XrayClient.CAFile
 		// An isolated fixture changes only the local executable path; Setup
 		// Links deliberately use the installed helper path on their own host.
 		if os.Getenv("BP_CONNTEST_HELPERS_ROOT") != "" {
+			production.GostClient.Binary = testPeer.GostClient.Binary
 			production.NaiveClient.Binary = testPeer.NaiveClient.Binary
 			production.XrayClient.Binary = testPeer.XrayClient.Binary
 		}
-		if production.NaiveClient != testPeer.NaiveClient || production.XrayClient != testPeer.XrayClient || production.RemoteAddr != testPeer.RemoteAddr || production.Token != testPeer.Token {
+		if production.GostClient != testPeer.GostClient || production.NaiveClient != testPeer.NaiveClient || production.XrayClient != testPeer.XrayClient || production.RemoteAddr != testPeer.RemoteAddr || production.Token != testPeer.Token {
 			t.Fatalf("%s production Setup Link differs from the tested helper peer", c.tr)
 		}
 		if err := validateManagedSpec(production); err != nil {
@@ -339,7 +341,7 @@ func TestConnTestUnavailableHelpersAreSkipped(t *testing.T) {
 	connTestHelperBinary = func(tool string) (string, error) { return "", fmt.Errorf("%s is unavailable", tool) }
 	defer func() { connTestHelperBinary = previous }()
 	s := &ConnTestIran{}
-	for _, tr := range []string{"naive", "xhttp", "reality"} {
+	for _, tr := range []string{"naive", "xhttp", "reality", "gost"} {
 		c := &connTestCase{kind: "reverse", tr: tr}
 		s.startManagedCase(c, map[int]bool{}, ConnTestOptions{})
 		if !strings.Contains(c.skip, "unavailable") {

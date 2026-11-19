@@ -75,7 +75,7 @@ const connTestKind = "test"
 // the direct ones when the operator names a source to forge (see
 // ConnTestOptions.SpoofSrc); pck, on either side, needs root on both servers.
 var (
-	connTestReverse = []string{"tcp", "tcpmux", "stealth", "pck", "ws", "wss", "wsmux", "wssmux", "kcp", "quic", "udp", "naive", "xhttp", "reality"}
+	connTestReverse = []string{"tcp", "tcpmux", "stealth", "pck", "ws", "wss", "wsmux", "wssmux", "kcp", "quic", "udp", "naive", "xhttp", "reality", "gost"}
 	// The direct tunnel's carriers, all raw since v2.0.0 took udp and quic
 	// out, and kernel GRE — over IPv4 or IPv6, whichever the two servers
 	// reach each other on. Spoof joins them as above.
@@ -127,7 +127,7 @@ var connTestHelperBinary = func(tool string) (string, error) {
 	path := managedHelperPath(tool)
 	info, err := os.Stat(path)
 	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0111 == 0 {
-		return "", fmt.Errorf("%s helper is not installed at %s; reinstall with BP_HELPERS=naive,xray", tool, path)
+		return "", helperMissing(tool, path)
 	}
 	return path, nil
 }
@@ -867,6 +867,8 @@ func (s *ConnTestIran) startManagedCase(c *connTestCase, used map[int]bool, o Co
 	tool := "xray"
 	if c.tr == "naive" {
 		tool = "sing-box"
+	} else if c.tr == "gost" {
+		tool = "gost"
 	}
 	binary, err := connTestHelperBinary(tool)
 	if err != nil {
@@ -940,6 +942,9 @@ func (s *ConnTestIran) startManagedCase(c *connTestCase, used map[int]bool, o Co
 		}
 	}
 	switch c.tr {
+	case "gost":
+		spec.GostServer = config.GostServerConfig{Binary: binary, Listen: public,
+			Username: "backpack", Password: token, Certificate: cert, Key: key}
 	case "naive":
 		spec.NaiveServer = config.NaiveServerConfig{Binary: binary, Listen: public,
 			Username: "backpack", Password: token, Certificate: cert, Key: key}
@@ -985,6 +990,8 @@ func ctManagedClient(ctx context.Context, link ConnTestLink, c ShareLink, dir st
 	tool := "xray"
 	if c.Tr == "naive" {
 		tool = "naive"
+	} else if c.Tr == "gost" {
+		tool = "gost"
 	}
 	binary, err := connTestHelperBinary(tool)
 	if err != nil {
@@ -1025,6 +1032,8 @@ func ctManagedClient(ctx context.Context, link ConnTestLink, c ShareLink, dir st
 	}
 	if c.Tr == "naive" {
 		spec.NaiveClient.Binary, spec.NaiveClient.CAFile = binary, ca
+	} else if c.Tr == "gost" {
+		spec.GostClient.Binary, spec.GostClient.CAFile = binary, ca
 	} else {
 		spec.XrayClient.Binary, spec.XrayClient.CAFile = binary, ca
 	}

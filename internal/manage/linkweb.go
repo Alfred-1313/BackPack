@@ -75,7 +75,7 @@ func SetupLinkFor(name, host string) (SetupLinkInfo, error) {
 		info.Install = InstallCommand(raw)
 		info.Where = "sudo backpack → Setup Kharej → Setup Link"
 		if managedTransport(l.Tr) {
-			info.Where = "sudo backpack → Setup Kharej → Reverse → HTTPS → Same Protocol → Setup Link"
+			info.Where = managedPeerMenu(l.Tr)
 		}
 	} else {
 		info.Where = "sudo backpack → Manage → Set Up From A Link"

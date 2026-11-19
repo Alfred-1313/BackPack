@@ -108,6 +108,9 @@ func StartXrayServer(ctx context.Context, c *config.ServerConfig, log *logrus.Lo
 }
 
 func helperLabel(mode string) string {
+	if strings.HasPrefix(mode, "gost-") {
+		return "GOST"
+	}
 	if strings.HasPrefix(mode, "xray-") {
 		return "Xray"
 	}
@@ -142,6 +145,12 @@ func helperOutput(ctx context.Context) *os.File {
 }
 
 func startManaged(parent context.Context, binary, mode string, body []byte, addr string, env []string, log *logrus.Logger, release func() error) (*Helper, error) {
+	return startManagedWithConfig(parent, binary, mode, addr, env, log, release, func(string) ([]byte, error) {
+		return body, nil
+	})
+}
+
+func startManagedWithConfig(parent context.Context, binary, mode, addr string, env []string, log *logrus.Logger, release func() error, build func(string) ([]byte, error)) (*Helper, error) {
 	if parent.Err() != nil {
 		return nil, parent.Err()
 	}
@@ -151,6 +160,11 @@ func startManaged(parent context.Context, binary, mode string, body []byte, addr
 	}
 	dir, err := os.MkdirTemp("", "backpack-"+strings.ToLower(label)+"-")
 	if err != nil {
+		return nil, err
+	}
+	body, err := build(dir)
+	if err != nil {
+		os.RemoveAll(dir)
 		return nil, err
 	}
 	file := filepath.Join(dir, "helper.json")
@@ -202,6 +216,9 @@ func startManaged(parent context.Context, binary, mode string, body []byte, addr
 			args := []string{file}
 			if mode == "server" || label == "Xray" {
 				args = []string{"run", "-c", file}
+			}
+			if label == "GOST" {
+				args = []string{"-C", file}
 			}
 			cmd := exec.Command(binary, args...)
 			configureProcess(cmd)
@@ -304,7 +321,7 @@ func waitReady(ctx context.Context, addr, mode string, exited <-chan error) erro
 		conn, err := net.DialTimeout("tcp", addr, 100*time.Millisecond)
 		if err == nil {
 			_ = conn.SetDeadline(time.Now().Add(200 * time.Millisecond))
-			if mode == "client" || mode == "xray-client" {
+			if mode == "client" || mode == "xray-client" || mode == "gost-client" {
 				_, err = conn.Write([]byte{5, 1, 0})
 				if err == nil {
 					var reply [2]byte

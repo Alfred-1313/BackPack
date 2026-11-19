@@ -28,6 +28,21 @@ and rerun the installer with `BP_BUILD_FROM_SOURCE=1`.
 
 ---
 
+## GOST v3 helper
+
+On both Linux amd64 or arm64 servers, run the installer from the fork checkout
+with the optional helper enabled.
+
+```bash
+sudo env BP_BUILD_FROM_SOURCE=1 BP_HELPERS=gost bash install.sh
+```
+
+The installer checks the official GOST v3.3.3 archive against a pinned SHA-256
+digest and installs the executable in a versioned directory. See the
+[GOST setup steps](transports.md#gost-v3-relay-over-tls).
+
+---
+
 ## Offline install (the server cannot reach GitHub)
 
 Download the release on any machine **with** internet, copy it to the server, and

@@ -130,11 +130,11 @@ esac
 
 # Optional protocol helpers: pinned, isolated and installed only on request.
 helpers_validate() {
-  case "${BP_HELPERS:-}" in
-    ""|naive|xray|naive,xray) ;;
-    *) err 'BP_HELPERS must be empty, naive, xray or naive,xray'; return 2 ;;
-  esac
   [[ -z "${BP_HELPERS:-}" ]] && return 0
+  if ! [[ "$BP_HELPERS" =~ ^((naive|xray|gost),)*(naive|xray|gost)$ ]]; then
+    err 'BP_HELPERS accepts a comma-separated list of naive, xray and gost'
+    return 2
+  fi
   [[ "$(uname -s)" == Linux ]] || { err 'Optional helpers require Linux'; return 1; }
   case "$ARCH" in amd64|arm64) ;; *) err "Optional helpers do not support $ARCH"; return 1 ;; esac
   if [[ "$BP_HELPERS" == *naive* ]]; then
@@ -155,6 +155,8 @@ helper_spec() {
     naive/arm64) helper_sha=8f4d917fa39a5d8cf1c17fc12ffd99ba84c015b62b43461d09cc074ca4114d8d ;;
     sing-box/amd64) helper_sha=a684484d7477d1437282ee411f4d131d0340aaad60a7868841ebd5d87dd8a0c6 ;;
     sing-box/arm64) helper_sha=b43a1fb1bda131c6653576741ce527eb2bdeab7c9308ca90ee8b972abb7e4a7f ;;
+    gost/amd64) helper_sha=f4c1255dc892a7014c0ad6e5f1c3573108f7bea4403f04f21873406ab58aa666 ;;
+    gost/arm64) helper_sha=4c704c92df6eeea8a3b08d0de4fd3c44343095a20136b3b6cf334f98d2f174ab ;;
     xray/amd64) helper_sha=23cd9af937744d97776ee35ecad4972cf4b2109d1e0fe6be9930467608f7c8ae; helper_arch=64 ;;
     xray/arm64) helper_sha=4d30283ae614e3057f730f67cd088a42be6fdf91f8639d82cb69e48cde80413c; helper_arch=arm64-v8a ;;
     *) return 1 ;;
@@ -168,6 +170,9 @@ helper_spec() {
       helper_version=v1.14.2; helper_repo=SagerNet/sing-box
       helper_stem="sing-box-${helper_version#v}-linux-$helper_arch"
       helper_asset="$helper_stem.tar.gz"; helper_member="$helper_stem/sing-box"; helper_extra="$helper_stem/libcronet.so"; helper_kind=gz ;;
+    gost)
+      helper_version=v3.3.3; helper_repo=go-gost/gost
+      helper_asset="gost_${helper_version#v}_linux_$helper_arch.tar.gz"; helper_member=gost; helper_kind=tar-root ;;
     xray)
       helper_version=v26.3.27; helper_repo=XTLS/Xray-core
       helper_asset="Xray-linux-$helper_arch.zip"; helper_member=xray; helper_kind=zip ;;
@@ -197,6 +202,7 @@ install_helper() (
   [[ "$actual" == "$helper_sha" ]] || { err "CHECKSUM MISMATCH for $helper_asset"; exit 1; }
   mkdir "$stage/payload" || exit 1
   case "$helper_kind" in
+    tar-root) tar -xzf "$archive" -C "$stage/payload" "$helper_member" || exit 1 ;;
     zip) unzip -p "$archive" "$helper_member" > "$stage/payload/$helper_tool" || exit 1 ;;
     xz) tar -xJf "$archive" -C "$stage/payload" --strip-components=1 "$helper_member" || exit 1 ;;
     gz) tar -xzf "$archive" -C "$stage/payload" --strip-components=1 "$helper_member" "$helper_extra" || exit 1 ;;
@@ -217,7 +223,8 @@ install_helpers() {
     install_helper naive || return 1
     install_helper sing-box || return 1
   fi
-  [[ "$BP_HELPERS" != *xray* ]] || install_helper xray
+  [[ "$BP_HELPERS" != *xray* ]] || install_helper xray || return 1
+  [[ "$BP_HELPERS" != *gost* ]] || install_helper gost
 }
 
 
