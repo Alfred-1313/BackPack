@@ -41,10 +41,11 @@
 
 ## 1. Установка
 
-На обоих серверах:
+На обоих серверах клонируйте форк и соберите его ветку `main`:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/AminMGMT/BackPack/main/install.sh)
+git clone --depth 1 --branch main https://github.com/Alfred-1313/BackPack.git &&
+  (cd BackPack && sudo env BP_BUILD_FROM_SOURCE=1 bash install.sh)
 ```
 
 Затем:
@@ -53,7 +54,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/AminMGMT/BackPack/main/insta
 sudo backpack
 ```
 
-Установщик скачивает релиз для архитектуры сервера, проверяет опубликованную контрольную сумму, устанавливает программу и открывает CLI.
+Установщик собирает программу из исходного кода форка и открывает CLI. Для PCK заранее установите заголовочные файлы libpcap и компилятор C.
 
 Сейчас поддерживаются следующие архитектуры релизов:
 
@@ -62,7 +63,7 @@ x86_64  → amd64
 aarch64 → arm64
 ```
 
-Если сервер не может подключиться к GitHub, BackPack поддерживает и полностью офлайн-установку.
+Если сервер не может подключиться к GitHub и у форка есть бинарный релиз, его можно установить офлайн.
 
 Подробнее: [Installation](docs/install.md).
 

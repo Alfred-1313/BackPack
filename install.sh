@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 #
-# Backpack installer — one command on the VPS (as root):
+# Install the fork from source on the VPS:
 #
-#   bash <(curl -fsSL https://raw.githubusercontent.com/AminMGMT/BackPack/main/install.sh)
+#   git clone --depth 1 --branch main https://github.com/Alfred-1313/BackPack.git &&
+#     (cd BackPack && sudo env BP_BUILD_FROM_SOURCE=1 bash install.sh)
 #
 # It downloads the prebuilt release tar.gz for this architecture into
 # /root/BackPack and installs the binary, verifying it against the checksum
@@ -27,7 +28,7 @@ info() { echo -e "${WHITE}[*]${NC} $*"; }
 warn() { echo -e "${GRAY}[!]${NC} $*"; }
 err()  { echo -e "${RED}[x]${NC} $*" >&2; }
 
-REPO="AminMGMT/BackPack"
+REPO="Alfred-1313/BackPack"
 BIN_PATH="/usr/local/bin/backpack"
 INSTALL_DIR="/root/BackPack"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-/tmp}")" 2>/dev/null && pwd || echo /tmp)"

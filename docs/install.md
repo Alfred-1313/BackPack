@@ -2,15 +2,16 @@
 
 ## The normal way
 
-One command as root on the VPS:
+On each server, clone the fork and install from its `main` branch:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/AminMGMT/BackPack/main/install.sh)
+git clone --depth 1 --branch main https://github.com/Alfred-1313/BackPack.git &&
+  (cd BackPack && sudo env BP_BUILD_FROM_SOURCE=1 bash install.sh)
 ```
 
-It downloads the prebuilt release archive for your architecture (amd64/arm64)
-into `/root/BackPack`, **verifies it against the checksum published with the
-release**, installs the binary, and opens the menu when it finishes.
+The installer builds the checked-out source with Go and opens the menu.
+Install the libpcap development headers and a C compiler first if you need PCK.
+If you are already root, use `BP_BUILD_FROM_SOURCE=1 bash install.sh` inside the checkout.
 
 Reopen the menu any time with:
 
@@ -22,10 +23,8 @@ Everything lands in a tidy layout — the release bundle in `/root/BackPack`,
 backups in `/root/BackPack/backups`, tunnel configs in `/etc/backpack`. See
 [server layout](server-layout.md).
 
-> **Building from source** still works as a fallback: clone the repo and run
-> `sudo bash install.sh` inside it. If the release download fails it builds with
-> Go, fetching modules **directly first** and via Iran-friendly mirrors
-> (RunFlare, goproxy.cn) only when direct access fails.
+For a later source update, run `git pull --ff-only` in the fork's checkout
+and rerun the installer with `BP_BUILD_FROM_SOURCE=1`.
 
 ---
 
@@ -36,8 +35,8 @@ install it there. Nothing is fetched from the VPS.
 
 ![Offline install](../img/offline-install.gif)
 
-From the [releases page](https://github.com/AminMGMT/BackPack/releases/latest),
-download the archive for the server's architecture — run `uname -m` on it:
+If the [fork's releases page](https://github.com/Alfred-1313/BackPack/releases) has
+a binary release, download its archive for the server's architecture. Run `uname -m`:
 `x86_64` → `backpack_linux_amd64.tar.gz`, `aarch64` → `backpack_linux_arm64.tar.gz`.
 
 ### With the installer (recommended)
@@ -79,7 +78,8 @@ afterwards with `sudo backpack` → **Manage → Restart ALL**.
 
 ## Updating online
 
-**Main menu → 8) Update.** It downloads the release, verifies it against the
+The fork's source update uses the checkout above. **Main menu → 8) Update** follows
+the original BackPack releases. It downloads a release, verifies it against the
 published SHA-256, installs it, and **rolls back automatically** if a tunnel does
 not come back up. Anything that cannot be verified is refused rather than
 installed. [More](updates.md).
@@ -94,9 +94,8 @@ installed. [More](updates.md).
 
 ## خلاصهٔ فارسی
 
-**نصب عادی:** یک دستور با کاربر root روی سرور — آرشیو ریلیز مخصوص معماری سرور را
-دانلود می‌کند، با چک‌سام منتشرشده **تأیید** می‌کند، نصب می‌کند و خودش منو را باز
-می‌کند. بعداً با `sudo backpack` منو را باز کن.
+**نصب عادی** شاخهٔ `main` فورک را کلون کن و دستور بالا را برای ساخت از سورس
+اجرا کن. بعداً با `sudo backpack` منو را باز کن.
 
 **نصب آفلاین (سروری که به گیت‌هاب دسترسی ندارد):** فایل ریلیز را روی یک ماشین با
 اینترنت دانلود کن و به سرور کپی کن. با `uname -m` معماری را ببین: `x86_64` یعنی

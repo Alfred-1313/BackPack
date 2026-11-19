@@ -41,10 +41,11 @@
 
 ## 1. Install
 
-On both servers:
+On both servers, clone the fork and build its `main` branch:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/AminMGMT/BackPack/main/install.sh)
+git clone --depth 1 --branch main https://github.com/Alfred-1313/BackPack.git &&
+  (cd BackPack && sudo env BP_BUILD_FROM_SOURCE=1 bash install.sh)
 ```
 
 Then:
@@ -53,7 +54,7 @@ Then:
 sudo backpack
 ```
 
-The installer downloads the release for the server architecture, verifies its published checksum, installs it and opens the CLI.
+The installer builds the fork's checkout and opens the CLI. Install the libpcap development headers and a C compiler first if you need PCK.
 
 Supported release architectures currently include:
 
@@ -62,7 +63,7 @@ x86_64  → amd64
 aarch64 → arm64
 ```
 
-If the server cannot reach GitHub, BackPack also supports a completely offline installation.
+If the server cannot reach GitHub and the fork has a binary release, you can install that release offline.
 
 See [Installation](docs/install.md).
 
