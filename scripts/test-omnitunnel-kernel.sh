@@ -3,7 +3,7 @@
 set -euo pipefail
 
 manager="${1:?installed OmniTunnel manager path}"
-modprobe -a fou ip_gre vxlan
+modprobe -a veth fou ip_gre vxlan
 
 # Use the exact command builders written into the installed systemd units.
 source <(sed -n '/^kernel_up_cmd() {$/,/^}$/p; /^kernel_down_cmd() {$/,/^}$/p' "$manager")

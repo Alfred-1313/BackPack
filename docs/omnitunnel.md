@@ -27,9 +27,9 @@ git pull --ff-only &&
 ```
 
 The helper build uses a C compiler and Python 3. Running tunnels uses systemd
-and the Linux networking tools. FoU needs the kernel FoU and IPv4 GRE
-modules, VXLAN needs its kernel module, and the routed userspace modes need
-TUN. Routed port forwards use iptables. Ackless needs nftables. Hysteria2 uses OpenSSL for setup
+and the Linux networking tools. FoU needs the FoU and IPv4 GRE modules and a
+kernel built with `CONFIG_NET_FOU_IP_TUNNELS`. VXLAN needs its kernel module
+and the routed userspace modes need TUN. Routed port forwards use iptables. Ackless needs nftables. Hysteria2 uses OpenSSL for setup
 and Python 3 for TCP forwarding. Reverse Mux uses OpenSSL and ssh-keygen for its host identity.
 
 ## Configure
