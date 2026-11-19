@@ -36,6 +36,15 @@ var transports = []struct {
 	{"ackless", "Ackless", "raw TCP packet carrier with authenticated frames"},
 }
 
+// Options exposes the same transport choices to the web panel.
+func Options() []map[string]string {
+    out := make([]map[string]string, 0, len(transports))
+    for _, t := range transports {
+        out = append(out, map[string]string{"value": t.value, "label": t.title})
+    }
+    return out
+}
+
 const usage = `BackPack OmniTunnel transports
 
   backpack omni setup <transport> <name> <local-ipv4> <peer-ipv4>

@@ -172,6 +172,7 @@ router.route('/t/:name/quota',   over(quotaView));
 router.route('/t/:name/edit',    over(editView));
 router.route('/t/:name/undo',    over(undoView));
 
+router.route('/omni', over(lazy(() => import('./views/omni.js'), 'omniView')));
 router.route('/add',         over(addView));
 router.route('/settings',    over(settingsView));
 
