@@ -49,8 +49,19 @@ systemd units start with `backpack-omni-` and its configurations live in
 Reverse Mux protects forwarded TCP streams through Chisel. Route any other
 sensitive traffic through encryption of its own.
 
+Use **Start Or Restart** to start the tunnel and its configured forwarding
+services. You can also paste the same setup token again on Kharej to resume an
+existing tunnel with its forwards. The CLI requires `--force` to remove the
+last forward. The menu asks you to confirm the removal.
+
+<div dir="rtl">
+
 ## خلاصهٔ فارسی
 
 روی هر دو سرور فورک را با `BP_HELPERS=omni` نصب کن. از منوی اصلی گزینهٔ
 **۱۱. OmniTunnel** را باز کن. اول سمت ایران را بساز و توکن را در سمت خارج
 وارد کن. وضعیت و فورواردها در همان منوی OmniTunnel هستند.
+
+</div>
+
+*Last verified against Backpack v2.0.0.*

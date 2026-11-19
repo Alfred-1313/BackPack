@@ -77,7 +77,7 @@ func TestL3SummaryShowsWhatWasAsked(t *testing.T) {
 		"203.0.113.9:9000", "3233", "GRE Key", "42", "Balance",
 		"Setup Link (sudo backpack → Setup Kharej → Direct → Setup Link):",
 		"Install BackPack And Set Up This Tunnel (Kharej Without BackPack, As Root):",
-		"install.sh) link apply 'backpack://", link,
+		"https://github.com/Alfred-1313/BackPack.git", "BP_BUILD_FROM_SOURCE=1 bash ./install.sh", link,
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("the layer-3 summary is missing %q:\n%s", want, out)

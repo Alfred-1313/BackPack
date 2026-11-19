@@ -327,18 +327,13 @@ func mustJSON(v any) json.RawMessage {
 // coming back — and if anything went wrong there, the panel's side of it was a
 // server that never appeared and no reason why.
 //
-// The installer is fetched on the far machine from the same place it always
-// was, rather than pushed from here: the archive and its checksum have to come
-// from the same origin for verifying one against the other to prove anything,
-// and a panel in the middle would be a second thing to trust.
-//
-// It is slow — a download and possibly a build — so the caller gives it room.
+// The far machine builds the fork from its own shallow checkout.
 func (r *SSHRunner) Install(name string) (string, error) {
 	c, err := r.clientFor(name)
 	if err != nil {
 		return "", err
 	}
-	out, err := runLong(c, installCommand(installerURL()))
+	out, err := runLong(c, app.SourceInstallCommand()+" < /dev/null 2>&1")
 	if err != nil {
 		return string(out), fmt.Errorf("installing Backpack on %s failed: %w", name, err)
 	}
@@ -376,42 +371,19 @@ func (r *SSHRunner) Upgrade(name string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	out, err := runLong(c, upgradeCommand(installerURL(), app.BinPath))
+	out, err := runLong(c, upgradeCommand(app.SourceInstallCommand(), app.BinPath))
 	if err != nil {
 		return string(out), fmt.Errorf("upgrading Backpack on %s failed: %w", name, err)
 	}
 	return string(out), nil
 }
 
-func installerURL() string {
-	return fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/main/install.sh",
-		app.RepoOwner, app.RepoName)
-}
-
-// installCommand is the shell line that fetches the installer and runs it.
-//
-// The installer is downloaded whole before it runs, and runs with stdin closed.
-// It used to be `curl … | bash < /dev/null`: the redirection replaced the pipe
-// as bash's stdin, so bash read an empty script and exited 0 — every remote
-// install and upgrade reported success having run nothing. Downloading first
-// also means a failed download fails the line instead of running half a script,
-// and nothing the installer reads from stdin can consume its own text.
-func installCommand(url string) string {
-	// A private temporary file rather than bash -c "$script": no limit on the
-	// installer's size (one argument is capped at 128 KB), and the file is
-	// removed whatever happens. The subshell makes the whole line one command,
-	// so upgradeCommand can chain on its exit status.
-	return `(f="$(mktemp)" || exit 1; ` +
-		`if curl -fsSL ` + quote(url) + ` -o "$f" && [ -s "$f" ]; then bash "$f" < /dev/null 2>&1; rc=$?; else rc=1; fi; ` +
-		`rm -f "$f"; exit $rc)`
-}
-
-// upgradeCommand is installCommand followed by restarting what runs the binary:
+// upgradeCommand installs the build and then restarts what runs the binary:
 // every tunnel (the same --restart-all the scheduled refresh uses), then the
 // monitor, proxy and panel units if they are running. The unit restarts are
 // best effort — a server without a panel has no panel to restart.
-func upgradeCommand(url, bin string) string {
-	return installCommand(url) +
+func upgradeCommand(install, bin string) string {
+	return install + " < /dev/null 2>&1" +
 		" && " + quote(bin) + " --restart-all 2>&1" +
 		" && { systemctl try-restart " + app.MonitorService + " " + app.ProxyService + " " + app.WebUIService +
 		" >/dev/null 2>&1; true; }"

@@ -6,21 +6,33 @@ install_omnitunnel() (
     local digest=e6c0385b6edb5199bb4331d48d14a7ee3afb181b0fdccfc25672f322d2ed0747
     local root=/usr/local/lib/backpack/helpers/omnitunnel
     local final="$root/$revision-$ARCH"
-    if [[ -d "$final" && ! -L "$final" && -x "$final/manager" ]]; then
+    local adapter="$SCRIPT_DIR/scripts/adapt-omnitunnel.py"
+    local -a checksum helpers=(omnitun omnistripe omniackless hysteria chisel)
+    local helper adapter_digest complete=1
+    if command -v sha256sum >/dev/null; then checksum=(sha256sum); else checksum=(shasum -a 256); fi
+    adapter_digest="$("${checksum[@]}" "$adapter" | awk '{print $1}')"
+    mkdir -p "$root"
+    local lock
+    exec {lock}>"$root/.install.lock"
+    flock "$lock"
+    if [[ -L "$final" || (-e "$final" && ! -d "$final") || -L "$final/bin" ]]; then
+        err "Invalid OmniTunnel helper directory: $final"
+        exit 1
+    fi
+    for helper in "${helpers[@]}"; do
+        [[ -f "$final/bin/$helper" && ! -L "$final/bin/$helper" && -x "$final/bin/$helper" ]] || complete=0
+    done
+    if [[ "$complete" == 1 && -f "$final/manager" && ! -L "$final/manager" && -x "$final/manager" ]] &&
+        [[ "$(cat "$final/.adapter-sha256" 2>/dev/null)" == "$adapter_digest" ]]; then
         info "OmniTunnel helper already installed: $final"
         return
     fi
-    mkdir -p "$root"
     local stage
     stage="$(mktemp -d "$root/.stage.XXXXXX")"
     trap 'rm -rf -- "$stage"' EXIT
     fetch "https://codeload.github.com/Free-Guy-IR/OmniTunnel/tar.gz/$revision" "$stage/omni.tar.gz"
     local actual
-    if command -v sha256sum >/dev/null; then
-        actual="$(sha256sum "$stage/omni.tar.gz" | awk '{print $1}')"
-    else
-        actual="$(shasum -a 256 "$stage/omni.tar.gz" | awk '{print $1}')"
-    fi
+    actual="$("${checksum[@]}" "$stage/omni.tar.gz" | awk '{print $1}')"
     [[ "$actual" == "$digest" ]] || { err "Checksum mismatch for OmniTunnel $revision"; exit 1; }
 
     local source="$stage/source" payload="$stage/payload"
@@ -29,7 +41,7 @@ install_omnitunnel() (
     tar -xzf "$stage/omni.tar.gz" -C "$source" --strip-components=1 \
         "$top/LICENSE" "$top/omnitunnel.sh" "$top/src" \
         "$top/bin/hysteria-$ARCH" "$top/bin/chisel-$ARCH"
-    python3 "$SCRIPT_DIR/scripts/adapt-omnitunnel.py" "$source" "$payload/manager"
+    python3 "$adapter" "$source" "$payload/manager"
     bash -n "$payload/manager"
     cc -std=gnu11 -O2 -fstack-protector-strong -D_FORTIFY_SOURCE=2 -pthread -o "$payload/bin/omnitun" \
         "$source"/src/{main,obsctun,obsctcp,obscmux,obscws,icmptun,monocypher}.c
@@ -41,7 +53,20 @@ install_omnitunnel() (
     done
     install -m 0644 "$source/LICENSE" "$payload/LICENSE"
     chmod 0755 "$payload" "$payload/bin" "$payload/manager"
-    mv -Tn -- "$payload" "$final"
-    [[ ! -d "$payload" ]] || { err "OmniTunnel helper directory already exists: $final"; exit 1; }
+    printf '%s\n' "$adapter_digest" > "$payload/.adapter-sha256"
+    if [[ -d "$final" ]]; then
+        # Existing units reference these paths. Replace verified files by rename
+        # so running processes keep their binaries and new starts see the update.
+        mkdir -p -m 0755 "$final/bin"
+        rm -f -- "$final/.adapter-sha256"
+        for helper in "${helpers[@]}"; do
+            mv -fT -- "$payload/bin/$helper" "$final/bin/$helper"
+        done
+        mv -fT -- "$payload/LICENSE" "$final/LICENSE"
+        mv -fT -- "$payload/manager" "$final/manager"
+        mv -fT -- "$payload/.adapter-sha256" "$final/.adapter-sha256"
+    else
+        mv -T -- "$payload" "$final"
+    fi
     info "Verified OmniTunnel helper installed: $final"
 )

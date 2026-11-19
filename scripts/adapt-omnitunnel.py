@@ -143,7 +143,79 @@ kernel_down_cmd() {
     return replace_once(text, '_pf_flush_chain "$n"; ip link del "$dev" 2>/dev/null || true', '_pf_flush_chain "$n"')
 
 
+def lifecycle(text):
+    text = replace_function(text, "load_inst", r'''
+load_inst() {
+    local n="$1" field value line
+    inst_exists "$n" || die "no such instance: $n"
+    TYPE=""; ROLE=""; LOCAL_IP=""; PEER_IP=""; TUN_ADDR=""; PEER_ADDR=""; PORT=""; KEY=""; DEV=""
+    MTU="1400"; NCONN="16"; SHAPE="none"; ICMP_MODE=""; PCOUNT="400"; LANES="1"
+    # Instance files can arrive in a backup. Interpret only known fields as data.
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        field="${line%%=*}"; value="${line#*=}"
+        case "$field" in
+            TYPE|ROLE|LOCAL_IP|PEER_IP|TUN_ADDR|PEER_ADDR|PORT|KEY|DEV|MTU|NCONN|SHAPE|ICMP_MODE|PCOUNT|LANES)
+                printf -v "$field" '%s' "$value";;
+            ''|'#'*) ;;
+            *) die "invalid instance configuration for '$n'";;
+        esac
+    done < "$(inst_conf "$n")"
+    type_known "$TYPE" && [[ "$ROLE" == client || "$ROLE" == server ]] &&
+        tok_ipv4_ok "$LOCAL_IP" && tok_ipv4_ok "$PEER_IP" &&
+        tok_ipv4_ok "$TUN_ADDR" && tok_ipv4_ok "$PEER_ADDR" &&
+        tok_port_ok "$PORT" && tok_key_ok "$TYPE" "$KEY" &&
+        tok_re "$DEV" '^bpo[A-Za-z0-9_-]{1,12}$' &&
+        tok_re "$MTU" '^[1-9][0-9]{2,4}$' && tok_nc_ok "$NCONN" &&
+        tok_shape_ok "$SHAPE" && tok_pmode_ok "$ICMP_MODE" &&
+        tok_re "$PCOUNT" '^[1-9][0-9]{0,5}$' && lanes_ok "$LANES" ||
+        die "invalid instance configuration for '$n'"
+    INAME="$n"
+}
+''')
+    text = replace_function(text, "restart_pf_relays", r'''
+restart_pf_relays() {
+    local path unit failed=0
+    for path in /etc/systemd/system/backpack-omni-"$1"-pf-*.service \
+        "/etc/systemd/system/$(mux_svc "$1")"; do
+        [[ -f "$path" ]] || continue
+        unit="${path##*/}"
+        if ! systemctl restart "$unit"; then
+            warn "forward $unit did not start; see journalctl -u $unit"
+            failed=1
+        fi
+    done
+    return "$failed"
+}
+''')
+    text = replace_function(text, "inst_enable", r'''
+inst_enable() {
+    need_root; load_inst "$1"; write_service "$1"
+    local unit; unit="$(svc_name "$1")"
+    systemctl enable "$unit" && systemctl restart "$unit" ||
+        die "service $unit did not start; see journalctl -u $unit"
+    sleep 2
+    inst_running "$1" || die "service $unit is inactive; see journalctl -u $unit"
+    restart_pf_relays "$1" || die "some forwards did not start for '$1'"
+    inst_status "$1" || true
+}
+''')
+    text = replace_once(text, '        systemctl enable "$u" >/dev/null 2>&1 || true\n        if [[ "$bounce" ',
+                        '        systemctl enable "$u" >/dev/null 2>&1 || true\n'
+                        '        inst_running "$1" || continue\n        if [[ "$bounce" ')
+    # Explicit edits persist for the next start while a routed instance is down.
+    # _postup still applies them when systemd is starting the tunnel.
+    text = replace_once(text, '    _pf_apply_all "$n"\n    ok "forwarding',
+                        '    if type_is_hysteria "$TYPE" || inst_running "$n"; then _pf_apply_all "$n" || return; fi\n'
+                        '    ok "forwarding')
+    return replace_once(text, '    _pf_apply_all "$n"\n    ok "removed',
+                        '    if type_is_hysteria "$TYPE" || inst_running "$n"; then _pf_apply_all "$n" || return; fi\n'
+                        '    ok "removed')
+
+
 def hysteria_tls(text):
+    text = replace_once(text, 'ExecStart=$HYSTERIA_BIN $mode',
+                        'Environment=HYSTERIA_DISABLE_UPDATE_CHECK=1\nExecStart=$HYSTERIA_BIN $mode')
+    text = text.replace("  maxIdleTimeout: 90s\n", "  maxIdleTimeout: 20s\n")
     text = replace_function(text, "hy_cert", """
 hy_cert() {
     [[ -s "$1/hy.crt" && -s "$1/hy.key" ]] || die "missing Hysteria server certificate; re-apply this tunnel's setup token"
@@ -196,21 +268,56 @@ lazy: true
         [[ "$cert_key" == "$server_key" ]] || die "certificate and key do not match"
         printf '%s\n' "$cert_body" | openssl x509 -checkip "$fhost" -noout >/dev/null || die "TLS certificate does not name $fhost"
     fi
-    create_inst "$name" "$t" server "$fhost" "$mylip" "$port" "$key" "$pta" "$ppa" "$shape" "$nc" "$pmode" "" "$lanes"
+    # Use the same allocation lock as near-side setup.
+    local lock
+    mkdir -p "$INST_DIR"
+    exec {lock}>"$INST_DIR/.alloc.lock"
+    flock "$lock"
+    local existed=0
+    if inst_exists "$name"; then
+        load_inst "$name"
+        [[ "$ROLE" == server && "$TYPE" == "$t" && "$LOCAL_IP" == "$fhost" && "$PEER_IP" == "$mylip" &&
+            "$PORT" == "$port" && "$KEY" == "$key" && "$TUN_ADDR" == "$pta" && "$PEER_ADDR" == "$ppa" &&
+            "$SHAPE" == "$shape" && "$NCONN" == "$nc" && "$ICMP_MODE" == "$pmode" && "$LANES" == "$lanes" ]] ||
+            die "a different tunnel already uses the name '$name'"
+        existed=1
+    else
+        create_inst "$name" "$t" server "$fhost" "$mylip" "$port" "$key" "$pta" "$ppa" "$shape" "$nc" "$pmode" "" "$lanes"
+    fi
     if type_is_hysteria "$t"; then
-        printf '%s\n' "$cert_body" > "$(inst_path "$name")/hy.crt"
-        printf '%s\n' "$key_body" > "$(inst_path "$name")/hy.key"
+        local d; d="$(inst_path "$name")"
+        if [[ -s "$d/hy.crt" && "$(cat "$d/hy.crt")" != "$cert_body" ]]; then
+            die "this token has a different Hysteria certificate for '$name'"
+        fi
+        if [[ -s "$d/hy.key" && "$(cat "$d/hy.key")" != "$key_body" ]]; then
+            die "this token has a different Hysteria key for '$name'"
+        fi
+        [[ -s "$d/hy.crt" ]] || printf '%s\n' "$cert_body" > "$d/hy.crt"
+        [[ -s "$d/hy.key" ]] || printf '%s\n' "$key_body" > "$d/hy.key"
+    fi
+    if [[ "$existed" == 1 ]] && inst_running "$name"; then
+        ok "foreign tunnel '$name' is already running"
+        return
     fi
     inst_enable "$name"'''.lstrip("\n"))
     text = replace_once(text, '    tok_host_ok "$fhost" || die "invalid token: foreign address"\n    tok_host_ok "$mylip" || die "invalid token: near address"\n    tok_port_ok "$port"',
                         '    tok_ipv4_ok "$fhost" || die "invalid token: foreign address"\n'
                         '    tok_ipv4_ok "$mylip" || die "invalid token: near address"\n'
                         '    [[ "$fhost" != "$mylip" ]] || die "the tunnel endpoints must be different"\n    tok_port_ok "$port"')
-    text = replace_once(text, """        warn "instance '$name' already exists - replacing it"; inst_remove "$name" >/dev/null 2>&1 || true""", r"""        [[ "$TYPE" == "$t" && "$LOCAL_IP" == "$fhost" && "$PEER_IP" == "$mylip" &&
-            "$PORT" == "$port" && "$KEY" == "$key" && "$TUN_ADDR" == "$pta" && "$PEER_ADDR" == "$ppa" ]] ||
-            die "a different tunnel already uses the name '$name'"
-        if inst_running "$name"; then ok "foreign tunnel '$name' is already running"; return; fi
-        inst_remove "$name" >/dev/null 2>&1 || true""")
+    # Drop upstream's destructive retry and cleanup paths. A valid setup is
+    # retained even if starting it fails, so a retry can resume it.
+    first = text.index("    # Re-running the SAME token")
+    last = text.index("    if type_is_hysteria \"$t\"; then\n        local cert_body", first)
+    text = text[:first] + text[last:]
+    text = replace_once(text, '''    if ! inst_running "$name"; then
+        inst_remove "$name" >/dev/null 2>&1 || true
+        die "server side '$name' failed to start (cleaned up - fix the cause and re-run the token). check: journalctl -u $(svc_name "$name")"
+    fi
+''', "")
+    text = replace_once(text, '    lanes="${lanes:-1}"\n    lanes_ok "$lanes" || die "invalid token: lanes"',
+                        '    lanes="${lanes:-1}"; shape="${shape:-none}"\n'
+                        '    if type_is_revmux "$t" && [[ -z "$pmode" ]]; then pmode=reply; fi\n'
+                        '    lanes_ok "$lanes" || die "invalid token: lanes"')
     return text
 
 
@@ -300,10 +407,11 @@ case "${1:-}" in
     server-token) IFS= read -r token; cmd_server_token "$token";;
     list) for n in $(list_instances); do inst_status "$n"; done;;
     status) validate_inst_name "$2"; inst_status "$2"; pf_status_report "$2";;
-    enable)
-        validate_inst_name "$2"; inst_enable "$2"; inst_running "$2"
-        if [[ -f "/etc/systemd/system/$(mux_svc "$2")" ]]; then systemctl start "$(mux_svc "$2")"; fi;;
-    stop) validate_inst_name "$2"; inst_exists "$2" || die "unknown tunnel: $2"; systemctl stop "$(svc_name "$2")";;
+    enable) validate_inst_name "$2"; inst_enable "$2";;
+    stop)
+        validate_inst_name "$2"; load_inst "$2"
+        systemctl stop "$(svc_name "$2")"
+        if ! type_is_hysteria "$TYPE"; then pf_flush_chain "$2"; fi;;
     remove) validate_inst_name "$2"; inst_remove "$2";;
     pf-add)
         validate_inst_name "$2"; load_inst "$2"
@@ -329,5 +437,5 @@ if __name__ == "__main__":
     root, output = map(Path, sys.argv[1:])
     use_private_key_environment(root)
     body = manager(root / "omnitunnel.sh")
-    body = commands(reverse_mux(hysteria_tls(kernel_links(body))))
+    body = commands(reverse_mux(hysteria_tls(lifecycle(kernel_links(body)))))
     output.write_text(body)

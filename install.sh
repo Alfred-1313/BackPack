@@ -74,7 +74,7 @@ fi
 
 # One thing may follow the script: a setup link to apply once Backpack is in.
 #
-#   bash <(curl -fsSL …/install.sh) link apply 'backpack://…'
+#   BP_BUILD_FROM_SOURCE=1 bash ./install.sh link apply 'backpack://…'
 #
 # That is the line the Iran server prints for a kharej that does not run
 # Backpack yet: install, then build the tunnel the link describes, with nothing
@@ -93,7 +93,7 @@ if [[ ${#BP_ARGS[@]} -gt 0 ]]; then
   if [[ "${BP_ARGS[0]}" != "link" || "${BP_ARGS[1]:-}" != "apply" || ${#BP_ARGS[@]} -lt 3 ]]; then
     err "Unknown argument: ${BP_ARGS[0]}"
     err "This script takes no arguments, or a setup link to apply after installing:"
-    err "  bash <(curl -fsSL …/install.sh) link apply 'backpack://…'"
+    err "  BP_BUILD_FROM_SOURCE=1 bash ./install.sh link apply 'backpack://…'"
     exit 2
   fi
 fi
@@ -579,7 +579,8 @@ else
 fi
 # End engine build selection.
 
-install_helpers || { err "Optional helper installation failed; no helper was started"; exit 1; }
+# Keep this as a standalone call so errexit stays active in the staged builds.
+install_helpers
 
 chmod +x "$BIN_PATH"
 echo

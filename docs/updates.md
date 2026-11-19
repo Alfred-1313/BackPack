@@ -1,5 +1,10 @@
 # Updates & rollback
 
+The fork is currently distributed from source. In your fork checkout, run
+`git pull --ff-only` and then `sudo env BP_BUILD_FROM_SOURCE=1 bash install.sh`.
+Include your installed optional helpers in `BP_HELPERS` to refresh them.
+The steps below apply when a signed release is published on the fork.
+
 The **Update** menu detects a newer GitHub release and installs the prebuilt
 `backpack_linux_<arch>.tar.gz`.
 
@@ -33,6 +38,10 @@ release-based.
 <div dir="rtl">
 
 ## خلاصهٔ فارسی
+
+برای دریافت نسخهٔ فعلی فورک، داخل پوشهٔ آن `git pull --ff-only` را اجرا
+کن و با `sudo env BP_BUILD_FROM_SOURCE=1 bash install.sh` نصب کن. برای
+به‌روزرسانی ابزارهای اختیاری، نامشان را در `BP_HELPERS` هم قرار بده.
 
 منوی **Update** ریلیز جدیدتر گیت‌هاب را پیدا و نصب می‌کند.
 

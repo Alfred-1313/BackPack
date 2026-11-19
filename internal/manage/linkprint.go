@@ -19,13 +19,12 @@ import (
 // the tunnel in link there. It is run as root on the kharej; install.sh hands
 // what follows it to the installed binary (see the end of install.sh).
 func InstallCommand(link string) string {
-	// The published release may predate managed HTTPS link support. Installing
-	// it here would replace the matching test build and lose the optional helpers.
+	// Managed transports need optional helpers on the peer. Print their
+	// installation instructions instead of the plain source install command.
 	if l, err := DecodeShareLink(link); err == nil && managedTransport(l.Tr) {
 		return ""
 	}
-	return fmt.Sprintf("bash <(curl -fsSL https://raw.githubusercontent.com/%s/%s/main/install.sh) link apply '%s'",
-		app.RepoOwner, app.RepoName, link)
+	return app.SourceInstallCommand("link", "apply", link)
 }
 
 // printLinkBlock prints the two ways to build the kharej from link. menuPath

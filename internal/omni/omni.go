@@ -44,7 +44,7 @@ const usage = `BackPack OmniTunnel transports
   backpack omni status <name>
   backpack omni start|stop|remove <name>
   backpack omni forward <name> <tcp|udp> <port[:target]>
-  backpack omni remove-forward <name> <port>
+  backpack omni remove-forward <name> <port> [--force]
   backpack omni mux-forward <name> <port> <target-host> <target-port>
   backpack omni mux-remove <name> <port>
   backpack omni mux-join                paste a Reverse Mux forwarding token
@@ -108,12 +108,14 @@ func parse(args []string, input io.Reader) (operation, error) {
 			(args[2] == "tcp" || args[2] == "udp") && validPortMapping(args[3]) {
 			return operation{args: append([]string{"pf-add"}, args[1:]...)}, nil
 		}
-	case "remove-forward", "mux-remove":
+	case "remove-forward":
+		if (len(args) == 3 || (len(args) == 4 && args[3] == "--force")) &&
+			namePattern.MatchString(args[1]) && validPort(args[2]) {
+			return operation{args: append([]string{"pf-del"}, args[1:]...)}, nil
+		}
+	case "mux-remove":
 		if len(args) == 3 && namePattern.MatchString(args[1]) && validPort(args[2]) {
-			if command == "mux-remove" {
-				return operation{args: []string{"mux-del", args[1], args[2]}}, nil
-			}
-			return operation{args: []string{"pf-del", args[1], args[2]}}, nil
+			return operation{args: []string{"mux-del", args[1], args[2]}}, nil
 		}
 	case "mux-forward":
 		if len(args) == 5 && namePattern.MatchString(args[1]) && validPort(args[2]) && validPort(args[4]) {
@@ -244,7 +246,11 @@ func Menu() {
 			args = []string{"forward", tui.Prompt("Tunnel Name: "), tui.PromptDefault("Protocol", "tcp"),
 				tui.Prompt("Public Port Or Public:Target: ")}
 		case 7:
-			args = []string{"remove-forward", tui.Prompt("Tunnel Name: "), tui.Prompt("Public Port: ")}
+			name, port := tui.Prompt("Tunnel Name: "), tui.Prompt("Public Port: ")
+			if !tui.Confirm("Remove Forward On Port "+port+" From "+name, false) {
+				continue
+			}
+			args = []string{"remove-forward", name, port, "--force"}
 		case 10:
 			args = []string{"mux-remove", tui.Prompt("Tunnel Name: "), tui.Prompt("Public Port: ")}
 		case 8:

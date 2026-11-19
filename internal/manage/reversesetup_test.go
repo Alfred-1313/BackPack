@@ -333,7 +333,7 @@ func TestTheReverseSummaryIsShortAndCarriesTheLink(t *testing.T) {
 		"443 → 127.0.0.1:443", "8080 → 127.0.0.1:2096", "Turbo",
 		"Setup Link (sudo backpack → Setup Kharej → Reverse → Setup Link):",
 		"Install BackPack And Set Up This Tunnel (Kharej Without BackPack, As Root):",
-		"install.sh) link apply 'backpack://", link,
+		"https://github.com/Alfred-1313/BackPack.git", "BP_BUILD_FROM_SOURCE=1 bash ./install.sh", link,
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("the reverse summary is missing %q:\n%s", want, out)

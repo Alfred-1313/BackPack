@@ -48,7 +48,7 @@ func TestVersionCarriesTheSourceInBothForms(t *testing.T) {
 	if plain.Code != CodeOK {
 		t.Fatalf("version exited %d", plain.Code)
 	}
-	if !strings.Contains(plain.Out, "github.com/AminMGMT/BackPack") {
+	if !strings.Contains(plain.Out, "github.com/Alfred-1313/BackPack") {
 		t.Error("the plain version output does not name the source")
 	}
 	if strings.Contains(plain.Out, "Based on") {
@@ -62,7 +62,7 @@ func TestVersionCarriesTheSourceInBothForms(t *testing.T) {
 	if err := json.Unmarshal([]byte(asJSON.Out), &got); err != nil {
 		t.Fatalf("version --json is not JSON: %v\n%s", err, asJSON.Out)
 	}
-	if got.Source == "" || got.Licence != "AGPL-3.0" {
+	if got.Source != "https://github.com/Alfred-1313/BackPack" || got.Licence != "AGPL-3.0" {
 		t.Errorf("version --json = %+v, want the source and the licence", got)
 	}
 }
