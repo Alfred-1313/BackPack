@@ -163,6 +163,21 @@ jobs:
           BP_CONNTEST_HOST: '::1'
         run: go test ./internal/manage -run '^TestAConnectionTestOverLoopbackPassesEveryReverseTransport$' -race -count=1 -v -timeout 8m
 
+  omnitunnel-kernel:
+    name: OmniTunnel kernel overlays
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build the verified OmniTunnel helpers
+        run: sudo env "PATH=$PATH" BP_BUILD_FROM_SOURCE=1 BP_HELPERS=omni bash ./install.sh
+      - name: Verify FoU and VXLAN in two Linux network namespaces
+        run: sudo bash scripts/test-omnitunnel-kernel.sh /usr/local/lib/backpack/helpers/omnitunnel/acf4e6e5bacc4aa841320e39cff4b51e3f2a9eec-amd64/manager
+
   conntest-ipv6:
     name: Connection Test over an IPv6-only path
     runs-on: ubuntu-latest

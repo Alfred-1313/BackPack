@@ -131,8 +131,8 @@ esac
 # Optional protocol helpers: pinned, isolated and installed only on request.
 helpers_validate() {
   [[ -z "${BP_HELPERS:-}" ]] && return 0
-  if ! [[ "$BP_HELPERS" =~ ^((naive|xray|gost),)*(naive|xray|gost)$ ]]; then
-    err 'BP_HELPERS accepts a comma-separated list of naive, xray and gost'
+  if ! [[ "$BP_HELPERS" =~ ^((naive|xray|gost|omni),)*(naive|xray|gost|omni)$ ]]; then
+    err 'BP_HELPERS accepts a comma-separated list of naive, xray, gost and omni'
     return 2
   fi
   [[ "$(uname -s)" == Linux ]] || { err 'Optional helpers require Linux'; return 1; }
@@ -143,6 +143,16 @@ helpers_validate() {
   fi
   if [[ "$BP_HELPERS" == *xray* ]]; then
     command -v unzip >/dev/null || { err 'unzip is required for the Xray archive'; return 1; }
+  fi
+  if [[ "$BP_HELPERS" == *omni* ]]; then
+    [[ "${BP_BUILD_FROM_SOURCE:-0}" == 1 && -f "$SCRIPT_DIR/scripts/install-omnitunnel.sh" && -f "$SCRIPT_DIR/scripts/adapt-omnitunnel.py" ]] || {
+      err 'BP_HELPERS=omni requires BP_BUILD_FROM_SOURCE=1 in the fork checkout'
+      return 1
+    }
+    command -v cc >/dev/null && command -v python3 >/dev/null || {
+      err 'The OmniTunnel helper source build requires cc and python3'
+      return 1
+    }
   fi
   command -v sha256sum >/dev/null || command -v shasum >/dev/null || { err 'A SHA256 utility is required'; return 1; }
 }
@@ -224,7 +234,11 @@ install_helpers() {
     install_helper sing-box || return 1
   fi
   [[ "$BP_HELPERS" != *xray* ]] || install_helper xray || return 1
-  [[ "$BP_HELPERS" != *gost* ]] || install_helper gost
+  [[ "$BP_HELPERS" != *gost* ]] || install_helper gost || return 1
+  if [[ "$BP_HELPERS" == *omni* ]]; then
+    source "$SCRIPT_DIR/scripts/install-omnitunnel.sh"
+    install_omnitunnel
+  fi
 }
 
 

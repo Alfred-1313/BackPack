@@ -59,6 +59,10 @@ git clone --depth 1 --branch main https://github.com/Alfred-1313/BackPack.git &&
 را انتخاب کن. ابتدا ایران را راه‌اندازی کن و لینک تنظیمات را در سمت خارج وارد کن.
 [راهنمای GOST v3](docs/transports.md#gost-v3-relay-over-tls)
 
+برای حالت‌های **OmniTunnel**، مثل Hysteria2، FoU، VXLAN، Reverse Mux، Stripe
+و Ackless، موقع نصب `BP_HELPERS=omni` را اضافه کن و از گزینهٔ **۱۱. OmniTunnel**
+در منوی اصلی وارد شو. [راهنمای OmniTunnel](docs/omnitunnel.md)
+
 > **سرور به اینترنت دسترسی ندارد؟** اگر فورک ریلیز باینری دارد، می‌توانی
 > آرشیو همان ریلیز را روی یک دستگاه دیگر بگیری و آفلاین نصب کنی.
 > **← [راهنمای کامل نصب](docs/install.md)**

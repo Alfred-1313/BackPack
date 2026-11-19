@@ -10,6 +10,7 @@ import (
 
 	"github.com/backpack/backpack/internal/app"
 	"github.com/backpack/backpack/internal/manage"
+	"github.com/backpack/backpack/internal/omni"
 	"github.com/backpack/backpack/internal/schedule"
 	"github.com/backpack/backpack/internal/tui"
 	"github.com/backpack/backpack/internal/webui"
@@ -88,6 +89,8 @@ func Run() {
 			updateMenu()
 		case "9":
 			uninstallMenu()
+		case "11":
+			omni.Menu()
 		case "10":
 			tui.Info("Goodbye!")
 			return
@@ -129,6 +132,7 @@ func printMenu() {
 	}
 	menuItem(8, "Update", updateDesc)
 	menuItem(9, "Uninstall", "remove everything")
+	menuItem(11, "OmniTunnel", "routed transports, Hysteria2, kernel overlays and Reverse Mux")
 	menuItem(10, "Exit", "")
 	fmt.Println()
 }
