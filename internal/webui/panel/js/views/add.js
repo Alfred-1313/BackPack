@@ -1,3 +1,4 @@
+import { bindExtraTransports } from './transportsetup.js';
 /* Add a tunnel: pick the side, then the transport family, then the transport,
  * then the settings that side actually has.
  *
@@ -27,6 +28,8 @@ export function addView(ctx) {
       let opts = { families: [], presets: [] };
       try { opts = await api.tunnelOptions(); } catch (e) { oops(e); }
 
+      const omniChoices = await api.omniOptions().catch(e => { oops(e); return []; });
+      let mountExtras;
       /* families */
       /* The family list, the variants and the presets are all painted from
          /api/tunnel/options below, once the shape is known. */
@@ -215,6 +218,7 @@ export function addView(ctx) {
             <span class="tn2"><b>${esc(c.label)}</b>
             <span class="key2">${esc(c.value)}</span>${needsRoot}</span></button>`;
         }).join('');
+        mountExtras?.();
         chosen.carrier = carriers[0].value;
         applyShape();
         showPresetDefaults();
@@ -1118,6 +1122,7 @@ export function addView(ctx) {
         applyShape();
       }
       stageSingle();
+      mountExtras = bindExtraTransports(root, omniChoices);
       reveal();
 
       /* The token, made here.

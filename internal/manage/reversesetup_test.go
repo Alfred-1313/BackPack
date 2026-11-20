@@ -39,13 +39,20 @@ func TestManagedHTTPSChoicesReachBothReverseWizards(t *testing.T) {
 	}
 }
 
-func TestGOSTTransportIsSelectable(t *testing.T) {
-	restore := tui.SetInput(strings.NewReader(fmt.Sprintf("%d\n1\n", len(transportGroups)+2)))
+func TestGOSTIsOfferedOnlyInTheDirectSetupWizard(t *testing.T) {
+	for _, group := range cliTransportGroups() {
+		for _, entry := range group.entries {
+			if entry.value == "gost" {
+				t.Fatal("legacy GOST is still offered for new reverse tunnels")
+			}
+		}
+	}
+	restore := tui.SetInput(strings.NewReader(fmt.Sprintf("%d\n", len(DirectCarriers())+1)))
 	defer restore()
 	var got string
-	capture(t, func() { got = chooseTransport() })
-	if got != "gost" {
-		t.Fatalf("GOST family selected %q", got)
+	capture(t, func() { got, _ = chooseDirectCarrier(true) })
+	if got != "gost-direct" {
+		t.Fatalf("direct wizard selected %q", got)
 	}
 }
 

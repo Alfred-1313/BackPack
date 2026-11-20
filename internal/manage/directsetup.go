@@ -2,6 +2,7 @@ package manage
 
 import (
 	"fmt"
+	"github.com/backpack/backpack/internal/omni"
 	"math"
 	"net"
 	"os"
@@ -96,8 +97,12 @@ func askSharedToken(side directSide) (string, bool) {
 // setupL3 builds an [l3] tunnel: a private network between the two servers.
 func setupL3(side directSide) {
 	fmt.Println()
-	carrier, ok := askL3Carrier()
+	carrier, ok := chooseDirectCarrier(true)
 	if !ok {
+		return
+	}
+	if carrier == "gost-direct" || strings.HasPrefix(carrier, "omni:") {
+		setupExtraDirect(carrier, side)
 		return
 	}
 	// The Iran side decides everything the two ends must agree on and hands
@@ -597,10 +602,20 @@ func askL3Advanced(cfg *l3Spec, side directSide, addresses bool) {
 // throughput collapse rather than degrade, so tcp, ws and kcp are not offered
 // at all.
 func askL3Carrier() (string, bool) {
+	return chooseDirectCarrier(false)
+}
+
+func chooseDirectCarrier(extended bool) (string, bool) {
 	// Built from the same list the panel offers, so the two cannot drift: they
 	// used to be two literals in two files, which is a difference nobody sees
 	// until an operator is told about a carrier one of the screens does not have.
 	carriers := DirectCarriers()
+	if extended {
+		carriers = append(carriers, map[string]string{"value": "gost-direct", "label": "GOST Direct (Relay + TLS)"})
+		for _, item := range omni.Options() {
+			carriers = append(carriers, map[string]string{"value": "omni:" + item["value"], "label": "OmniTunnel / " + item["label"]})
+		}
+	}
 	opts := make([]tui.Option, 0, len(carriers))
 	for _, c := range carriers {
 		desc := c["desc"]

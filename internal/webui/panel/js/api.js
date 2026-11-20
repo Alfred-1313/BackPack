@@ -81,6 +81,8 @@ export const restartAll = () =>
 export const tunnelSettings = name =>
   get('/api/tunnel/settings?name=' + encodeURIComponent(name));
 export const tunnelEdit  = payload => post('/api/tunnel/edit', payload);
+export const transportProbe = form => post('/api/conntest/transport', form);
+export const gostDirect = form => post('/api/gost/direct', form);
 export const omniOptions = () => get('/api/omni');
 export const omniRun = (args, token = '') => post('/api/omni', { args, token });
 export const tunnelOptions = () => get('/api/tunnel/options');

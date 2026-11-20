@@ -1,36 +1,56 @@
 package webui
 
 import (
-    "bytes"
-    "net/http"
-    "strings"
+	"bytes"
+	"github.com/backpack/backpack/internal/gostdirect"
+	"net/http"
+	"strings"
 
-    "github.com/backpack/backpack/internal/omni"
+	"github.com/backpack/backpack/internal/omni"
 )
+
+func (s *server) handleGostDirect(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST required", 405)
+		return
+	}
+	var f gostdirect.Form
+	if err := decodeJSON(w, r, &f); err != nil {
+		http.Error(w, "invalid form", 400)
+		return
+	}
+	res, err := gostdirect.Install(r.Context(), f)
+	if err != nil {
+		http.Error(w, err.Error(), 400)
+		return
+	}
+	writeJSON(w, res)
+}
 
 // Keep the same argument validation and pinned executable as the CLI.
 func (s *server) handleOmni(w http.ResponseWriter, r *http.Request) {
-    w.Header().Set("Cache-Control", "no-store")
-    if r.Method == http.MethodGet {
-        writeJSON(w, omni.Options())
-        return
-    }
-    if r.Method != http.MethodPost {
-        http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-        return
-    }
-    var form struct {
-        Args []string `json:"args"`
-        Token string `json:"token"`
-    }
-    if err := decodeJSON(w, r, &form); err != nil || len(form.Args) == 0 || len(form.Args) > 5 {
-        http.Error(w, "invalid OmniTunnel operation", http.StatusBadRequest)
-        return
-    }
-    var out bytes.Buffer
-    if err := omni.Run(form.Args, strings.NewReader(form.Token), &out, &out); err != nil {
-        http.Error(w, strings.TrimSpace(out.String()+"\n"+err.Error()), http.StatusBadRequest)
-        return
-    }
-    writeJSON(w, map[string]string{"output":out.String()})
+	w.Header().Set("Cache-Control", "no-store")
+	if r.Method == http.MethodGet {
+		writeJSON(w, omni.Options())
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var form struct {
+		Args  []string `json:"args"`
+		Token string   `json:"token"`
+	}
+	if err := decodeJSON(w, r, &form); err != nil || len(form.Args) == 0 || len(form.Args) > 6 {
+		http.Error(w, "invalid OmniTunnel operation", http.StatusBadRequest)
+		return
+	}
+	var out bytes.Buffer
+	if err := omni.Run(form.Args, strings.NewReader(form.Token), &out, &out); err != nil {
+		http.Error(w, strings.TrimSpace(out.String()+"\n"+err.Error()), http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, map[string]string{"output": out.String()})
 }

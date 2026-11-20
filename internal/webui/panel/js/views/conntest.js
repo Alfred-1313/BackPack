@@ -288,6 +288,17 @@ export function connTestView(ctx) {
   view.innerHTML = `<div class="tl-page ct">
     <div class="sech2 tl-head"><h2>Connection test</h2><span class="cnt" id="ctState">—</span><span class="sp"></span></div>
     <p class="tl-sub">Which transports actually survive the route between this Iran server and a kharej — measured, not guessed.</p>
+    <details class="tl-card" id="configured-test">
+      <summary>Test a configured OmniTunnel or GOST connection</summary>
+      <p>Start a test listener on Kharej at the tunnel's unused TCP target. On Iran, paste its test code and enter the local forwarded address. For a routed OmniTunnel, use the Kharej tunnel IP and the same port on both forms.</p>
+      <form>
+        <label class="tl-f">This server<select name="role"><option value="iran">Iran</option><option value="kharej">Kharej</option></select></label>
+        <label class="tl-f">Address and port<input name="address" required placeholder="127.0.0.1:18080"></label>
+        <label class="tl-f" data-code>Test code<input name="code" autocomplete="off"></label>
+        <button type="submit" class="tl-btn">Verify tunnel</button>
+        <p role="status"></p><button type="button" data-copy class="tl-btn" hidden>Copy test code</button>
+      </form>
+    </details>
     <div id="ctSteps"></div>
     <div id="ctPaths" class="ct-paths" aria-label="IP path comparison"></div>
     <div class="ct-duo">
@@ -299,6 +310,38 @@ export function connTestView(ctx) {
       </section>
     </div>
   </div>`;
+  const configured = $('#configured-test form', view);
+  const role = configured.elements.role;
+  const result = configured.querySelector('[role=status]');
+  const submit = configured.querySelector('button[type=submit]');
+  const copy = configured.querySelector('[data-copy]');
+  let probeCode = '';
+  role.onchange = () => {
+    configured.querySelector('[data-code]').hidden = role.value === 'kharej';
+    submit.textContent = role.value === 'kharej' ? 'Start test listener' : 'Verify tunnel';
+    result.textContent = '';
+    copy.hidden = true;
+  };
+  copy.onclick = async () => flashCopied(copy, await copyText(probeCode));
+  configured.onsubmit = async event => {
+    event.preventDefault();
+    const listen = role.value === 'kharej';
+    submit.disabled = role.disabled = true;
+    result.textContent = listen ? 'Starting listener...' : 'Waiting for the Kharej payload...';
+    copy.hidden = true;
+    try {
+      const reply = await api.transportProbe({listen, address: configured.elements.address.value.trim(),
+        code: configured.elements.code.value.trim()});
+      if (listen) {
+        probeCode = reply.code;
+        result.textContent = 'Listener ready for 5 minutes. Copy the test code to the Iran panel.';
+        copy.hidden = false;
+      } else {
+        result.textContent = 'Kharej payload verified in ' + reply.ms + ' ms';
+      }
+    } catch (err) { result.textContent = err.message; }
+    finally { submit.disabled = role.disabled = false; }
+  };
   const steps = $('#ctSteps', view), stateEl = $('#ctState', view);
   const left = $('#ctLeft', view), rHead = $('#ctRHead', view), list = $('#ctList', view), rFoot = $('#ctRFoot', view);
   let last = null, fresh = false, timer = null, tick = null, alive = true;

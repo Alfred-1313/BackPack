@@ -136,7 +136,7 @@ func TestWizardOrderMatchesReverse(t *testing.T) {
 				// thing asked: a direct tunnel is always Backpack's own GRE
 				// inside the Noise session, so there is no encapsulation left
 				// to choose between.
-				"askL3Carrier()",
+				"chooseDirectCarrier(true)",
 				// Iran, in the order the operator asked for: where, which
 				// port, what to forward, then the name and the token.
 				`tui.Prompt("Kharej IP Or Domain: ")`,

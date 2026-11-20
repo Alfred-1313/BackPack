@@ -418,6 +418,8 @@ func (s *server) routes() *http.ServeMux {
 	mux.HandleFunc("/api/tunnel/defaults", s.requireAuth(s.handleTunnelDefaults))
 	mux.HandleFunc("/api/tunnel/create", s.requireAuth(s.handleTunnelCreate))
 	// The direct half, on its own endpoints so the reverse ones are untouched.
+	mux.HandleFunc("/api/gost/direct", s.requireAdmin(s.handleGostDirect))
+	mux.HandleFunc("/api/conntest/transport", s.requireAdmin(s.handleTransportProbe))
 	mux.HandleFunc("/api/omni", s.requireAdmin(s.handleOmni))
 	mux.HandleFunc("/api/direct/options", s.requireAuth(s.handleDirectOptions))
 	mux.HandleFunc("/api/direct/defaults", s.requireAuth(s.handleDirectDefaults))

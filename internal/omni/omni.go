@@ -38,16 +38,16 @@ var transports = []struct {
 
 // Options exposes the same transport choices to the web panel.
 func Options() []map[string]string {
-    out := make([]map[string]string, 0, len(transports))
-    for _, t := range transports {
-        out = append(out, map[string]string{"value": t.value, "label": t.title})
-    }
-    return out
+	out := make([]map[string]string, 0, len(transports))
+	for _, t := range transports {
+		out = append(out, map[string]string{"value": t.value, "label": t.title})
+	}
+	return out
 }
 
 const usage = `BackPack OmniTunnel transports
 
-  backpack omni setup <transport> <name> <local-ipv4> <peer-ipv4>
+  backpack omni setup <transport> <name> <local-ipv4> <peer-ipv4> [peer-port]
   backpack omni join                    paste a setup token on Kharej
   backpack omni list
   backpack omni status <name>
@@ -93,14 +93,21 @@ func parse(args []string, input io.Reader) (operation, error) {
 		}
 		return operation{args: []string{"server-token"}, token: token}, nil
 	case "setup":
-		if len(args) != 5 || !knownTransport(args[1]) || !namePattern.MatchString(args[2]) {
+		if (len(args) != 5 && len(args) != 6) || !knownTransport(args[1]) || !namePattern.MatchString(args[2]) {
 			return operation{}, fmt.Errorf("usage: backpack omni setup <transport> <name> <local-ipv4> <peer-ipv4>")
 		}
 		local, peer := net.ParseIP(args[3]), net.ParseIP(args[4])
 		if local.To4() == nil || peer.To4() == nil || local.IsUnspecified() || peer.IsUnspecified() || local.Equal(peer) {
 			return operation{}, fmt.Errorf("enter two different IPv4 addresses assigned to the servers")
 		}
-		return operation{args: []string{"add-manual", args[1], args[2], peer.String(), "16", "none", local.String()}}, nil
+		cmd := []string{"add-manual", args[1], args[2], peer.String(), "16", "none", local.String()}
+		if len(args) == 6 {
+			if !validPort(args[5]) {
+				return operation{}, fmt.Errorf("peer port must be 1-65535")
+			}
+			cmd = append(cmd, args[5])
+		}
+		return operation{args: cmd}, nil
 	case "list":
 		if len(args) == 1 {
 			return operation{args: args}, nil

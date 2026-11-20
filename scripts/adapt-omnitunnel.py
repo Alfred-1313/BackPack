@@ -124,7 +124,7 @@ kernel_up_cmd() {
     case "$TYPE" in
         gre) echo "ip link add $DEV type gre local $LOCAL_IP remote $PEER_IP ttl 255 key $PORT && { ip addr add $TUN_ADDR peer $PEER_ADDR dev $DEV && ip link set $DEV up mtu $MTU || { ip link del $DEV; exit 1; }; }";;
         fou)
-            echo "ip fou add port $PORT ipproto 47 local $LOCAL_IP peer $PEER_IP peer_port $PORT && { ip link add $DEV type gre local $LOCAL_IP remote $PEER_IP ttl 255 key $PORT encap fou encap-sport $PORT encap-dport $PORT || { ip fou del port $PORT local $LOCAL_IP peer $PEER_IP peer_port $PORT; exit 1; }; } && { ip addr add $TUN_ADDR peer $PEER_ADDR dev $DEV && ip link set $DEV up mtu $MTU || { ip link del $DEV; ip fou del port $PORT local $LOCAL_IP peer $PEER_IP peer_port $PORT; exit 1; }; }";;
+            echo "modprobe fou && modprobe ip_gre && ip fou add port $PORT ipproto 47 local $LOCAL_IP peer $PEER_IP peer_port $PORT && { ip link add $DEV type gre local $LOCAL_IP remote $PEER_IP ttl 255 key $PORT encap fou encap-sport $PORT encap-dport $PORT || { ip fou del port $PORT local $LOCAL_IP peer $PEER_IP peer_port $PORT; exit 1; }; } && { ip addr add $TUN_ADDR peer $PEER_ADDR dev $DEV && ip link set $DEV up mtu $MTU || { ip link del $DEV; ip fou del port $PORT local $LOCAL_IP peer $PEER_IP peer_port $PORT; exit 1; }; }";;
         vxlan)
             echo "ip link add $DEV type vxlan id $PORT local $LOCAL_IP remote $PEER_IP dstport $PORT ttl 255 && { ip addr add $TUN_ADDR/30 dev $DEV && ip link set $DEV up mtu $MTU || { ip link del $DEV; exit 1; }; }";;
     esac

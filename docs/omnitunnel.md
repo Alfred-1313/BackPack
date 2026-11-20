@@ -34,11 +34,13 @@ and Python 3 for TCP forwarding. Reverse Mux uses OpenSSL and ssh-keygen for its
 
 ## Configure
 
-1. Open **11 → OmniTunnel → Create Iran End**. Select a mode and enter the
-   IPv4 addresses assigned to the two servers. The wizard prints a setup token.
-2. Open **OmniTunnel → Apply Setup Token On Kharej** on the other server and
-   paste the token. Keep the token private. Hysteria2 also carries the server
-   certificate and its private key inside the same token.
+1. Choose the carrier under **Setup Iran ? Direct** in the CLI or
+   **Add a tunnel ? Direct ? Tunnel** in the panel. Enter the IPv4 addresses
+   assigned to the two servers. You can specify the listener port on Kharej.
+   Stripe needs a free block of 400 consecutive TCP ports starting there.
+2. On Kharej, choose the same transport and apply the setup token. The CLI
+   also accepts it through `sudo backpack omni join`. Keep the token private.
+   Hysteria2 carries the server certificate and key in its setup token.
 3. For ordinary service forwards, choose **Add TCP/UDP Forward** on Iran.
    For **Reverse Mux**, use **Add Reverse Mux Forward** and apply the
    resulting token with **Apply Reverse Mux Token** on Kharej.
@@ -53,6 +55,17 @@ Use **Start Or Restart** to start the tunnel and its configured forwarding
 services. You can also paste the same setup token again on Kharej to resume an
 existing tunnel with its forwards. The CLI requires `--force` to remove the
 last forward. The menu asks you to confirm the removal.
+
+## Connection Test
+
+Use **Test a configured OmniTunnel or GOST connection** in Connection Test,
+or **Connection Test ? Configured tunnel** in the CLI. Start the temporary
+listener on an unused target port on Kharej. Paste its private test code on
+Iran and probe the forwarded port, or use the Kharej tunnel IP and the same
+port on both forms for a routed carrier. A successful result verifies that
+the specific Kharej listener returned its one-time payload through the tunnel.
+The listener expires after five minutes. Use a different test target when a
+production application already owns the port.
 
 <div dir="rtl">
 

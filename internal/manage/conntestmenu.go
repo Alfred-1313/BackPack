@@ -8,6 +8,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/backpack/backpack/internal/transportprobe"
 	"github.com/backpack/backpack/internal/tui"
 )
 
@@ -20,6 +21,7 @@ func ConnectionTest() {
 	switch tui.ChooseOpt("This Server Is", []tui.Option{
 		{Title: "Iran", Desc: "start here, get the link"},
 		{Title: "Kharej", Desc: "paste the Iran server's link"},
+		{Title: "Configured tunnel", Desc: "verify an existing OmniTunnel or GOST path with a temporary TCP listener"},
 	}) {
 	case 0:
 		connTestIranMenu()
@@ -29,6 +31,26 @@ func ConnectionTest() {
 			return
 		}
 		RunConnTestKharejTUI(raw)
+		tui.PressEnter()
+	case 2:
+		ctx, stop := connTestContext()
+		defer stop()
+		switch tui.ChooseOpt("Configured Tunnel", []tui.Option{
+			{Title: "Iran", Desc: "probe a local forward or Kharej tunnel IP"},
+			{Title: "Kharej", Desc: "start the temporary target listener"},
+		}) {
+		case 0:
+			address := tui.Prompt("Forwarded or tunnel address:port: ")
+			code := tui.Prompt("Kharej test code: ")
+			if err := transportprobe.Command(ctx, []string{"probe", address}, strings.NewReader(code), os.Stdout); err != nil {
+				tui.Error(err.Error())
+			}
+		case 1:
+			address := tui.Prompt("Listen address:port: ")
+			if err := transportprobe.Command(ctx, []string{"listen", address}, os.Stdin, os.Stdout); err != nil {
+				tui.Error(err.Error())
+			}
+		}
 		tui.PressEnter()
 	}
 }

@@ -69,10 +69,6 @@ func cliTransportGroups() []transportGroup {
 			{"XHTTP / TLS", "HTTP/2 streaming — certificate or a private trust file", "xhttp"},
 			{"REALITY / Vision", "TLS cover endpoint — no local certificate required", "reality"},
 		},
-	}, transportGroup{
-		"GOST", "encrypted reverse TCP — Linux, GOST v3 on both sides", []transportEntry{
-			{"GOST v3 / Relay + TLS", "authenticated relay with verified TLS", "gost"},
-		},
 	})
 }
 

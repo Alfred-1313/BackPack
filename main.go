@@ -1,9 +1,12 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"flag"
 	"fmt"
+	"github.com/backpack/backpack/internal/gostdirect"
+	"github.com/backpack/backpack/internal/transportprobe"
 	"os"
 	"os/signal"
 	"syscall"
@@ -32,6 +35,29 @@ var logger = utils.NewLogger("info")
 //   - Menu mode:    `backpack`  (no arguments)
 //     Opens the interactive management CLI on the VPS.
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "transport-test" {
+		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer cancel()
+		if err := transportprobe.Command(ctx, os.Args[2:], os.Stdin, os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
+	if len(os.Args) == 3 && os.Args[1] == "gost-direct" && os.Args[2] == "join" {
+		fmt.Fprintln(os.Stderr, "Paste the GOST Direct setup token:")
+		input := bufio.NewScanner(os.Stdin)
+		if !input.Scan() {
+			os.Exit(1)
+		}
+		res, err := gostdirect.Install(context.Background(), gostdirect.Form{Action: "join", Token: input.Text()})
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		fmt.Println(res.Unit)
+		return
+	}
 	if len(os.Args) > 1 && os.Args[1] == "omni" {
 		if err := omni.Run(os.Args[2:], os.Stdin, os.Stdout, os.Stderr); err != nil {
 			fmt.Fprintln(os.Stderr, err)
