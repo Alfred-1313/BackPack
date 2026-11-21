@@ -142,7 +142,7 @@ jobs:
   managed:
     name: Managed carriers
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -155,13 +155,13 @@ jobs:
       - name: Authenticate REALITY cover fallback and exercise the real reverse carriers
         env:
           BP_CONNTEST_HELPERS: '1'
-        run: go test ./internal/manage -run '^(TestRealityCoverSelectionAuthenticatesWithThePinnedHelper|TestAConnectionTestOverLoopbackPassesEveryReverseTransport)$' -race -count=1 -v -timeout 8m
+        run: go test ./internal/manage -run '^(TestRealityCoverSelectionAuthenticatesWithThePinnedHelper|TestAConnectionTestOverLoopbackPassesEveryReverseTransport)$' -race -count=1 -v -timeout 14m
 
       - name: Authenticate the managed carriers over IPv6
         env:
           BP_CONNTEST_HELPERS: '1'
           BP_CONNTEST_HOST: '::1'
-        run: go test ./internal/manage -run '^TestAConnectionTestOverLoopbackPassesEveryReverseTransport$' -race -count=1 -v -timeout 8m
+        run: go test ./internal/manage -run '^TestAConnectionTestOverLoopbackPassesEveryReverseTransport$' -race -count=1 -v -timeout 14m
 
   omnitunnel-kernel:
     name: OmniTunnel kernel overlays
@@ -175,6 +175,10 @@ jobs:
           cache: true
       - name: Build the verified OmniTunnel helpers
         run: sudo env "PATH=$PATH" BP_BUILD_FROM_SOURCE=1 BP_HELPERS=omni bash ./install.sh
+      - name: Verify generated units and Hysteria TCP forwarding
+        run: |
+          python3 scripts/test-omnitunnel-relay.py
+          bash scripts/test-omnitunnel-structure.sh /usr/local/lib/backpack/helpers/omnitunnel/acf4e6e5bacc4aa841320e39cff4b51e3f2a9eec-amd64/manager
       - name: Verify restart, token retry and instance config validation
         run: sudo bash scripts/test-omnitunnel-lifecycle.sh /usr/local/lib/backpack/helpers/omnitunnel/acf4e6e5bacc4aa841320e39cff4b51e3f2a9eec-amd64/manager
       - name: Verify FoU and VXLAN in two Linux network namespaces

@@ -272,13 +272,12 @@ func TestAConnectionTestOverLoopbackPassesEveryReverseTransport(t *testing.T) {
 		}
 	}
 
-	// Thirteen tunnels, each soaked and then measured both ways at two
-	// connection counts, under the race detector: about four minutes on a
-	// GitHub runner (231 to 243 seconds in the last four CI runs). Four
-	// minutes was the budget, so every run sat on its edge, and one of those
-	// four failed with "the verdict never arrived". Six leaves room; the CI
-	// step's -timeout is eight.
-	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Minute)
+	// The speed runs are serial and include a second pass. Scale the budget
+	// with the cases being exercised so adding a helper cannot expire the
+	// coordinator while it is still measuring healthy transports.
+	budget := connTestConnectWait + time.Duration(connTestSoak)*time.Second +
+		ConnTestSpeedTime(len(iran.cases)) + 90*time.Second
+	ctx, cancel := context.WithTimeout(context.Background(), budget)
 	defer cancel()
 	var kharej []ConnTestResult
 	var kharejErr error
