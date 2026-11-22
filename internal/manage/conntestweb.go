@@ -64,10 +64,11 @@ func ctExtraTime() time.Duration {
 func ConnTestTimeLeft(rows []ConnTestResult) time.Duration {
 	var native []string
 	var helpers time.Duration
-	active := false
+	active, nativeProbing := false, false
 	for _, row := range rows {
 		if row.Transport != ctGostDirect && !strings.HasPrefix(row.Transport, ctOmniPrefix) {
 			native = append(native, row.Phase)
+			nativeProbing = nativeProbing || (row.Status == ctTesting && row.Phase == "")
 			continue
 		}
 		switch row.Phase {
@@ -82,17 +83,26 @@ func ConnTestTimeLeft(rows []ConnTestResult) time.Duration {
 		case ctPhaseTransportCleanup:
 			helpers += 40 * time.Second
 			active = true
-		case "":
-			if row.Status == ctTesting && row.Tried > 0 {
-				remaining := max(0, row.Total-row.Tried)
-				helpers += time.Duration(remaining)*time.Second + ConnTestSpeedTime(1)
-				active = true
-			}
+		case ctPhaseTransportEcho:
+			remaining := max(0, row.Total-row.Tried)
+			helpers += time.Duration(remaining)*time.Second + ConnTestSpeedTime(1)
+			active = true
+		case "speed-queued":
+			helpers += ConnTestSpeedTime(1)
+			active = true
 		}
 	}
 	left := ConnTestSpeedLeft(native)
-	if left == 0 && !active {
+	if nativeProbing || (left == 0 && !active) {
 		return 0
+	}
+	if left == 0 {
+		// The first helper can reach speed while the native rows are all queued.
+		for _, phase := range native {
+			if phase == "speed-queued" {
+				left += ConnTestSpeedTime(1)
+			}
+		}
 	}
 	return left + helpers
 }

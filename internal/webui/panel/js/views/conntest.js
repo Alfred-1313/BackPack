@@ -170,8 +170,12 @@ function settled(v) {
   const speed = live.find(r => r.phase === 'speed' || r.phase === 'speed-second');
   if (speed?.phase === 'speed-second') return `Second speed pass on ${speed.name}.${queue}`;
   if (speed) return `Measuring download and upload on ${speed.name}.${queue}`;
-  const active = live.find(r => ['transport-setup', 'transport-connect', 'transport-cleanup'].includes(r.phase));
+  const active = live.find(r => ['transport-setup', 'transport-connect', 'transport-echo', 'transport-cleanup'].includes(r.phase));
   if (active) return `${rowPhase[active.phase]} ${active.name}.${queue}`;
+  if (waiting) {
+    const next = live.find(r => r.phase === 'transport-queued');
+    return `Waiting for the current checks to finish. Next in the transport queue is ${next.name}.${queue}`;
+  }
   if (!live.length) return 'The kharej is building its end of each test tunnel.';
   const done = live.filter(r => r.status !== 'testing' && !r.phase).length;
   return `${done} of ${live.length} transports judged.${queue}`;
@@ -239,7 +243,7 @@ const tone = st => ({ ok: 'ok', unstable: 'wr', down: 'er', skipped: 'sk' }[st] 
 const rowPhase = {
   speed: 'Speed test', 'speed-second': 'Speed test', 'speed-queued': 'Queued',
   'speed-again': 'Queued', 'transport-queued': 'Queued', 'transport-setup': 'Setting up',
-  'transport-connect': 'Connecting', 'transport-cleanup': 'Cleaning up',
+  'transport-connect': 'Connecting', 'transport-echo': 'Checking echoes', 'transport-cleanup': 'Cleaning up',
 };
 
 const statusWord = st => ({ ok: 'Held', unstable: 'Unstable', down: 'Down', skipped: 'Skipped', testing: 'Testing' }[st] || st);

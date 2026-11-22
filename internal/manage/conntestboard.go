@@ -108,6 +108,8 @@ func ctStatusLabel(r ConnTestResult) string {
 		return "SETTING UP"
 	case ctPhaseTransportConnect:
 		return "CONNECTING"
+	case ctPhaseTransportEcho:
+		return "ECHO TEST"
 	case ctPhaseTransportCleanup:
 		return "CLEANING UP"
 	}

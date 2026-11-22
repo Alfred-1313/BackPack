@@ -94,6 +94,7 @@ func TestConnectionTestQueueKeepsHelpersInTheRemainingTime(t *testing.T) {
 		ctPhaseTransportQueued:  "QUEUED",
 		ctPhaseTransportSetup:   "SETTING UP",
 		ctPhaseTransportConnect: "CONNECTING",
+		ctPhaseTransportEcho:    "ECHO TEST",
 		ctPhaseTransportCleanup: "CLEANING UP",
 	} {
 		if got := ctStatusLabel(ConnTestResult{Status: ctTesting, Phase: phase}); got != want {
@@ -104,5 +105,17 @@ func TestConnectionTestQueueKeepsHelpersInTheRemainingTime(t *testing.T) {
 	rows[1].Phase = ctPhaseTransportCleanup
 	if got, want := ConnTestTimeLeft(rows), 40*time.Second+ctExtraTime(); got != want {
 		t.Fatalf("time left during cleanup %s, want %s", got, want)
+	}
+	rows[1].Phase, rows[1].Total, rows[1].Tried = ctPhaseTransportEcho, 60, 17
+	if got, want := ConnTestTimeLeft(rows), 43*time.Second+ConnTestSpeedTime(1)+ctExtraTime(); got != want {
+		t.Fatalf("time left during echoes %s, want %s", got, want)
+	}
+	rows[0].Status = ctTesting
+	if got := ConnTestTimeLeft(rows); got != 0 {
+		t.Fatalf("should keep the overall estimate while native stability is in progress, got %s", got)
+	}
+	rows[0].Phase, rows[1].Phase = "speed-queued", "speed"
+	if got, want := ConnTestTimeLeft(rows), ConnTestSpeedTime(2)+ctExtraTime(); got != want {
+		t.Fatalf("time left with native speed queued %s, want %s", got, want)
 	}
 }

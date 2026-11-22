@@ -25,8 +25,8 @@ import (
 	"net/netip"
 	"os"
 	"os/exec"
-	"slices"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -1167,6 +1167,29 @@ func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResul
 		}
 	}
 
+	// The first helper can set up and send its stability echoes alongside the
+	// built-in probes. Its speed test starts only after those probes finish.
+	nativeStable := make(chan struct{})
+	nextExtra := 0
+	runNextExtra := func() bool {
+		for nextExtra < len(s.cases) {
+			i := nextExtra
+			nextExtra++
+			c := s.cases[i]
+			if !c.extra || c.skip != "" {
+				continue
+			}
+			if ctx.Err() != nil {
+				row := results[i]
+				row.Status, row.Detail, row.Phase = ctSkipped, "test stopped", ""
+				reportRow(i, row)
+				continue
+			}
+			s.probeExtra(ctx, c, nativeStable, func(row ConnTestResult) { reportRow(i, row) })
+			return true
+		}
+		return false
+	}
 	var wg sync.WaitGroup
 	for i, c := range s.cases {
 		if c.skip != "" || c.extra {
@@ -1185,39 +1208,26 @@ func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResul
 			ctProbe(ctx, c, s.link.L3, report)
 		}(i, c)
 	}
+	firstExtra := make(chan struct{})
+	go func() {
+		defer close(firstExtra)
+		runNextExtra()
+	}()
 	wg.Wait()
 	var failed []string
-	for i, row := range results {
-		if !s.cases[i].extra && (row.Status == ctDown || row.Status == ctUnstable || row.Status == ctSkipped) {
-			failed = append(failed, s.cases[i].name)
+	for i, c := range s.cases {
+		if c.extra {
+			continue
+		}
+		row := results[i]
+		if row.Status == ctDown || row.Status == ctUnstable || row.Status == ctSkipped {
+			failed = append(failed, c.name)
 		}
 	}
 	s.stopTestEngines(failed)
+	close(nativeStable)
+	<-firstExtra
 
-	// Let helper transports report between native speed runs. A helper still
-	// owns its full setup, echo and speed cycle, and only one pair is live at
-	// a time. Native stability has already finished and bandwidth stays serial.
-	nextExtra := 0
-	runNextExtra := func() bool {
-		for nextExtra < len(s.cases) {
-			i := nextExtra
-			nextExtra++
-			c := s.cases[i]
-			if !c.extra || c.skip != "" {
-				continue
-			}
-			if ctx.Err() != nil {
-				row := results[i]
-				row.Status, row.Detail, row.Phase = ctSkipped, "test stopped", ""
-				reportRow(i, row)
-				continue
-			}
-			s.probeExtra(ctx, c, func(row ConnTestResult) { reportRow(i, row) })
-			return true
-		}
-		return false
-	}
-	runNextExtra()
 	// Stability probes finish before any bandwidth test starts. Heavy traffic
 	// must not change another tunnel's loss/RTT or share its speed measurement.
 	speeds := map[int]ctSpeedResult{}
@@ -1270,6 +1280,7 @@ func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResul
 			reportRow(i, r)
 			ctPutSpeed(&r, ctSpeedAgain(ctx, func() (net.Conn, error) { return ctDial(ctx, c, s.link.L3) }, first))
 			reportRow(i, r)
+			runNextExtra()
 		}
 	}
 

@@ -28,6 +28,7 @@ const (
 	ctPhaseTransportQueued  = "transport-queued"
 	ctPhaseTransportSetup   = "transport-setup"
 	ctPhaseTransportConnect = "transport-connect"
+	ctPhaseTransportEcho    = "transport-echo"
 	ctPhaseTransportCleanup = "transport-cleanup"
 )
 
@@ -417,7 +418,7 @@ func (s *ConnTestIran) setupExtra(ctx context.Context, c *connTestCase, mode str
 	return err
 }
 
-func (s *ConnTestIran) probeExtra(ctx context.Context, c *connTestCase, report func(ConnTestResult)) {
+func (s *ConnTestIran) probeExtra(ctx context.Context, c *connTestCase, nativeStable <-chan struct{}, report func(ConnTestResult)) {
 	mode := strings.TrimPrefix(c.tr, ctOmniPrefix)
 	c.name = ctExtraName()
 	row := ConnTestResult{Kind: c.kind, Transport: c.tr, Status: ctTesting, Total: connTestSoak, Phase: ctPhaseTransportSetup, Detail: "preparing temporary tunnel"}
@@ -448,8 +449,25 @@ func (s *ConnTestIran) probeExtra(ctx context.Context, c *connTestCase, report f
 		report(row)
 		return
 	}
-	row = ctProbe(ctx, c, s.link.L3, report)
+	row = ctProbe(ctx, c, s.link.L3, func(r ConnTestResult) {
+		if r.Status == ctTesting && r.Phase == "" {
+			r.Phase, r.Detail = ctPhaseTransportEcho, "checking stability through the tunnel"
+		}
+		if r.Phase == "speed-queued" {
+			r.Detail = "stability passed; waiting for the other stability probes"
+		}
+		report(r)
+	})
 	if row.Phase != "speed-queued" {
+		return
+	}
+	select {
+	case <-nativeStable:
+	case <-ctx.Done():
+	}
+	if ctx.Err() != nil {
+		row.Status, row.Phase, row.Detail = ctUnstable, "", "stopped before speed test"
+		report(row)
 		return
 	}
 	row.Phase, row.Detail = "speed", "measuring download and upload"
