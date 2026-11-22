@@ -41,7 +41,7 @@ export function bindExtraTransports(root, options) {
     const refresh = () => {
       const join = role.value === 'join';
       const fields = join ? [['token','Setup token']] : [['name','Tunnel name'],...(!gost ? [['local','Iran IPv4']] : []),
-        ['peer','Kharej IPv4'],...(gost ? [['ingress','Public TCP port on Iran'],['port','GOST TLS port on Kharej'],['target','Service port on Kharej (127.0.0.1)']] : [['omniport',value === 'gre' ? 'GRE key (optional)' : 'Kharej tunnel port (optional)']])];
+        ['peer','Kharej IPv4'],...(gost ? [['ingress','Public TCP port on Iran'],['port','GOST TLS port on Kharej'],['target','Service port on Kharej (127.0.0.1)']] : [['omniport','Kharej tunnel port (optional)']])];
       form.querySelector('[data-fields]').innerHTML = fields.map(([key,label]) => '<label>'+label+'<input '+(key === 'omniport' ? '' : 'required')+' autocomplete="off" name="'+key+'"></label>').join('');
       submit.textContent = join ? 'Apply setup token' : 'Create tunnel';
       result.textContent=''; copy.hidden=true;

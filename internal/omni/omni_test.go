@@ -22,6 +22,18 @@ func TestEveryOmniTransportCanReachTheManualSetupCommand(t *testing.T) {
 	}
 }
 
+func TestOfferedCarriersKeepFoUAndLeaveGREToNativeSetup(t *testing.T) {
+	offered := make(map[string]bool)
+	for _, option := range Options() {
+		offered[option["value"]] = true
+	}
+	for _, transport := range transports {
+		if got, want := offered[transport.value], transport.value != "gre"; got != want {
+			t.Errorf("offered[%q] = %t, want %t", transport.value, got, want)
+		}
+	}
+}
+
 func TestApplyTokenKeepsCredentialsOutOfProcessArguments(t *testing.T) {
 	token := base64.StdEncoding.EncodeToString([]byte("example setup material"))
 	op, err := parse([]string{"join"}, strings.NewReader(token+"\n"))

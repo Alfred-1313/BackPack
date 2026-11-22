@@ -84,7 +84,7 @@ func TestConnectionTestExtraJobAuthenticationAndChunking(t *testing.T) {
 func TestConnectionTestQueueKeepsHelpersInTheRemainingTime(t *testing.T) {
 	rows := []ConnTestResult{
 		{Transport: "tcp", Phase: ctPhaseSecond},
-		{Transport: "omni-gre", Phase: ctPhaseTransportQueued, Status: ctTesting},
+		{Transport: "omni-icmp", Phase: ctPhaseTransportQueued, Status: ctTesting},
 		{Transport: ctGostDirect, Phase: ctPhaseTransportQueued, Status: ctTesting},
 	}
 	if got, want := ConnTestTimeLeft(rows), ctSpeedSecondPass()+2*ctExtraTime(); got != want {

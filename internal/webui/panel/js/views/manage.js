@@ -218,7 +218,7 @@ function filesCard(files) {
 export function manageView(ctx) {
   const view = $('#view');
   view.innerHTML = `<div class="tl-page mg">
-    <div class="sech2 tl-head"><h2>Manage</h2><span class="sp"></span></div>
+    <div class="sech2 tl-head"><h2>Manage</h2><span class="sp"></span><a class="tl-btn ghost sm" href="#/omni">Routed tunnels</a></div>
     <p class="tl-sub">The machine-level tools from the menu's Manage screen, each where you can see what it is doing.</p>
     <div class="mg-grid" id="mgGrid"><div class="tl-card tl-loading">Reading this server…</div></div>
   </div>`;

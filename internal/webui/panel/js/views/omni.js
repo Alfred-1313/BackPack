@@ -47,7 +47,7 @@ export function omniView() {
       try {
         const {output} = await omniRun(args,input);
         const text = output.replace(/\x1b\[[0-9;]*m/g,'').trim();
-        result.textContent = text || (command === 'list' ? 'No OmniTunnel instances on this server.' : 'Done');
+        result.textContent = text || (command === 'list' ? 'No routed tunnels on this server.' : 'Done');
         token = text.split(/\r?\n/).map(s => s.trim()).find(s => /^[A-Za-z0-9+/]{16,}={0,2}$/.test(s)) || '';
         copy.hidden = !token;
       } catch (err) { result.textContent = err.message; }

@@ -23,7 +23,6 @@ export function addView(ctx) {
   openScreen('add', {
     pick: '.dlg',
     bind: async (root, close) => {
-      root.querySelector('[data-omni]').onclick = () => go('/omni');
       dialogSubtitle(root, store.get().stats, 'this server’s end — the other is built from its setup link');
       let opts = { families: [], presets: [] };
       try { opts = await api.tunnelOptions(); } catch (e) { oops(e); }

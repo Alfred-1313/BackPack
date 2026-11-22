@@ -49,10 +49,15 @@ func Label(mode string) string {
 	return strings.ToUpper(mode)
 }
 
-// Options exposes the same transport choices to the web panel.
+// Options lists the helper carriers offered for setup and Connection Test.
 func Options() []map[string]string {
 	out := make([]map[string]string, 0, len(transports))
 	for _, t := range transports {
+		// BackPack offers native GRE for IPv4 and IPv6.
+		// Existing helper tunnels and tokens still use the legacy mode.
+		if t.value == "gre" {
+			continue
+		}
 		direction := "direct"
 		if t.value == "reverse-mux" {
 			direction = "reverse"
@@ -259,15 +264,16 @@ func Menu() {
 		var input io.Reader = os.Stdin
 		switch choice {
 		case 0:
-			opts := make([]tui.Option, len(transports))
-			for i, transport := range transports {
-				opts[i] = tui.Option{Title: transport.title, Desc: transport.description}
+			carriers := Options()
+			opts := make([]tui.Option, len(carriers))
+			for i, carrier := range carriers {
+				opts[i] = tui.Option{Title: carrier["label"], Desc: carrier["desc"]}
 			}
 			i := tui.ChooseOpt("OmniTunnel Transport", opts)
 			if i < 0 {
 				continue
 			}
-			mode := transports[i].value
+			mode := carriers[i]["value"]
 			args = []string{"setup", mode, tui.PromptDefault("Tunnel Name", mode),
 				tui.Prompt("Iran IPv4: "), tui.Prompt("Kharej IPv4: ")}
 		case 1, 9:
