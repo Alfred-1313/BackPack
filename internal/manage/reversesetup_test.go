@@ -25,18 +25,19 @@ import (
 )
 
 func TestManagedHTTPSChoicesReachBothReverseWizards(t *testing.T) {
-	for i, want := range []string{"naive", "xhttp", "reality"} {
-		restore := tui.SetInput(strings.NewReader(fmt.Sprintf("%d\n%d\n", len(transportGroups)+1, i+1)))
-		var got string
-		capture(t, func() { got = chooseTransport() })
-		restore()
-		if got != want {
-			t.Fatalf("HTTPS choice %d selected %q, want %s", i+1, got, want)
+	for i, entry := range reverseTransportChoices(true) {
+		if !managedTransport(entry.value) && entry.value != "omni:reverse-mux" {
+			continue
 		}
-		if transportLabel(got) == strings.ToUpper(got) {
-			t.Fatalf("missing display label for %s", got)
+		restore := tui.SetInput(strings.NewReader(fmt.Sprintf("%d\n", i+1)))
+		var got string
+		capture(t, func() { got = chooseTransport(true) })
+		restore()
+		if got != entry.value {
+			t.Fatalf("choice %d selected %q, want %s", i+1, got, entry.value)
 		}
 	}
+
 }
 
 func TestGOSTIsOfferedOnlyInTheDirectSetupWizard(t *testing.T) {
@@ -361,7 +362,7 @@ func TestTheReverseWizardOrder(t *testing.T) {
 		steps []string
 	}{
 		{"func SetupServer", []string{
-			"chooseTransport()",
+			"chooseTransport(true)",
 			`"Iran IP Or Domain (What Kharej Dials)"`,
 			`tui.Prompt("Tunnel Port: ")`,
 			`"Forwarded Ports (e.g. 443, 8080=127.0.0.1:2096): "`,
@@ -385,7 +386,7 @@ func TestTheReverseWizardOrder(t *testing.T) {
 			`tui.Confirm("Create This Tunnel"`,
 		}},
 		{"func SetupClient", []string{
-			"chooseTransport()",
+			"chooseTransport(true)",
 			`"How Do You Want To Set Up This Side?"`,
 			`tui.Prompt("Iran IP Or Domain: ")`,
 			`tui.Prompt("Tunnel Port: ")`,

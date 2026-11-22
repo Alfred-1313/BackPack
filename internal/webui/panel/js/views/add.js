@@ -40,7 +40,7 @@ export function addView(ctx) {
          is asked for different things — the Iran side owns the forwarded ports,
          the kharej side owns the address that is dialled. */
       const chosen = { side: 'server', direction: 'reverse', transport: null,
-                       family: 0, carrier: 'pck', preset: null };
+                       carrier: 'pck', preset: null };
 
       /* The preset the form is already showing counts as chosen.
        *
@@ -174,26 +174,6 @@ export function addView(ctx) {
         chosen.preset = markedPreset();
       }
 
-      /* The variants come from /api/tunnel/options, so a transport added to the
-         CLI menu appears here on its own — and picking a family actually
-         changes the list, which it did not before. */
-      /* The families come from the server too.
-       *
-       * They were four hard-coded buttons, so removing the Experimental family
-       * from the source left the button behind — pointing at a family that no
-       * longer exists. Drawn from the same answer as the transports, the two
-       * cannot drift apart again. */
-      function paintFamilies() {
-        const row = root.querySelector('.fam');
-        if (!row || !opts.families?.length) return;
-        /* Managed transports are built on Iran; Kharej takes the link. */
-        if (opts.families[chosen.family ?? 0]?.iranOnly && chosen.side !== 'server') chosen.family = 0;
-        row.innerHTML = opts.families.map((f, i) =>
-          `<button class="${i === (chosen.family ?? 0) ? 'on' : ''}" data-fn="setFam" data-args="'${i}'"
-            ${f.iranOnly && chosen.side !== 'server' ? 'hidden' : ''}>
-            <b>${esc(f.label)}</b></button>`).join('');
-      }
-
       /* The direct carriers, painted from the server rather than written into
          the page.
          
@@ -227,15 +207,17 @@ export function addView(ctx) {
 
       function paintTransports() {
         const list = root.querySelector('#trlist');
-        const fam = opts.families?.[chosen.family ?? 0];
-        if (!list || !fam) return;
-        list.innerHTML = fam.entries.map((e, i) => {
-          const root2 = /needs root/i.test(e.desc || '') ? '<span class="root2">needs root</span>' : '';
-          return `<button class="tr${i === 0 ? ' on' : ''}" data-fn="setTr" data-args="'${e.value}'">
-            <span class="tn2"><b>${esc(e.label)}</b>
-            <span class="key2">${esc(e.value)}</span>${root2}</span></button>`;
+        if (!list) return;
+        const entries = (opts.families || []).flatMap(family => family.entries)
+          .filter(item => chosen.side === 'server' || !item.iranOnly);
+        if (!entries.some(item => item.value === chosen.transport)) chosen.transport = entries[0]?.value || null;
+        list.innerHTML = entries.map(item => {
+          const root2 = /needs root/i.test(item.desc || '') ? '<span class="root2">needs root</span>' : '';
+          return `<button class="tr${item.value === chosen.transport ? ' on' : ''}" data-fn="setTr" data-args="'${esc(item.value)}'">
+            <span class="tn2"><b>${esc(item.label)}</b>
+            <span class="key2">${esc(item.value)}</span>${root2}</span></button>`;
         }).join('');
-        chosen.transport = fam.entries[0]?.value || null;
+        mountExtras?.();
         applyFields();
         applyPresets();
       }
@@ -466,7 +448,7 @@ export function addView(ctx) {
            under "Reverse — the kharej server dials in to Iran". */
         const note = root.querySelector('#dirnote');
         if (note) note.textContent = direct
-          ? 'Direct — this server dials out over a layer-3 carrier. For paths where reverse is filtered.'
+          ? 'Direct: Iran connects to Kharej. Peer-to-peer carriers exchange packets in both directions.'
           : 'Reverse — the kharej dials in to Iran. Try this first.';
         if (direct) suggestDirect(chosen.side);
 
@@ -680,14 +662,10 @@ export function addView(ctx) {
       root.addEventListener('pick', ev => {
         const { fn, value, el } = ev.detail;
         if (fn === 'setSide') {
-          const was = chosen.family ?? 0;
           chosen.side = value;
-          paintFamilies();
-          if ((chosen.family ?? 0) !== was) paintTransports();
-          else applyFields();
+          paintTransports();
         }
         if (fn === 'mode3') chosen.direction = value === 'dir' ? 'direct' : 'reverse';
-        if (fn === 'setFam') { chosen.family = Number(value); paintTransports(); }
         if (fn === 'setTr') { chosen.transport = value; applyFields(); applyPresets(); }
         if (fn === 'setCar') chosen.carrier = value;
         if (fn === 'setPre') chosen.preset = (el.querySelector('.key2, .k3')?.textContent
@@ -808,7 +786,6 @@ export function addView(ctx) {
       markGroup('setSide', chosen.side);
       markGroup('mode3', chosen.direction === 'direct' ? 'dir' : 'rev');
 
-      paintFamilies();
       paintTransports();
       wireDrawerControls();
       applyShape();
@@ -1070,7 +1047,7 @@ export function addView(ctx) {
             <button type="button" class="ch4" data-kind="dir">
               <span class="ic4"><svg viewBox="0 0 24 24"><path d="M4 12h16"/><path d="M14 6l6 6-6 6"/></svg></span>
               <b>Direct</b>
-              <i>This server dials out to the kharej over a layer-3 carrier. For paths where reverse is filtered.</i>
+              <i>Iran connects to Kharej, or both ends exchange packets directly.</i>
               <div class="diagram"><span class="route"><span>Iran</span><i class="rt"></i><span>kharej</span></span></div></button>
           </div></div>`;
         side.append(kind);

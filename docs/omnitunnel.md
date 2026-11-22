@@ -2,10 +2,10 @@
 
 The **OmniTunnel** menu in the fork provides the [OmniTunnel engines at
 acf4e6e](https://github.com/Free-Guy-IR/OmniTunnel/tree/acf4e6e5bacc4aa841320e39cff4b51e3f2a9eec).
-Native GRE stays under **Setup → Direct → GRE**.
 
 | OmniTunnel mode | What it carries |
 | --- | --- |
+| GRE (OmniTunnel) | Unencrypted IP over kernel GRE (IPv4 protocol 47). The setup token carries the GRE key. |
 | ICMP | Plain IP packets over ICMP. Use native xDi for BackPack's encrypted ICMP mode. |
 | Routed UDP, TCP, Mux and WS | Complete IP packets through an encrypted UDP, TCP or WebSocket carrier. |
 | Hysteria2 | TCP and UDP port forwards over QUIC, using certificate verification. |
@@ -37,7 +37,7 @@ and Python 3 for TCP forwarding. Reverse Mux uses OpenSSL and ssh-keygen for its
 1. Choose the carrier under **Setup Iran ? Direct** in the CLI or
    **Add a tunnel ? Direct ? Tunnel** in the panel. Enter the IPv4 addresses
    assigned to the two servers. You can specify the listener port on Kharej.
-   Stripe needs a free block of 400 consecutive TCP ports starting there.
+   For GRE this field is the key, as GRE has no transport port. Select Reverse for Reverse Mux. Stripe needs a free block of 400 consecutive TCP ports starting there.
 2. On Kharej, choose the same transport and apply the setup token. The CLI
    also accepts it through `sudo backpack omni join`. Keep the token private.
    Hysteria2 carries the server certificate and key in its setup token.

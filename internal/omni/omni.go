@@ -23,15 +23,16 @@ const revision = "acf4e6e5bacc4aa841320e39cff4b51e3f2a9eec"
 var transports = []struct {
 	value, title, description string
 }{
-	{"icmp", "ICMP (OmniTunnel)", "plain IP over ICMP, compatible with OmniTunnel"},
-	{"udp", "Routed UDP", "encrypted IP over UDP"},
+	{"gre", "GRE (OmniTunnel)", "unencrypted IPv4 peer-to-peer kernel GRE (protocol 47)"},
+	{"icmp", "ICMP (OmniTunnel)", "peer-to-peer IP over ICMP"},
+	{"udp", "Routed UDP", "peer-to-peer encrypted IP over UDP"},
 	{"tcp", "Routed TCP", "encrypted IP over a TCP stream"},
 	{"mux", "Routed TCP Mux", "encrypted IP over parallel TCP streams"},
 	{"ws", "Routed WebSocket", "encrypted IP over WebSocket"},
 	{"hysteria", "Hysteria2", "QUIC with verified TLS and TCP/UDP forwards"},
-	{"fou", "FoU", "kernel GRE encapsulated in UDP"},
-	{"vxlan", "VXLAN", "kernel Ethernet overlay over UDP"},
-	{"reverse-mux", "Reverse Mux", "authenticated multiplexed flow over an ICMP tunnel"},
+	{"fou", "FoU", "peer-to-peer kernel GRE encapsulated in UDP"},
+	{"vxlan", "VXLAN", "peer-to-peer kernel Ethernet overlay over UDP"},
+	{"reverse-mux", "Reverse Mux", "Kharej dials Iran over the underlying ICMP tunnel"},
 	{"stripe", "Stripe", "IP traffic striped across TCP connections"},
 	{"ackless", "Ackless", "raw TCP packet carrier with authenticated frames"},
 }
@@ -40,7 +41,11 @@ var transports = []struct {
 func Options() []map[string]string {
 	out := make([]map[string]string, 0, len(transports))
 	for _, t := range transports {
-		out = append(out, map[string]string{"value": t.value, "label": t.title})
+		direction := "direct"
+		if t.value == "reverse-mux" {
+			direction = "reverse"
+		}
+		out = append(out, map[string]string{"value": t.value, "label": t.title, "desc": t.description, "direction": direction})
 	}
 	return out
 }
@@ -59,7 +64,7 @@ const usage = `BackPack OmniTunnel transports
   backpack omni mux-join                paste a Reverse Mux forwarding token
   backpack omni mux-off <name>           remove the foreign-side mux forwarding
 
-Native GRE is under Setup → Direct → GRE.
+GRE uses IP protocol 47. The optional peer-port value becomes the GRE key.
 `
 
 var namePattern = regexp.MustCompile("^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$")
@@ -94,7 +99,7 @@ func parse(args []string, input io.Reader) (operation, error) {
 		return operation{args: []string{"server-token"}, token: token}, nil
 	case "setup":
 		if (len(args) != 5 && len(args) != 6) || !knownTransport(args[1]) || !namePattern.MatchString(args[2]) {
-			return operation{}, fmt.Errorf("usage: backpack omni setup <transport> <name> <local-ipv4> <peer-ipv4>")
+			return operation{}, fmt.Errorf("usage: backpack omni setup <transport> <name> <local-ipv4> <peer-ipv4> [peer-port]")
 		}
 		local, peer := net.ParseIP(args[3]), net.ParseIP(args[4])
 		if local.To4() == nil || peer.To4() == nil || local.IsUnspecified() || peer.IsUnspecified() || local.Equal(peer) {
@@ -103,7 +108,7 @@ func parse(args []string, input io.Reader) (operation, error) {
 		cmd := []string{"add-manual", args[1], args[2], peer.String(), "16", "none", local.String()}
 		if len(args) == 6 {
 			if !validPort(args[5]) {
-				return operation{}, fmt.Errorf("peer port must be 1-65535")
+				return operation{}, fmt.Errorf("peer port or GRE key must be 1-65535")
 			}
 			cmd = append(cmd, args[5])
 		}

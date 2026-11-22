@@ -412,7 +412,7 @@ func changeTunnelTransport(name string, spec TunnelSpec) {
 	tui.Info("Current: " + transportLabel(selectedTransport(spec)) + " (The Other Side Must Match)")
 	fmt.Println()
 
-	newTransport := chooseTransport()
+	newTransport := chooseTransport(false)
 	if newTransport == "" {
 		return
 	}

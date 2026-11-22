@@ -38,7 +38,7 @@ func TestApplyTokenKeepsCredentialsOutOfProcessArguments(t *testing.T) {
 
 func TestInvalidTunnelSettingsCannotReachTheHelper(t *testing.T) {
 	for _, args := range [][]string{
-		{"setup", "gre", "test", "198.18.0.1", "198.18.0.2"},
+		{"setup", "unknown", "test", "198.18.0.1", "198.18.0.2"},
 		{"setup", "fou", "../test", "198.18.0.1", "198.18.0.2"},
 		{"setup", "vxlan", "test", "198.18.0.1", "198.18.0.1"},
 		{"setup", "ackless", "test", "::1", "198.18.0.2"},

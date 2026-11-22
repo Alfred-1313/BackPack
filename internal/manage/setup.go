@@ -13,6 +13,7 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/backpack/backpack/config"
 	"github.com/backpack/backpack/internal/app"
+	"github.com/backpack/backpack/internal/omni"
 	"github.com/backpack/backpack/internal/tui"
 	"github.com/backpack/backpack/internal/tunnel/naive"
 	"github.com/backpack/backpack/internal/utils/network"
@@ -377,37 +378,36 @@ func setupManagedCarrierWithProbe(s *TunnelSpec, chosen, public, host string, pr
 	return true
 }
 
-// chooseTransport walks the family menu and then the variant menu. It returns
-// an empty string when the user backs out at either level.
-func chooseTransport() string {
-	groups := cliTransportGroups()
-	for {
-		groupOpts := make([]tui.Option, len(groups))
-		for i, g := range groups {
-			groupOpts[i] = tui.Option{Title: g.label, Desc: g.desc}
+func reverseTransportChoices(extended bool) []transportEntry {
+	var options []transportEntry
+	for _, group := range cliTransportGroups() {
+		for _, entry := range group.entries {
+			if entry.value != "" {
+				options = append(options, entry)
+			}
 		}
-		gi := tui.ChooseOpt("Select Transport Family", groupOpts)
-		if gi < 0 {
-			return ""
-		}
-		group := groups[gi]
-
-		entryOpts := make([]tui.Option, len(group.entries))
-		for i, e := range group.entries {
-			entryOpts[i] = tui.Option{Title: e.label, Desc: e.desc}
-		}
-		ei := tui.ChooseOpt("Select "+group.label+" Transport", entryOpts)
-		if ei < 0 {
-			// Back to the family list rather than out of setup entirely.
-			continue
-		}
-		if group.entries[ei].value == "" {
-			tui.Warn(group.entries[ei].label + " Is Not Available Yet.")
-			tui.PressEnter()
-			continue
-		}
-		return group.entries[ei].value
 	}
+	if extended {
+		for _, item := range omni.Options() {
+			if item["direction"] == "reverse" {
+				options = append(options, transportEntry{label: item["label"], desc: item["desc"], value: "omni:" + item["value"]})
+			}
+		}
+	}
+	return options
+}
+
+func chooseTransport(extended bool) string {
+	entries := reverseTransportChoices(extended)
+	options := make([]tui.Option, len(entries))
+	for i, entry := range entries {
+		options[i] = tui.Option{Title: entry.label, Desc: entry.desc}
+	}
+	i := tui.ChooseOpt("Select Transport", options)
+	if i < 0 {
+		return ""
+	}
+	return entries[i].value
 }
 
 // choosePreset asks for the performance profile. Turbo is preselected because

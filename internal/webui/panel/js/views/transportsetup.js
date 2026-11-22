@@ -5,29 +5,32 @@ export function bindExtraTransports(root, options) {
   const step = root.querySelector('.step3rev').closest('.step');
   const panel = document.createElement('section');
   panel.className = 'extra-transport'; panel.hidden = true;
-  step.append(panel);
-  const setActive = active => {
-    panel.hidden = !active;
-    step.classList.toggle('extra-active', active);
-    root.classList.toggle('extra-active', active);
-  };
-  const button = (label, click) => {
-    const b = document.createElement('button'); b.type = 'button'; b.className = 'tr'; b.textContent = label;
-    b.onclick = click; return b;
-  };
-  function select(value) {
-    setActive(true);
-    panel.replaceChildren(button('Back to transport families', () => setActive(false)));
-    const grid = document.createElement('div'); grid.className = 'trgrid';
-    panel.append(grid);
-    const choices = value === 'gost-direct' ? [{value,label:'GOST Direct'}] : options;
-    for (const item of choices) {
-      const b = button(item.label, () => select(item.value));
-      b.classList.toggle('on', item.value === value); grid.append(b);
+  let currentCard, previousNative;
+  function close() {
+    panel.hidden = true;
+    step.classList.remove('extra-active');
+    root.classList.remove('extra-active');
+    if (currentCard?.parentElement) {
+      const grid = currentCard.parentElement;
+      currentCard.classList.remove('on');
+      if (!grid.querySelector('.on') && previousNative?.parentElement === grid) previousNative.classList.add('on');
     }
-    if (!value) return;
+    currentCard = previousNative = null;
+  }
+
+  function select(item, card) {
+    const grid = card.parentElement;
+    if (!currentCard) previousNative = grid.querySelector('[data-fn].on');
+    for (const button of grid.children) button.classList.toggle('on', button === card);
+    currentCard = card;
+    grid.closest('.grp3').after(panel);
+    panel.hidden = false;
+    step.classList.add('extra-active');
+    root.classList.add('extra-active');
+    panel.replaceChildren();
+    const value = item.value;
     const gost = value === 'gost-direct';
-    const title = choices.find(o => o.value === value)?.label || value;
+    const title = item.label;
     const form = document.createElement('form');
     form.innerHTML = '<h3>'+esc(title)+'</h3><label>On this server<select name="role"><option value="setup">Iran - create tunnel</option><option value="join">Kharej - apply setup token</option></select></label><div data-fields></div><button type="submit" class="nb solid2">Create tunnel</button><pre aria-live="polite"></pre><button type="button" class="nb" data-copy hidden>Copy setup token</button>';
     panel.append(form);
@@ -38,7 +41,7 @@ export function bindExtraTransports(root, options) {
     const refresh = () => {
       const join = role.value === 'join';
       const fields = join ? [['token','Setup token']] : [['name','Tunnel name'],...(!gost ? [['local','Iran IPv4']] : []),
-        ['peer','Kharej IPv4'],...(gost ? [['ingress','Public TCP port on Iran'],['port','GOST TLS port on Kharej'],['target','Service port on Kharej (127.0.0.1)']] : [['omniport','Kharej tunnel port (optional)']])];
+        ['peer','Kharej IPv4'],...(gost ? [['ingress','Public TCP port on Iran'],['port','GOST TLS port on Kharej'],['target','Service port on Kharej (127.0.0.1)']] : [['omniport',value === 'gre' ? 'GRE key (optional)' : 'Kharej tunnel port (optional)']])];
       form.querySelector('[data-fields]').innerHTML = fields.map(([key,label]) => '<label>'+label+'<input '+(key === 'omniport' ? '' : 'required')+' autocomplete="off" name="'+key+'"></label>').join('');
       submit.textContent = join ? 'Apply setup token' : 'Create tunnel';
       result.textContent=''; copy.hidden=true;
@@ -68,18 +71,26 @@ export function bindExtraTransports(root, options) {
     };
   }
   function attach() {
-    const fam = root.querySelector('.fam'), grid = root.querySelector('.step3direct .trgrid');
-    if (fam && !fam.querySelector('[data-extra]')) {
-      const b=button('OmniTunnel',()=>select(null)); b.dataset.extra='omni'; fam.append(b);
-    }
-    if (grid && !grid.querySelector('[data-extra]')) {
-      for (const item of [...options,{value:'gost-direct',label:'GOST Direct (Relay + TLS)'}]) {
-        const b=button(item.label,()=>select(item.value)); b.dataset.extra=item.value; grid.append(b);
+    const reverse = root.querySelector('#trlist');
+    const direct = root.querySelector('.step3direct .trgrid');
+    const entries = [...options, {value:'gost-direct', label:'GOST Direct (Relay + TLS)', direction:'direct'}];
+    for (const [grid, direction] of [[reverse, 'reverse'], [direct, 'direct']]) {
+      if (!grid || grid.querySelector('[data-extra]')) continue;
+      grid.closest('.grp3').classList.add('transport-choices');
+      for (const item of entries.filter(item => item.direction === direction)) {
+        const card = document.createElement('button');
+        card.type = 'button';
+        card.className = direction === 'reverse' ? 'tr' : 'dc';
+        card.dataset.extra = item.value;
+        card.title = item.desc || '';
+        card.innerHTML = '<span class="tn2"><b>'+esc(item.label)+'</b><span class="key2">'+esc(item.value)+'</span></span>';
+        card.onclick = () => select(item, card);
+        grid.append(card);
       }
     }
   }
   attach();
-  root.addEventListener('pick',()=>{setActive(false);attach();});
-  root.addEventListener('step',()=>setActive(false));
+  root.addEventListener('pick', close);
+  root.addEventListener('step', close);
   return attach;
 }

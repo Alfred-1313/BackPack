@@ -11,7 +11,7 @@ import (
 	"github.com/backpack/backpack/internal/tui"
 )
 
-func setupExtraDirect(carrier string, side directSide) {
+func setupExtraTransport(carrier string, side directSide) {
 	defer tui.PressEnter()
 	if carrier == "gost-direct" {
 		form := gostdirect.Form{Action: "setup"}
@@ -45,7 +45,11 @@ func setupExtraDirect(carrier string, side directSide) {
 		mode := strings.TrimPrefix(carrier, "omni:")
 		args = []string{"setup", mode, tui.Prompt("Tunnel name: "),
 			tui.Prompt("Iran IPv4: "), tui.Prompt("Kharej IPv4: ")}
-		if port := tui.Prompt("Kharej tunnel port (blank for automatic): "); port != "" {
+		label := "Kharej tunnel port (blank for automatic): "
+		if mode == "gre" {
+			label = "GRE key (blank for automatic): "
+		}
+		if port := tui.Prompt(label); port != "" {
 			args = append(args, port)
 		}
 	}

@@ -34,8 +34,12 @@ func SetupServer() {
 	tui.Title("Reverse Tunnel — Iran")
 	fmt.Println()
 
-	transport := chooseTransport()
+	transport := chooseTransport(true)
 	if transport == "" {
+		return
+	}
+	if transport == "omni:reverse-mux" {
+		setupExtraTransport(transport, sideIran)
 		return
 	}
 	if transport == "reality" {
@@ -190,8 +194,12 @@ func SetupClient() {
 	tui.Title("Reverse Tunnel — Kharej")
 	fmt.Println()
 
-	transport := chooseTransport()
+	transport := chooseTransport(true)
 	if transport == "" {
+		return
+	}
+	if transport == "omni:reverse-mux" {
+		setupExtraTransport(transport, sideKharej)
 		return
 	}
 	if transport == "reality" {
