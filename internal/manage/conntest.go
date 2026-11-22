@@ -1149,6 +1149,8 @@ func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResul
 		results[i] = ctHTTPSResult(results[i], c)
 		if c.skip != "" {
 			results[i].Status, results[i].Detail = ctSkipped, c.skip
+		} else if c.extra {
+			results[i].Phase, results[i].Detail = ctPhaseTransportQueued, "waiting for earlier transport measurements"
 		}
 	}
 	// The kharej sees the same rows, a question at a time.
@@ -1245,7 +1247,7 @@ func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResul
 		}
 		if ctx.Err() != nil {
 			row := results[i]
-			row.Status, row.Detail = ctSkipped, "test stopped"
+			row.Status, row.Detail, row.Phase = ctSkipped, "test stopped", ""
 			reportRow(i, row)
 			continue
 		}
@@ -1467,6 +1469,11 @@ func ctProbe(ctx context.Context, c *connTestCase, l3Echo int, report func(ConnT
 		return ctDial(ctx, c, l3Echo)
 	}
 
+	if c.extra {
+		r.Phase, r.Detail = ctPhaseTransportConnect, "waiting for the first verified echo"
+		say("")
+		r.Phase, r.Detail = "", ""
+	}
 	// Up: the first echo that comes back.
 	start := time.Now()
 	var conn net.Conn

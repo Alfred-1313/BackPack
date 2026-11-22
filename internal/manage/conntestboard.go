@@ -99,8 +99,15 @@ func ctStatusLabel(r ConnTestResult) string {
 	if ConnTestSpeedPhase(r.Phase) {
 		return "SPEED"
 	}
-	if r.Phase == "speed-queued" {
+	switch r.Phase {
+	case "speed-queued", ctPhaseAgain, ctPhaseTransportQueued:
 		return "QUEUED"
+	case ctPhaseTransportSetup:
+		return "SETTING UP"
+	case ctPhaseTransportConnect:
+		return "CONNECTING"
+	case ctPhaseTransportCleanup:
+		return "CLEANING UP"
 	}
 	return strings.ToUpper(r.Status)
 }

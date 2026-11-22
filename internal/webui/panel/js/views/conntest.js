@@ -156,7 +156,7 @@ function runPane(v) {
     <span class="ct-kick">Step 3 · testing</span>
     ${clock('left')}
     <div class="ct-wtitle"><b>Testing against ${esc(v.kharej || 'the kharej')}</b><i class="ct-dots"><i></i><i></i><i></i></i></div>
-    <p class="ct-wsub" id="ctSettled">${settled(v)}</p>
+    <p class="ct-wsub" id="ctSettled">${esc(settled(v))}</p>
     <span class="sp"></span>
     <div class="ct-foot"><span class="tl-meta">From <b>${esc(v.host || '')}</b> · ${esc(title(v.preset))}</span>
       <button class="tl-btn ghost" id="ctStop">${ICON.stop}Stop</button></div>
@@ -165,12 +165,16 @@ function runPane(v) {
 
 function settled(v) {
   const live = (v.rows || []).filter(r => r.status !== 'skipped');
+  const waiting = live.filter(r => r.phase === 'transport-queued').length;
+  const queue = waiting ? ` ${waiting} OmniTunnel/GOST checks queued.` : '';
   const speed = live.find(r => r.phase === 'speed' || r.phase === 'speed-second');
-  if (speed && speed.phase === 'speed-second') return `Speed, second pass in reverse order: ${esc(speed.name)} — ${live.filter(r => r.phase === 'speed-again').length} to go.`;
-  if (speed) return `Measuring download and upload on ${esc(speed.name)} — ${live.filter(r => r.phase === 'speed-queued').length} healthy tunnels waiting.`;
-  const done = live.filter(r => r.status !== 'testing').length;
-  return live.length ? `${done} of ${live.length} transports judged.`
-    : 'The kharej is building its end of each test tunnel.';
+  if (speed?.phase === 'speed-second') return `Second speed pass on ${speed.name}.${queue}`;
+  if (speed) return `Measuring download and upload on ${speed.name}.${queue}`;
+  const active = live.find(r => ['transport-setup', 'transport-connect', 'transport-cleanup'].includes(r.phase));
+  if (active) return `${rowPhase[active.phase]} ${active.name}.${queue}`;
+  if (!live.length) return 'The kharej is building its end of each test tunnel.';
+  const done = live.filter(r => r.status !== 'testing' && !r.phase).length;
+  return `${done} of ${live.length} transports judged.${queue}`;
 }
 
 const title = s => (s ? s[0].toUpperCase() + s.slice(1) : 'Turbo');
@@ -232,6 +236,12 @@ function endPane(v) {
 
 /* ---- right: the transports ----------------------------------------------- */
 const tone = st => ({ ok: 'ok', unstable: 'wr', down: 'er', skipped: 'sk' }[st] || 'run');
+const rowPhase = {
+  speed: 'Speed test', 'speed-second': 'Speed test', 'speed-queued': 'Queued',
+  'speed-again': 'Queued', 'transport-queued': 'Queued', 'transport-setup': 'Setting up',
+  'transport-connect': 'Connecting', 'transport-cleanup': 'Cleaning up',
+};
+
 const statusWord = st => ({ ok: 'Held', unstable: 'Unstable', down: 'Down', skipped: 'Skipped', testing: 'Testing' }[st] || st);
 const keyOf = r => `${r.kind}:${r.tr}`;
 
@@ -254,8 +264,9 @@ const rate = (avg, peak) => `<b>${mbps(Math.max(avg, peak || 0))}</b> Mb/s${peak
 function fillRow(n, r) {
   const total = r.total || 60;
   const testing = r.status === 'testing';
+  const waiting = r.phase === 'transport-queued';
   const share = Math.max(0, Math.min(1, testing ? (r.tried / total) : (r.ok / total)));
-  n.className = `ct-row ${tone(r.status)}${r.uploadMbps ? ' has-speed' : ''}`;
+  n.className = `ct-row ${waiting ? "queued" : tone(r.status)}${r.uploadMbps ? ' has-speed' : ''}`;
   const nb = n.querySelector('.nm b');
   nb.textContent = r.name;
   nb.title = r.name;
@@ -263,13 +274,13 @@ function fillRow(n, r) {
   sm.textContent = r.detail || (r.uploadMbps ? 'max: best second of both passes' : '');
   sm.title = r.detail || '';
   n.querySelector('.bar i').style.setProperty('--w', (share * 100).toFixed(1) + '%');
-  n.querySelector('.ec').textContent = r.status === 'skipped' ? '—' : `${testing ? r.tried : r.ok}/${total}`;
+  n.querySelector('.ec').textContent = r.status === 'skipped' || waiting ? '—' : `${testing ? r.tried : r.ok}/${total}`;
   n.querySelector('.fg').innerHTML = [
     r.rtt ? `<span><b>${r.rtt}</b> ms</span>` : '',
     r.mbps ? `<span>↓ ${rate(r.mbps, r.peakMbps)}</span>` : '',
     r.uploadMbps ? `<span>↑ ${rate(r.uploadMbps, r.uploadPeakMbps)}</span>` : '',
   ].join('');
-  n.querySelector('.st').textContent = r.phase === 'speed' || r.phase === 'speed-second' ? 'Speed test' : r.phase === 'speed-queued' ? 'Queued' : statusWord(r.status);
+  n.querySelector('.st').textContent = rowPhase[r.phase] || statusWord(r.status);
 }
 
 function emptyRight(st) {

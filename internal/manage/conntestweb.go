@@ -1,6 +1,9 @@
 package manage
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // What the web panel's Connection Test section needs from the test that the
 // menu runs. The panel drives the same StartConnTestIran → Joined → Run →
@@ -18,7 +21,7 @@ func ConnTestJoinWait() time.Duration { return connTestJoinWait }
 func ConnTestRunTime() time.Duration {
 	return connTestConnectWait + time.Duration(connTestSoak)*time.Second + 45*time.Second +
 		ConnTestSpeedTime(len(connTestReverse)-1+len(connTestDirect)) +
-		time.Duration(len(ctExtraCases()))*(connTestConnectWait+time.Duration(connTestSoak)*time.Second+ConnTestSpeedTime(1)+70*time.Second)
+		time.Duration(len(ctExtraCases()))*ctExtraTime()
 }
 
 // ConnTestSpeedTime estimates the serial speed phase for healthy tunnels:
@@ -49,6 +52,49 @@ func ConnTestSpeedLeft(phases []string) time.Duration {
 		return 0
 	}
 	return left
+}
+
+func ctExtraTime() time.Duration {
+	return connTestConnectWait + time.Duration(connTestSoak)*time.Second + ConnTestSpeedTime(1) + 70*time.Second
+}
+
+// ConnTestTimeLeft estimates the serial work that remains once speed tests or
+// one of the helper transports has started. While parallel echoes are still
+// running, the caller keeps the overall estimate.
+func ConnTestTimeLeft(rows []ConnTestResult) time.Duration {
+	var native []string
+	var helpers time.Duration
+	active := false
+	for _, row := range rows {
+		if row.Transport != ctGostDirect && !strings.HasPrefix(row.Transport, ctOmniPrefix) {
+			native = append(native, row.Phase)
+			continue
+		}
+		switch row.Phase {
+		case ctPhaseTransportQueued:
+			helpers += ctExtraTime()
+		case ctPhaseTransportSetup, ctPhaseTransportConnect:
+			helpers += ctExtraTime()
+			active = true
+		case "speed", ctPhaseSecond:
+			helpers += ConnTestSpeedTime(1)
+			active = true
+		case ctPhaseTransportCleanup:
+			helpers += 40 * time.Second
+			active = true
+		case "":
+			if row.Status == ctTesting && row.Tried > 0 {
+				remaining := max(0, row.Total-row.Tried)
+				helpers += time.Duration(remaining)*time.Second + ConnTestSpeedTime(1)
+				active = true
+			}
+		}
+	}
+	left := ConnTestSpeedLeft(native)
+	if left == 0 && !active {
+		return 0
+	}
+	return left + helpers
 }
 
 // ConnTestSpeedPhase is a phase in which a row is being measured, in either

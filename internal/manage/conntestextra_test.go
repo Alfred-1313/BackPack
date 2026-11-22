@@ -80,3 +80,29 @@ func TestConnectionTestExtraJobAuthenticationAndChunking(t *testing.T) {
 		t.Fatalf("unexpected reply: %+v", reply)
 	}
 }
+
+func TestConnectionTestQueueKeepsHelpersInTheRemainingTime(t *testing.T) {
+	rows := []ConnTestResult{
+		{Transport: "tcp", Phase: ctPhaseSecond},
+		{Transport: "omni-gre", Phase: ctPhaseTransportQueued, Status: ctTesting},
+		{Transport: ctGostDirect, Phase: ctPhaseTransportQueued, Status: ctTesting},
+	}
+	if got, want := ConnTestTimeLeft(rows), ctSpeedSecondPass()+2*ctExtraTime(); got != want {
+		t.Fatalf("time left %s, want %s", got, want)
+	}
+	for phase, want := range map[string]string{
+		ctPhaseTransportQueued:  "QUEUED",
+		ctPhaseTransportSetup:   "SETTING UP",
+		ctPhaseTransportConnect: "CONNECTING",
+		ctPhaseTransportCleanup: "CLEANING UP",
+	} {
+		if got := ctStatusLabel(ConnTestResult{Status: ctTesting, Phase: phase}); got != want {
+			t.Errorf("phase %s: label %s, want %s", phase, got, want)
+		}
+	}
+	rows[0].Phase = ""
+	rows[1].Phase = ctPhaseTransportCleanup
+	if got, want := ConnTestTimeLeft(rows), 40*time.Second+ctExtraTime(); got != want {
+		t.Fatalf("time left during cleanup %s, want %s", got, want)
+	}
+}

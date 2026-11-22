@@ -24,6 +24,13 @@ import (
 const ctGostDirect = "gost-direct"
 const ctOmniPrefix = "omni-"
 
+const (
+	ctPhaseTransportQueued  = "transport-queued"
+	ctPhaseTransportSetup   = "transport-setup"
+	ctPhaseTransportConnect = "transport-connect"
+	ctPhaseTransportCleanup = "transport-cleanup"
+)
+
 var ctExtraTestName = regexp.MustCompile("^bpct[a-f0-9]{12}$")
 var ctOpaqueToken = regexp.MustCompile("[A-Za-z0-9_+/=-]{40,}")
 var ctANSI = regexp.MustCompile("\\x1b\\[[0-9;]*m")
@@ -413,9 +420,15 @@ func (s *ConnTestIran) setupExtra(ctx context.Context, c *connTestCase, mode str
 func (s *ConnTestIran) probeExtra(ctx context.Context, c *connTestCase, report func(ConnTestResult)) {
 	mode := strings.TrimPrefix(c.tr, ctOmniPrefix)
 	c.name = ctExtraName()
-	row := ConnTestResult{Kind: c.kind, Transport: c.tr, Status: ctTesting, Total: connTestSoak, Detail: "preparing temporary tunnel"}
+	row := ConnTestResult{Kind: c.kind, Transport: c.tr, Status: ctTesting, Total: connTestSoak, Phase: ctPhaseTransportSetup, Detail: "preparing temporary tunnel"}
 	report(row)
 	defer func() {
+		if !c.localStarted && !c.peerStarted {
+			return
+		}
+		cleaning := row
+		cleaning.Phase, cleaning.Detail = ctPhaseTransportCleanup, "removing temporary tunnel on both servers"
+		report(cleaning)
 		ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
 		defer cancel()
 		var peerErr, localErr error
@@ -427,11 +440,11 @@ func (s *ConnTestIran) probeExtra(ctx context.Context, c *connTestCase, report f
 		}
 		if localErr != nil || peerErr != nil {
 			row.Detail = strings.Trim(strings.Join([]string{row.Detail, "temporary tunnel cleanup could not be confirmed"}, "; "), "; ")
-			report(row)
 		}
+		report(row)
 	}()
 	if err := s.setupExtra(ctx, c, mode); err != nil {
-		row.Status, row.Detail = ctSkipped, "Could not prepare tunnel: "+ctExtraError(err)
+		row.Status, row.Detail, row.Phase = ctSkipped, "Could not prepare tunnel: "+ctExtraError(err), ""
 		report(row)
 		return
 	}
