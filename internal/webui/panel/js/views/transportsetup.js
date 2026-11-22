@@ -50,7 +50,7 @@ export function bindExtraTransports(root, options) {
     copy.onclick = async () => flashCopied(copy, await copyText(token));
     form.onsubmit = async event => {
       event.preventDefault();
-      const f = Object.fromEntries(new FormData(form));
+      const f = Object.fromEntries([...new FormData(form)].map(([name, value]) => [name, value.trim()]));
       submit.disabled = role.disabled = true; result.textContent='Working...'; copy.hidden=true;
       try {
         if (gost) {
@@ -59,7 +59,7 @@ export function bindExtraTransports(root, options) {
           token = data.token;
           result.textContent = data.unit + (token ? '\nOn Kharej apply the token here or with backpack gost-direct join.\n'+token : '');
         } else {
-          const args = f.role === 'join' ? ['join'] : ['setup',value,f.name,f.local,f.peer];
+          const args = f.role === 'join' ? ['join',value] : ['setup',value,f.name,f.local,f.peer];
           if (f.role === 'setup' && f.omniport?.trim()) args.push(f.omniport.trim());
           const data = await api.omniRun(args,f.token || '');
           result.textContent = data.output.replace(/\x1b\[[0-9;]*m/g,'').trim() || 'Done';

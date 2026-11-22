@@ -5,8 +5,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/backpack/backpack/internal/gostdirect"
-	"github.com/backpack/backpack/internal/transportprobe"
 	"os"
 	"os/signal"
 	"syscall"
@@ -14,12 +12,14 @@ import (
 	"github.com/backpack/backpack/cmd"
 	"github.com/backpack/backpack/internal/app"
 	"github.com/backpack/backpack/internal/cli"
+	"github.com/backpack/backpack/internal/gostdirect"
 	"github.com/backpack/backpack/internal/localproxy"
 	"github.com/backpack/backpack/internal/manage"
 	"github.com/backpack/backpack/internal/menu"
 	"github.com/backpack/backpack/internal/monitor"
 	"github.com/backpack/backpack/internal/omni"
 	"github.com/backpack/backpack/internal/telegram"
+	"github.com/backpack/backpack/internal/transportprobe"
 	"github.com/backpack/backpack/internal/utils"
 	"github.com/backpack/backpack/internal/webui"
 )
@@ -158,19 +158,20 @@ func runProxy() {
 // runEngine starts a single tunnel from a TOML config and blocks until a
 // termination signal arrives, then shuts down gracefully.
 func runEngine(configPath string) {
-	ctx, cancel := context.WithCancel(context.Background())
-
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		cmd.Run(configPath, ctx)
-	}()
-
-	<-sigChan
-	cancel()
-	<-done
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	if os.Getenv(app.ConnTestParentPipe) == "1" {
+		// The connection tester keeps the write end open for the lifetime of
+		// this engine. EOF also arrives when the tester is killed abruptly.
+		parentCtx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		go func() {
+			var unused [1]byte
+			_, _ = os.Stdin.Read(unused[:])
+			cancel()
+		}()
+		ctx = parentCtx
+	}
+	cmd.Run(configPath, ctx)
 	logger.Info("backpack engine stopped")
 }

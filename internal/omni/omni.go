@@ -25,8 +25,8 @@ const revision = "acf4e6e5bacc4aa841320e39cff4b51e3f2a9eec"
 var transports = []struct {
 	value, title, description string
 }{
-	{"gre", "GRE (OmniTunnel)", "unencrypted IPv4 peer-to-peer kernel GRE (protocol 47)"},
-	{"icmp", "ICMP (OmniTunnel)", "peer-to-peer IP over ICMP"},
+	{"gre", "GRE (IPv4)", "unencrypted IPv4 peer-to-peer kernel GRE (protocol 47)"},
+	{"icmp", "ICMP", "peer-to-peer IP over ICMP"},
 	{"udp", "Routed UDP", "peer-to-peer encrypted IP over UDP"},
 	{"tcp", "Routed TCP", "encrypted IP over a TCP stream"},
 	{"mux", "Routed TCP Mux", "encrypted IP over parallel TCP streams"},
@@ -37,6 +37,16 @@ var transports = []struct {
 	{"reverse-mux", "Reverse Mux", "Kharej dials Iran over the underlying ICMP tunnel"},
 	{"stripe", "Stripe", "IP traffic striped across TCP connections"},
 	{"ackless", "Ackless", "raw TCP packet carrier with authenticated frames"},
+}
+
+// Label is the shared display name used in setup and test results.
+func Label(mode string) string {
+	for _, transport := range transports {
+		if transport.value == mode {
+			return transport.title
+		}
+	}
+	return strings.ToUpper(mode)
 }
 
 // Options exposes the same transport choices to the web panel.
@@ -55,7 +65,7 @@ func Options() []map[string]string {
 const usage = `BackPack OmniTunnel transports
 
   backpack omni setup <transport> <name> <local-ipv4> <peer-ipv4> [peer-port]
-  backpack omni join                    paste a setup token on Kharej
+  backpack omni join [transport]        paste a setup token on Kharej
   backpack omni list
   backpack omni status <name>
   backpack omni start|stop|remove <name>
@@ -83,7 +93,10 @@ func parse(args []string, input io.Reader) (operation, error) {
 	command := args[0]
 	switch command {
 	case "join", "mux-join":
-		if len(args) != 1 {
+		expected := ""
+		if command == "join" && len(args) == 2 && knownTransport(args[1]) {
+			expected = args[1]
+		} else if len(args) != 1 {
 			return operation{}, fmt.Errorf("paste the token on standard input")
 		}
 		raw, err := bufio.NewReader(io.LimitReader(input, 32<<10)).ReadString('\n')
@@ -97,6 +110,12 @@ func parse(args []string, input io.Reader) (operation, error) {
 		}
 		if command == "mux-join" {
 			return operation{args: []string{"mux-token"}, token: token}, nil
+		}
+		if expected != "" {
+			fields := strings.SplitN(string(decoded), "|", 3)
+			if len(fields) < 3 || fields[1] != expected {
+				return operation{}, fmt.Errorf("the setup token does not match the selected %s transport", Label(expected))
+			}
 		}
 		return operation{args: []string{"server-token"}, token: token}, nil
 	case "setup":
@@ -189,7 +208,7 @@ func RunContext(ctx context.Context, args []string, input io.Reader, stdout, std
 		fmt.Fprint(stdout, usage)
 		return nil
 	}
-	if f, ok := input.(*os.File); ok && len(args) == 1 && (args[0] == "join" || args[0] == "mux-join") {
+	if f, ok := input.(*os.File); ok && (args[0] == "join" || args[0] == "mux-join") {
 		if st, err := f.Stat(); err == nil && st.Mode()&os.ModeCharDevice != 0 {
 			fmt.Fprint(stdout, "Setup Token: ")
 		}

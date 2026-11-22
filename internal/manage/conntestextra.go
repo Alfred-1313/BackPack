@@ -237,7 +237,7 @@ func (w *ctExtraWorker) join(ctx context.Context, link ConnTestLink, job ctExtra
 		return errors.New("invalid OmniTunnel test token")
 	}
 	w.name, w.mode = job.Name, job.Mode
-	if _, err := ctOmniRun(ctx, job.Token, "join"); err != nil {
+	if _, err := ctOmniRun(ctx, job.Token, "join", job.Mode); err != nil {
 		return err
 	}
 	if job.Mode == "reverse-mux" || job.Mode == "hysteria" {
@@ -383,8 +383,8 @@ func (s *ConnTestIran) setupExtra(ctx context.Context, c *connTestCase, mode str
 		return err
 	}
 	fields, err := ctOmniTokenFields(token)
-	if err != nil {
-		return err
+	if err != nil || fields[0] != c.name || fields[1] != mode || fields[2] != far || fields[3] != near {
+		return errors.New("the helper returned settings for a different test tunnel")
 	}
 	job.Action, job.Token = "join", token
 	c.peerStarted = true

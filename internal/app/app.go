@@ -9,6 +9,9 @@ import (
 )
 
 const (
+	// ConnTestParentPipe indicates that stdin tracks the temporary test parent.
+	ConnTestParentPipe = "BACKPACK_CONNTEST_PARENT_PIPE"
+
 	// Version of the backpack engine.
 	Version = "v2.0.0"
 

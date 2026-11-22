@@ -166,7 +166,7 @@ function runPane(v) {
 function settled(v) {
   const live = (v.rows || []).filter(r => r.status !== 'skipped');
   const waiting = live.filter(r => r.phase === 'transport-queued').length;
-  const queue = waiting ? ` ${waiting} OmniTunnel/GOST checks queued.` : '';
+  const queue = waiting ? ` ${waiting} transport checks queued.` : '';
   const speed = live.find(r => r.phase === 'speed' || r.phase === 'speed-second');
   if (speed?.phase === 'speed-second') return `Second speed pass on ${speed.name}.${queue}`;
   if (speed) return `Measuring download and upload on ${speed.name}.${queue}`;
@@ -198,7 +198,7 @@ function bestPane(v) {
   return `<div class="ct-l-in ct-best">
     <div class="ct-best-head">
       <span class="ct-medal">${ICON.medal}</span>
-      <div><span class="badge">Best for this path</span><b class="tr">${esc(b.tr)}</b></div>
+      <div><span class="badge">Best for this path</span><b class="tr">${esc(b.name || b.tr)}</b></div>
     </div>
     <div class="ct-bgrid">
       ${cell('IP path', b.family || '')}
@@ -512,9 +512,9 @@ export function connTestView(ctx) {
     if (ps !== pathsSig) {
       pathsSig = ps;
       $('#ctPaths',view).innerHTML = fresh || !paths.length ? '' : `<div class="tl-seg">${paths.map((p,i) =>
-        `<button type="button" data-route="${i}" class="${i === at ? 'on' : ''}" aria-pressed="${i === at}"><b>${esc(p.family)} · ${esc(p.host)}</b><small>${esc(p.state)}${p.best?.tr ? ` · ${esc(p.best.tr)} · ${(p.best.mb || 0).toFixed(2)} ↓ / ${(p.best.upload_mb || 0).toFixed(2)} ↑ Mb/s · ${p.best.rt || 0} ms` : ''}</small></button>`).join('')}</div>
+        `<button type="button" data-route="${i}" class="${i === at ? 'on' : ''}" aria-pressed="${i === at}"><b>${esc(p.family)} · ${esc(p.host)}</b><small>${esc(p.state)}${p.best?.tr ? ` · ${esc(p.best.name || p.best.tr)} · ${(p.best.mb || 0).toFixed(2)} ↓ / ${(p.best.upload_mb || 0).toFixed(2)} ↑ Mb/s · ${p.best.rt || 0} ms` : ''}</small></button>`).join('')}</div>
         ${ACTIVE.includes(st) ? '<button type="button" class="tl-btn" id="ctStopPaths">Stop all IP paths</button>' : ''}
-        ${v.best?.tr ? `<p class="tl-meta">Recommended: ${esc(v.best.family)} · ${esc(v.best.host)} · ${esc(v.best.tr)}</p>` : ''}`;
+        ${v.best?.tr ? `<p class="tl-meta">Recommended: ${esc(v.best.family)} · ${esc(v.best.host)} · ${esc(v.best.name || v.best.tr)}</p>` : ''}`;
     }
     const p = !fresh && !['idle','starting'].includes(st) ? paths[at] : null;
     const detail = p ? { ...v, ...p, state: phase(p) === 'unavailable' ? 'failed' : p.state, ran: p.started, best: p.best?.tr ? p.best : null } : v;

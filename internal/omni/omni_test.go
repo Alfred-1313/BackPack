@@ -62,3 +62,14 @@ func TestRemoveForwardCanConfirmRemovingTheLastMapping(t *testing.T) {
 		t.Fatalf("helper args = %q, want %q", op.args, want)
 	}
 }
+
+func TestSetupTokenMustMatchTheSelectedTransport(t *testing.T) {
+	token := base64.StdEncoding.EncodeToString([]byte("sample|udp|198.51.100.2|198.51.100.1|22000"))
+	if _, err := parse([]string{"join", "tcp"}, strings.NewReader(token)); err == nil {
+		t.Fatal("UDP token accepted by TCP setup")
+	}
+	op, err := parse([]string{"join", "udp"}, strings.NewReader(token))
+	if err != nil || op.token != token || !reflect.DeepEqual(op.args, []string{"server-token"}) {
+		t.Fatalf("matching token was not passed to the helper: %v", err)
+	}
+}

@@ -25,6 +25,7 @@ import (
 	"net/netip"
 	"os"
 	"os/exec"
+	"slices"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -33,6 +34,7 @@ import (
 	"time"
 
 	"github.com/backpack/backpack/config"
+	"github.com/backpack/backpack/internal/app"
 	"github.com/backpack/backpack/internal/spooftest"
 	"github.com/backpack/backpack/internal/tunnel/l3"
 	"github.com/backpack/backpack/internal/tunnel/naive"
@@ -1150,7 +1152,7 @@ func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResul
 		if c.skip != "" {
 			results[i].Status, results[i].Detail = ctSkipped, c.skip
 		} else if c.extra {
-			results[i].Phase, results[i].Detail = ctPhaseTransportQueued, "waiting for earlier transport measurements"
+			results[i].Phase, results[i].Detail = ctPhaseTransportQueued, "waiting for a transport test slot"
 		}
 	}
 	// The kharej sees the same rows, a question at a time.
@@ -1184,6 +1186,38 @@ func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResul
 		}(i, c)
 	}
 	wg.Wait()
+	var failed []string
+	for i, row := range results {
+		if !s.cases[i].extra && (row.Status == ctDown || row.Status == ctUnstable || row.Status == ctSkipped) {
+			failed = append(failed, s.cases[i].name)
+		}
+	}
+	s.stopTestEngines(failed)
+
+	// Let helper transports report between native speed runs. A helper still
+	// owns its full setup, echo and speed cycle, and only one pair is live at
+	// a time. Native stability has already finished and bandwidth stays serial.
+	nextExtra := 0
+	runNextExtra := func() bool {
+		for nextExtra < len(s.cases) {
+			i := nextExtra
+			nextExtra++
+			c := s.cases[i]
+			if !c.extra || c.skip != "" {
+				continue
+			}
+			if ctx.Err() != nil {
+				row := results[i]
+				row.Status, row.Detail, row.Phase = ctSkipped, "test stopped", ""
+				reportRow(i, row)
+				continue
+			}
+			s.probeExtra(ctx, c, func(row ConnTestResult) { reportRow(i, row) })
+			return true
+		}
+		return false
+	}
+	runNextExtra()
 	// Stability probes finish before any bandwidth test starts. Heavy traffic
 	// must not change another tunnel's loss/RTT or share its speed measurement.
 	speeds := map[int]ctSpeedResult{}
@@ -1208,6 +1242,7 @@ func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResul
 			ctPutSpeed(&r, speed)
 		}
 		reportRow(i, r)
+		runNextExtra()
 	}
 	// A second pass in the opposite order, each tunnel keeping its better
 	// figures. One pass does not give every tunnel the same path: the first
@@ -1238,20 +1273,10 @@ func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResul
 		}
 	}
 
-	// OmniTunnel's test instances are prepared one at a time. The echo and
-	// speed protocol is the same, and no two test carriers share their ports
-	// or run bandwidth probes concurrently.
-	for i, c := range s.cases {
-		if !c.extra || c.skip != "" {
-			continue
-		}
-		if ctx.Err() != nil {
-			row := results[i]
-			row.Status, row.Detail, row.Phase = ctSkipped, "test stopped", ""
-			reportRow(i, row)
-			continue
-		}
-		s.probeExtra(ctx, c, func(row ConnTestResult) { reportRow(i, row) })
+	// Every native measurement has its verdict. Release their memory while
+	// any remaining helper pairs take their turns.
+	s.closeTestEngines()
+	for runNextExtra() {
 	}
 
 	// The kharej's path-MTU measurement, which it has usually sent long before.
@@ -1439,16 +1464,35 @@ func ctKharejSpoof(ctx context.Context, link ConnTestLink, root bool) {
 // Fetched is closed once the kharej has collected the verdict.
 func (s *ConnTestIran) Fetched() <-chan struct{} { return s.coord.fetched }
 
-// Close stops every engine and the coordinator and removes the test's files.
-func (s *ConnTestIran) Close() {
-	if s == nil {
-		return
+func (s *ConnTestIran) stopTestEngines(names []string) {
+	s.mu.Lock()
+	var stopped, kept []*ctEngine
+	for _, engine := range s.engines {
+		if slices.Contains(names, engine.name) {
+			stopped = append(stopped, engine)
+		} else {
+			kept = append(kept, engine)
+		}
 	}
+	s.engines = kept
+	s.mu.Unlock()
+	ctStopAll(stopped)
+}
+
+func (s *ConnTestIran) closeTestEngines() {
 	s.mu.Lock()
 	engines := s.engines
 	s.engines = nil
 	s.mu.Unlock()
 	ctStopAll(engines)
+}
+
+// Close stops every engine and the coordinator and removes the test's files.
+func (s *ConnTestIran) Close() {
+	if s == nil {
+		return
+	}
+	s.closeTestEngines()
 	if s.coord != nil {
 		s.coord.close()
 	}
@@ -1736,16 +1780,26 @@ func startCTEngine(dir, name, body string) (*ctEngine, error) {
 	if err != nil {
 		return nil, err
 	}
+	parent, lifetime, err := os.Pipe()
+	if err != nil {
+		f.Close()
+		return nil, err
+	}
+	defer parent.Close()
 	cmd := exec.Command(bin, "-c", cfg)
+	cmd.Stdin = parent
+	cmd.Env = append(os.Environ(), app.ConnTestParentPipe+"=1")
 	cmd.Stdout, cmd.Stderr = f, f
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
+		lifetime.Close()
 		f.Close()
 		return nil, fmt.Errorf("starting the %s engine: %w", name, err)
 	}
 	e := &ctEngine{name: name, cmd: cmd, log: logPath, done: make(chan struct{})}
 	go func() {
 		_ = cmd.Wait()
+		lifetime.Close()
 		f.Close()
 		close(e.done)
 	}()

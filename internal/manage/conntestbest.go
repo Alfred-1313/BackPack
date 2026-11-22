@@ -29,11 +29,12 @@ import (
 
 // ConnTestBest is the recommendation table's content.
 type ConnTestBest struct {
-	Host       string  `json:"host,omitempty"`
-	Family     string  `json:"family,omitempty"`
-	Transport  string  `json:"tr,omitempty"` // "direct pck"
-	Mbps       float64 `json:"mb,omitempty"`
-	UploadMbps float64 `json:"upload_mb,omitempty"`
+	Host          string  `json:"host,omitempty"`
+	Family        string  `json:"family,omitempty"`
+	Transport     string  `json:"tr,omitempty"` // "direct pck"
+	TransportName string  `json:"name,omitempty"`
+	Mbps          float64 `json:"mb,omitempty"`
+	UploadMbps    float64 `json:"upload_mb,omitempty"`
 	// PeakMbps and UploadPeakMbps are the best one second the chosen tunnel
 	// carried: the most it can be got to move. See ConnTestResult.
 	PeakMbps       float64 `json:"peak_mb,omitempty"`
@@ -187,6 +188,7 @@ func ctComputeBest(results []ConnTestResult, cases []*connTestCase, pmtu int, lo
 		r := results[best]
 		if r.Status == ctOK {
 			b.Transport = r.Kind + " " + r.Transport
+			b.TransportName = ctKind(r.Kind) + " " + ctName(r.Transport)
 			b.Mbps = r.Mbps
 			b.UploadMbps = r.UploadMbps
 			b.PeakMbps, b.UploadPeakMbps = r.PeakMbps, r.UploadPeakMbps

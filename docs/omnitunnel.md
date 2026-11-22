@@ -5,7 +5,7 @@ acf4e6e](https://github.com/Free-Guy-IR/OmniTunnel/tree/acf4e6e5bacc4aa841320e39
 
 | OmniTunnel mode | What it carries |
 | --- | --- |
-| GRE (OmniTunnel) | Unencrypted IP over kernel GRE (IPv4 protocol 47). The setup token carries the GRE key. |
+| GRE (IPv4) | Unencrypted IP over kernel GRE (IPv4 protocol 47). The setup token carries the GRE key. |
 | ICMP | Plain IP packets over ICMP. Use native xDi for BackPack's encrypted ICMP mode. |
 | Routed UDP, TCP, Mux and WS | Complete IP packets through an encrypted UDP, TCP or WebSocket carrier. |
 | Hysteria2 | TCP and UDP port forwards over QUIC, using certificate verification. |
@@ -60,7 +60,7 @@ last forward. The menu asks you to confirm the removal.
 
 The standard Connection Test includes every OmniTunnel carrier and GOST
 Direct when both servers use a current build. On the IPv4 path it creates a
-temporary pair per carrier, checks the same stability echoes and speed
+temporary pair per carrier, interleaves its run with the native speed tests, checks the same stability echoes and speed
 samples as the other transports, then removes the test pair. An unavailable
 helper or a setup failure is reported as skipped with its setup diagnostic.
 The probe sends traffic on the selected route; support for a carrier is

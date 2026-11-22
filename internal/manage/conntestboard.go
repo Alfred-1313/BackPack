@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/backpack/backpack/internal/omni"
 )
 
 // The Connection Test's table, drawn while the test runs.
@@ -39,7 +41,7 @@ func ctName(tr string) string {
 		return "GOST Direct"
 	}
 	if mode, ok := strings.CutPrefix(tr, ctOmniPrefix); ok {
-		return "OMNI " + strings.ToUpper(mode)
+		return omni.Label(mode)
 	}
 	if n, ok := ctTransportNames[tr]; ok {
 		return n

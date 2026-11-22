@@ -37,12 +37,12 @@ func setupExtraTransport(carrier string, side directSide) {
 		}
 		return
 	}
-	args := []string{"join"}
+	mode := strings.TrimPrefix(carrier, "omni:")
+	args := []string{"join", mode}
 	var token string
 	if side == sideKharej {
 		token = tui.Prompt("OmniTunnel setup token: ")
 	} else {
-		mode := strings.TrimPrefix(carrier, "omni:")
 		args = []string{"setup", mode, tui.Prompt("Tunnel name: "),
 			tui.Prompt("Iran IPv4: "), tui.Prompt("Kharej IPv4: ")}
 		label := "Kharej tunnel port (blank for automatic): "
