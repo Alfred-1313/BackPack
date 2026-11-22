@@ -28,11 +28,23 @@ type Result struct {
 }
 
 func Install(ctx context.Context, f Form) (Result, error) {
+	return install(ctx, f, false)
+}
+
+// RunTest owns a transient listener. The caller removes it after measurement.
+func RunTest(ctx context.Context, f Form) (Result, error) {
+	return install(ctx, f, true)
+}
+
+func install(ctx context.Context, f Form, test bool) (Result, error) {
 	var result Result
-	if f.Action != "setup" && f.Action != "join" {
+	if f.Action != "setup" && f.Action != "join" && !(test && f.Action == "remove") {
 		return result, errors.New("choose setup or join")
 	}
-	body, err := json.Marshal(f)
+	body, err := json.Marshal(struct {
+		Form
+		Test bool `json:"_test,omitempty"`
+	}{f, test})
 	if err != nil {
 		return result, err
 	}

@@ -374,6 +374,34 @@ _mux_push_foreign() {
     return text
 
 
+def temporary_test_instances(text):
+    # Test names carry an independent ICMP identifier. Old instances retain
+    # the wire identifier they received at initial setup.
+    text = replace_once(text, "build_execstart() {", r'''build_execstart() {
+    local ident=4d54
+    if [[ "${1:-}" =~ ^bpct[a-f0-9]{12}$ ]]; then printf -v ident '%04x' "$PORT"; fi''')
+    text = replace_once(text, "ExecStart=$(build_execstart)", 'ExecStart=$(build_execstart "$1")')
+    text = text.replace("-I 4d54 -T", "-I $ident -T")
+    text = text.replace('systemctl enable "$(svc_name "$1")" >/dev/null 2>&1 || true',
+                        '[[ "$1" =~ ^bpct[a-f0-9]{12}$ ]] || systemctl enable "$(svc_name "$1")" >/dev/null 2>&1 || true')
+    text = replace_once(text, 'local want=() wtgt=() bounce=" " pr po tg i body',
+                        'local want=() wtgt=() bounce=" " pr po tg i body bind=0.0.0.0\n'
+                        '    if [[ "$1" =~ ^bpct[a-f0-9]{12}$ ]]; then bind=127.0.0.1; fi')
+    text = replace_once(text, '$HY_RELAY 0.0.0.0 $port', '$HY_RELAY $bind $port')
+    text = replace_once(text, 'local args=() m ph dh dp',
+                        'local args=() m ph dh dp bind=0.0.0.0\n'
+                        '    if [[ "$inst" =~ ^bpct[a-f0-9]{12}$ ]]; then bind=127.0.0.1; fi')
+    text = replace_once(text, 'R:0.0.0.0:$ph:', 'R:$bind:$ph:')
+    text = replace_once(text, r"""    printf '{"backpack:%s":["^R:0[.]0[.]0[.]0:[0-9]+$"]}\n' "$KEY" > "$dir/mux-auth.json" """.rstrip(),
+                        r'''    local allowed='0[.]0[.]0[.]0'
+    if [[ "$1" =~ ^bpct[a-f0-9]{12}$ ]]; then allowed='127[.]0[.]0[.]1'; fi
+    printf '{"backpack:%s":["^R:%s:[0-9]+$"]}\n' "$KEY" "$allowed" > "$dir/mux-auth.json"''')
+    # Forwarding units also start without enabling them for a future boot.
+    text = text.replace('systemctl enable "$u" >/dev/null 2>&1 || true',
+                        '[[ "${1:-}" =~ ^bpct[a-f0-9]{12}$ ]] || systemctl enable "$u" >/dev/null 2>&1 || true')
+    return text
+
+
 def commands(text):
 
     text = replace_function(text, "cmd_mux_del", r"""
@@ -398,6 +426,7 @@ cmd_mux_del() {
     text = text[:start] + r'''
 need_root
 case "${1:-}" in
+    test-ready) echo backpack-omni-test-v1;;
     add-manual)
         case "$2" in
             ackless) command -v nft >/dev/null || die "Ackless requires nftables (nft)";;
@@ -437,5 +466,5 @@ if __name__ == "__main__":
     root, output = map(Path, sys.argv[1:])
     use_private_key_environment(root)
     body = manager(root / "omnitunnel.sh")
-    body = commands(reverse_mux(hysteria_tls(lifecycle(kernel_links(body)))))
+    body = commands(temporary_test_instances(reverse_mux(hysteria_tls(lifecycle(kernel_links(body))))))
     output.write_text(body)

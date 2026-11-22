@@ -58,6 +58,14 @@ last forward. The menu asks you to confirm the removal.
 
 ## Connection Test
 
+The standard Connection Test includes every OmniTunnel carrier and GOST
+Direct when both servers use a current build. On the IPv4 path it creates a
+temporary pair per carrier, checks the same stability echoes and speed
+samples as the other transports, then removes the test pair. An unavailable
+helper or a setup failure is reported as skipped with its setup diagnostic.
+The probe sends traffic on the selected route; support for a carrier is
+independent of how it performs on that route.
+
 Use **Test a configured OmniTunnel or GOST connection** in Connection Test,
 or **Connection Test ? Configured tunnel** in the CLI. Start the temporary
 listener on an unused target port on Kharej. Paste its private test code on

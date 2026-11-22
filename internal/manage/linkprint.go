@@ -19,6 +19,16 @@ import (
 // the tunnel in link there. It is run as root on the kharej; install.sh hands
 // what follows it to the installed binary (see the end of install.sh).
 func InstallCommand(link string) string {
+	if endpoint, err := parseConnTestLink(link); err == nil {
+		if endpoint.PairKey != "" {
+			return app.SourceInstallTestCommand(link)
+		}
+		for _, route := range endpoint.Routes {
+			if route.PairKey != "" {
+				return app.SourceInstallTestCommand(link)
+			}
+		}
+	}
 	// Managed transports need optional helpers on the peer. Print their
 	// installation instructions instead of the plain source install command.
 	if l, err := DecodeShareLink(link); err == nil && managedTransport(l.Tr) {

@@ -90,7 +90,7 @@ func connTestIranMenu() {
 	ctx, stop := connTestContext()
 	defer stop()
 	ctMenuStage(os.Stdout, "1", "Preparing test tunnels", "Checking listeners, helpers and REALITY cover compatibility.")
-	suite, link, err := StartConnTestSuite(ConnTestOptions{Context: ctx, Direct: direct, Preset: preset, SpoofSrc: spoof}, hosts)
+	suite, link, err := StartConnTestSuite(ConnTestOptions{Context: ctx, Direct: direct, ExtraTransports: true, Preset: preset, SpoofSrc: spoof}, hosts)
 	if err != nil {
 		tui.Error(err.Error())
 		tui.PressEnter()

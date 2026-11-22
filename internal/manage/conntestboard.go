@@ -35,6 +35,12 @@ var ctTransportNames = map[string]string{
 }
 
 func ctName(tr string) string {
+	if tr == ctGostDirect {
+		return "GOST Direct"
+	}
+	if mode, ok := strings.CutPrefix(tr, ctOmniPrefix); ok {
+		return "OMNI " + strings.ToUpper(mode)
+	}
 	if n, ok := ctTransportNames[tr]; ok {
 		return n
 	}

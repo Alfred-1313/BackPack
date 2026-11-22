@@ -135,16 +135,17 @@ var connTestHelperBinary = func(tool string) (string, error) {
 // ConnTestLink is everything the kharej needs to build its end of every
 // tunnel under test, and to find the Iran side's coordinator.
 type ConnTestLink struct {
-	V     int    `json:"v"`
-	Kind  string `json:"k"` // always connTestKind
-	ID    string `json:"id"`
-	Host  string `json:"h"`  // the Iran server's address
-	Coord int    `json:"c"`  // the coordinator's port, TCP and UDP
-	Tok   string `json:"t"`  // the coordinator's secret
-	TCP   int    `json:"te"` // kharej: the TCP echo reverse tunnels forward to
-	UDP   int    `json:"ue"` // kharej: the UDP echo the udp transport forwards to
-	L3    int    `json:"le"` // kharej: the TCP echo on each direct tunnel's address
-	Until int64  `json:"u"`  // unix seconds: the kharej stops by then whatever happens
+	pairKey string // shared only by the copied link, never by ctConfig
+	V       int    `json:"v"`
+	Kind    string `json:"k"` // always connTestKind
+	ID      string `json:"id"`
+	Host    string `json:"h"`  // the Iran server's address
+	Coord   int    `json:"c"`  // the coordinator's port, TCP and UDP
+	Tok     string `json:"t"`  // the coordinator's secret
+	TCP     int    `json:"te"` // kharej: the TCP echo reverse tunnels forward to
+	UDP     int    `json:"ue"` // kharej: the UDP echo the udp transport forwards to
+	L3      int    `json:"le"` // kharej: the TCP echo on each direct tunnel's address
+	Until   int64  `json:"u"`  // unix seconds: the kharej stops by then whatever happens
 	// Preset is the performance preset every tunnel under test was built
 	// with, for the kharej's report; each case carries it too.
 	Preset string `json:"pr,omitempty"`
@@ -184,6 +185,10 @@ func (l ConnTestLink) Short() string {
 	secret, _ := base64.RawURLEncoding.DecodeString(l.Tok)
 	b := []byte{connTestLinkVer, byte(l.Coord >> 8), byte(l.Coord)}
 	b = append(b, secret...)
+	if pairKey, err := base64.RawURLEncoding.DecodeString(l.pairKey); err == nil && len(pairKey) == ctPairKeySize {
+		b[0] = 3
+		b = append(b, pairKey...)
+	}
 	if ip := net.ParseIP(l.Host).To4(); ip != nil {
 		b = append(b, ip...)
 	} else {
@@ -200,11 +205,12 @@ func (l ConnTestLink) Short() string {
 
 // connTestAddr is what a copied link says: where to ask, and the secret.
 type connTestAddr struct {
-	Host   string
-	Coord  int
-	Tok    string
-	Routes []connTestAddr `json:"-"`
-	Error  string         `json:"error,omitempty"`
+	Host    string
+	Coord   int
+	Tok     string
+	PairKey string         `json:"pk,omitempty"`
+	Routes  []connTestAddr `json:"-"`
+	Error   string         `json:"error,omitempty"`
 }
 
 // parseConnTestLink reads a copied test link, wherever it sits in what was
@@ -215,7 +221,7 @@ func parseConnTestLink(s string) (connTestAddr, error) {
 		return connTestAddr{}, fmt.Errorf("that is not a Backpack connection-test link — it begins with %s", connTestScheme)
 	}
 	b, err := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(s, connTestScheme))
-	if err != nil || len(b) <= connTestFixedLen || (b[0] != connTestLinkVer && b[0] != 2) {
+	if err != nil || len(b) <= connTestFixedLen || (b[0] != connTestLinkVer && b[0] != 2 && b[0] != 3) {
 		return connTestAddr{}, fmt.Errorf("the test link is damaged or cut short — copy all of it again")
 	}
 	if b[0] == 2 {
@@ -226,6 +232,13 @@ func parseConnTestLink(s string) (connTestAddr, error) {
 		Tok:   base64.RawURLEncoding.EncodeToString(b[3:connTestFixedLen]),
 	}
 	host := b[connTestFixedLen:]
+	if b[0] == 3 {
+		if len(host) <= ctPairKeySize {
+			return connTestAddr{}, errors.New("the paired test link is cut short")
+		}
+		a.PairKey = base64.RawURLEncoding.EncodeToString(host[:ctPairKeySize])
+		host = host[ctPairKeySize:]
+	}
 	if len(host) == 4 {
 		a.Host = net.IP(host).String()
 	} else {
@@ -289,6 +302,7 @@ func fetchConnTestLink(ctx context.Context, a connTestAddr) (ConnTestLink, error
 				return out, fmt.Errorf("the test settings from the Iran server arrived damaged — try again")
 			}
 			out.Host, out.Coord, out.Tok = a.Host, a.Coord, a.Tok
+			out.pairKey = a.PairKey
 			for i := range out.Cases {
 				out.Cases[i].Tok = ctCaseToken(a.Tok, out.Cases[i].Kind, out.Cases[i].Tr)
 			}
@@ -388,16 +402,18 @@ func ctNeedsV2Note(kind, tr string) string {
 
 // connTestCase is one tunnel under test, as the Iran side holds it.
 type connTestCase struct {
-	kind, tr   string
-	name       string
-	udp        bool   // the forwarded traffic is UDP (the udp transport)
-	entry      int    // reverse: where on this server the tunnel's users arrive
-	peerIP     string // direct: the kharej's tunnel address, where its echo listens
-	l3         l3Spec // direct: this side's spec, finished once the kharej's address is known
-	link       ShareLink
-	skip       string
-	httpsProbe string          // frozen from the authenticated coordinator before measurements start
-	rtts       []time.Duration // every echo's round trip, for the recommendation
+	extra                     bool
+	localStarted, peerStarted bool
+	kind, tr                  string
+	name                      string
+	udp                       bool   // the forwarded traffic is UDP (the udp transport)
+	entry                     int    // reverse: where on this server the tunnel's users arrive
+	peerIP                    string // direct: the kharej's tunnel address, where its echo listens
+	l3                        l3Spec // direct: this side's spec, finished once the kharej's address is known
+	link                      ShareLink
+	skip                      string
+	httpsProbe                string          // frozen from the authenticated coordinator before measurements start
+	rtts                      []time.Duration // every echo's round trip, for the recommendation
 }
 
 // ConnTestIran is a test the Iran side is running.
@@ -425,7 +441,8 @@ type ConnTestOptions struct {
 	// for the REALITY cover handshake. Empty selects a verified endpoint automatically.
 	RealityTarget string
 	// Direct includes the direct tunnels. They need root on both servers.
-	Direct bool
+	Direct          bool
+	ExtraTransports bool // standard CLI and panel include OmniTunnel and GOST Direct
 	// Preset is balance, turbo or aggressive; empty is turbo, the wizards'
 	// default.
 	Preset string
@@ -653,8 +670,32 @@ func StartConnTestIran(o ConnTestOptions) (*ConnTestIran, string, error) {
 		}
 	}
 
+	if o.ExtraTransports {
+		for _, c := range ctExtraCases() {
+			if !s.root {
+				c.skip = "needs root on both servers"
+			} else if ctFamily(host) != "IPv4" {
+				c.skip = "this transport setup requires an IPv4 path"
+			}
+			s.cases = append(s.cases, c)
+		}
+		if s.root && ctFamily(host) == "IPv4" {
+			var key [ctPairKeySize]byte
+			if _, err := rand.Read(key[:]); err != nil {
+				return fail(err)
+			}
+			s.link.pairKey = base64.RawURLEncoding.EncodeToString(key[:])
+			aead, err := ctExtraCipher(s.link.pairKey)
+			if err != nil {
+				return fail(err)
+			}
+			s.coord.mu.Lock()
+			s.coord.extra = &ctExtraControl{key: aead}
+			s.coord.mu.Unlock()
+		}
+	}
 	for _, c := range s.cases {
-		if c.skip == "" && c.kind != "spoof" {
+		if c.skip == "" && c.kind != "spoof" && !c.extra {
 			s.link.Cases = append(s.link.Cases, c.link)
 		}
 	}
@@ -1067,7 +1108,7 @@ func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResul
 	}
 	s.coord.mu.Unlock()
 	for _, c := range s.cases {
-		if c.kind != "direct" || c.skip != "" {
+		if c.kind != "direct" || c.skip != "" || c.extra {
 			continue
 		}
 		if l3.KernelCarrier(c.l3.Carrier) {
@@ -1124,7 +1165,7 @@ func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResul
 
 	var wg sync.WaitGroup
 	for i, c := range s.cases {
-		if c.skip != "" {
+		if c.skip != "" || c.extra {
 			continue
 		}
 		wg.Add(1)
@@ -1193,6 +1234,22 @@ func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResul
 			ctPutSpeed(&r, ctSpeedAgain(ctx, func() (net.Conn, error) { return ctDial(ctx, c, s.link.L3) }, first))
 			reportRow(i, r)
 		}
+	}
+
+	// OmniTunnel's test instances are prepared one at a time. The echo and
+	// speed protocol is the same, and no two test carriers share their ports
+	// or run bandwidth probes concurrently.
+	for i, c := range s.cases {
+		if !c.extra || c.skip != "" {
+			continue
+		}
+		if ctx.Err() != nil {
+			row := results[i]
+			row.Status, row.Detail = ctSkipped, "test stopped"
+			reportRow(i, row)
+			continue
+		}
+		s.probeExtra(ctx, c, func(row ConnTestResult) { reportRow(i, row) })
 	}
 
 	// The kharej's path-MTU measurement, which it has usually sent long before.
@@ -1528,7 +1585,7 @@ func ctDial(ctx context.Context, c *connTestCase, l3Echo int) (net.Conn, error) 
 		proto = "udp"
 	}
 	d := &net.Dialer{Timeout: 3 * time.Second}
-	if c.kind == "direct" && c.tr != l3.CarrierPck {
+	if c.kind == "direct" && c.tr != l3.CarrierPck && !(c.extra && c.entry > 0) {
 		addr = net.JoinHostPort(c.peerIP, strconv.Itoa(l3Echo))
 		// Through a TUN the test's own TCP is what crosses the path, so it
 		// asks for the congestion control every tunnel socket gets. On the
@@ -1752,6 +1809,7 @@ func ctLastLine(path string) string {
 //	hello <token>   → ok          the kharej is in; its address is noted
 //	result <token>  → wait | done <verdict>
 type ctCoordinator struct {
+	extra       *ctExtraControl
 	tok         string
 	tcp         net.Listener
 	udp         net.PacketConn
@@ -1872,7 +1930,7 @@ func (c *ctCoordinator) answer(line, from string) string {
 		return ""
 	}
 	c.mu.Lock()
-	stopped := c.stopped
+	stopped, extra := c.stopped, c.extra
 	c.mu.Unlock()
 	if stopped {
 		return "stopped"
@@ -1883,6 +1941,9 @@ func (c *ctCoordinator) answer(line, from string) string {
 	}
 	if len(f) > 3 {
 		return ""
+	}
+	if len(f) == 3 && extra != nil && strings.HasPrefix(f[0], "extra-") {
+		return extra.answer(f[0], f[2])
 	}
 	if f[0] == "unavailable" && len(f) == 3 {
 		c.mu.Lock()
@@ -2293,6 +2354,11 @@ func runConnTestKharejLink(ctx context.Context, link ConnTestLink, out io.Writer
 		}
 	}
 
+	if link.pairKey != "" {
+		if worker := ctStartExtraWorker(ctx, link, out); worker != nil {
+			defer worker()
+		}
+	}
 	// Checking in: every few seconds until the Iran side hears it.
 	for {
 		reply, err := ctAskContext(ctx, link.Host, link.Coord, "hello "+link.Tok)
@@ -2318,7 +2384,7 @@ func runConnTestKharejLink(ctx context.Context, link ConnTestLink, out io.Writer
 		ctKharejSpoof(ctx, link, root)
 	}
 	go ctKharejPMTU(ctx, link)
-	fmt.Fprintln(out, "The Iran server has started the test: five minutes of stability, then download/upload for each healthy tunnel (about 16–25 seconds each).")
+	fmt.Fprintln(out, "Iran is measuring payload delivery, stability and speed. Optional helper transports run one at a time.")
 
 	// The verdict, and the rows as they fill until it comes.
 	for {

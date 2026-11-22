@@ -164,7 +164,7 @@ func (c *conntestRunner) start(parent context.Context, hosts []string, preset st
 	c.v = conntestView{State: ctStarting, Host: hosts[0], Preset: preset, Started: time.Now().Unix()}
 	c.mu.Unlock()
 	suite, link, err := manage.StartConnTestSuite(manage.ConnTestOptions{
-		Context: ctx, Preset: preset, Direct: os.Geteuid() == 0, SpoofSrc: manage.ConnTestSpoofSource,
+		Context: ctx, Preset: preset, Direct: os.Geteuid() == 0, ExtraTransports: true, SpoofSrc: manage.ConnTestSpoofSource,
 	}, hosts)
 	if err != nil {
 		cancel()

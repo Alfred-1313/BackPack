@@ -3,6 +3,7 @@ package omni
 
 import (
 	"bufio"
+	"context"
 	"encoding/base64"
 	"fmt"
 	"io"
@@ -14,6 +15,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/backpack/backpack/internal/tui"
 )
@@ -113,7 +115,7 @@ func parse(args []string, input io.Reader) (operation, error) {
 			cmd = append(cmd, args[5])
 		}
 		return operation{args: cmd}, nil
-	case "list":
+	case "list", "test-ready":
 		if len(args) == 1 {
 			return operation{args: args}, nil
 		}
@@ -179,6 +181,10 @@ func helperPath() (string, error) {
 
 // Run is shared by the interactive menu and the automation entry point.
 func Run(args []string, input io.Reader, stdout, stderr io.Writer) error {
+	return RunContext(context.Background(), args, input, stdout, stderr)
+}
+
+func RunContext(ctx context.Context, args []string, input io.Reader, stdout, stderr io.Writer) error {
 	if len(args) == 0 || args[0] == "help" || args[0] == "--help" {
 		fmt.Fprint(stdout, usage)
 		return nil
@@ -196,9 +202,10 @@ func Run(args []string, input io.Reader, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command(path, op.args...)
+	cmd := exec.CommandContext(ctx, path, op.args...)
 	cmd.Stdout, cmd.Stderr = stdout, stderr
 	cmd.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LANG=C.UTF-8"}
+	cmd.WaitDelay = 2 * time.Second
 	if op.token != "" {
 		cmd.Stdin = strings.NewReader(op.token + "\n")
 	} else {

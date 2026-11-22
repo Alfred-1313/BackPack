@@ -80,6 +80,11 @@ func ctParseSuiteLink(raw []byte) (connTestAddr, error) {
 			return connTestAddr{}, errors.New("the test link must contain one IPv4 and one IPv6 address")
 		}
 		seen[ctFamily(r.Host)] = true
+		if r.PairKey != "" {
+			if _, err := ctExtraCipher(r.PairKey); err != nil {
+				return connTestAddr{}, err
+			}
+		}
 		if r.Error != "" && r.Coord == 0 && r.Tok == "" {
 			continue
 		}
@@ -123,7 +128,7 @@ func StartConnTestSuite(o ConnTestOptions, hosts []string) (*ConnTestSuite, stri
 			s.tests[i] = test
 			test.link.Until = until
 			test.coord.setConfig(ctConfig(test.link))
-			routes[i] = connTestAddr{Host: test.link.Host, Coord: test.link.Coord, Tok: test.link.Tok}
+			routes[i] = connTestAddr{Host: test.link.Host, Coord: test.link.Coord, Tok: test.link.Tok, PairKey: test.link.pairKey}
 			available++
 		}
 		s.paths = append(s.paths, p)

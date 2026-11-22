@@ -21,7 +21,14 @@ def port(value):
         raise ValueError("port must be 1-65535")
     return n
 
+def test_paths(name):
+    if not re.fullmatch(r"bpct[a-f0-9]{12}", name):
+        raise ValueError("invalid temporary GOST tunnel name")
+    return (Path("/run/backpack-ct-gost") / name,
+            Path("/run/systemd/system") / ("bp-gost-direct-" + name + ".service"))
+
 def install(form):
+    temporary = form.get("_test", False)
     join = form["action"] == "join"
     if join:
         prefix = "bpgost1."
@@ -40,6 +47,8 @@ def install(form):
         raise ValueError("install the pinned GOST v3.3.3 helper with BP_HELPERS=gost")
     directory = Path("/etc/backpack/gost-direct") / name
     unit = Path("/etc/systemd/system") / ("bp-gost-direct-"+name+".service")
+    if temporary:
+        directory, unit = test_paths(name)
     directory.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     directory.mkdir(mode=0o700)
     unit_created = False
@@ -72,7 +81,7 @@ def install(form):
             node = {"name":"kharej","addr":host+":"+str(endpoint),
                 "dialer":{"type":"tls","tls":{"secure":True,"serverName":host,"caFile":str(cert)}},
                 "connector":{"type":"relay","auth":{"username":"backpack","password":password}}}
-            service = {"name":name,"addr":"0.0.0.0:"+str(ingress),"listener":{"type":"tcp"},
+            service = {"name":name,"addr":("127.0.0.1:" if temporary else "0.0.0.0:")+str(ingress),"listener":{"type":"tcp"},
                 "handler":{"type":"tcp","chain":"kharej"},
                 "forwarder":{"nodes":[{"name":"target","addr":"127.0.0.1:"+str(target)}]}}
             config = {"services":[service],"chains":[{"name":"kharej","hops":[{"name":"relay","nodes":[node]}]}]}
@@ -86,14 +95,17 @@ def install(form):
                       "[Service]\nExecStart="+str(binary)+" -C "+str(cfg)+"\nRestart=on-failure\nRestartSec=3\n"
                       "[Install]\nWantedBy=multi-user.target\n")
         run("systemctl","daemon-reload")
-        run("systemctl","enable","--now",unit.name)
+        if temporary:
+            run("systemctl","start",unit.name)
+        else:
+            run("systemctl","enable","--now",unit.name)
         import time
         time.sleep(0.6)
         run("systemctl","is-active","--quiet",unit.name)
         return {"token":token, "unit":unit.name}
     except BaseException:
         if unit_created:
-            subprocess.run(["systemctl","disable","--now",unit.name],capture_output=True)
+            subprocess.run((["systemctl","stop",unit.name] if temporary else ["systemctl","disable","--now",unit.name]),capture_output=True)
             unit.unlink(missing_ok=True)
             subprocess.run(["systemctl","daemon-reload"],capture_output=True)
         shutil.rmtree(directory)
@@ -102,7 +114,18 @@ def install(form):
 if __name__ == "__main__":
     os.umask(0o077)
     try:
-        print(json.dumps(install(json.load(sys.stdin))))
+        form = json.load(sys.stdin)
+        if form.get("_test") and form["action"] == "remove":
+            directory, unit = test_paths(form["name"])
+            if unit.exists():
+                run("systemctl", "stop", unit.name)
+                unit.unlink()
+                run("systemctl", "daemon-reload")
+            if directory.exists():
+                shutil.rmtree(directory)
+            print("{}")
+        else:
+            print(json.dumps(install(form)))
     except subprocess.CalledProcessError as err:
         sys.exit(err.cmd[0]+": "+(err.stderr.decode(errors="replace").strip() or "service did not become active"))
     except Exception as err:
