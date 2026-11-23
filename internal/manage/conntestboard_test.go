@@ -168,17 +168,18 @@ func TestLiveRowDistinguishesSetupAndSpeedQueues(t *testing.T) {
 		count                   int
 		label, echoes, progress string
 	}{
-		{ctPhaseTransportQueued, 0, "AWAIT SETUP", "--", "pending"},
-		{ctPhaseTransportSetup, 0, "SETTING UP", "--", "pending"},
-		{ctPhaseTransportCleanup, 0, "CLEANING UP", "--", "pending"},
-		{ctPhaseEchoVerified, 0, "FIRST OK", "1 probe", "pending"},
-		{ctPhaseEchoRetry, 0, "RETRY DUE", "--", "pending"},
+		{ctPhaseTransportQueued, 0, "AWAIT SETUP", "0/60", "  0%"},
+		{ctPhaseTransportSetup, 0, "SETTING UP", "0/60", "  0%"},
+		{ctPhaseTransportCleanup, 0, "CLEANING UP", "0/60", "  0%"},
+		{ctPhaseEchoVerified, 0, "FIRST OK", "0/60", "  0%"},
+		{ctPhaseEchoRetry, 0, "RETRY DUE", "0/60", "  0%"},
+		{ctPhaseTransportEcho, 9, "ECHO TEST", "9/60", " 15%"},
 		{"speed-queued", 60, "AWAIT SPEED", "60/60", "100%"},
 		{ctPhaseAgain, 60, "AWAIT PASS2", "60/60", "100%"},
 		{ctPhaseSecond, 60, "SPEED 2", "60/60", "100%"},
 	} {
 		r := ConnTestResult{Kind: "direct", Transport: "gre", Status: ctTesting, Phase: tc.phase, Total: 60, Tried: tc.count, OK: tc.count}
-		if got := ctRow(r); !strings.Contains(got, tc.label) || !strings.Contains(got, tc.echoes) || !strings.HasSuffix(got, tc.progress) || tc.count == 0 && strings.Contains(got, "0/60") {
+		if got := ctRow(r); !strings.Contains(got, tc.label) || !strings.Contains(got, tc.echoes) || !strings.HasSuffix(got, tc.progress) {
 			t.Errorf("%s: %q", tc.phase, got)
 		}
 	}

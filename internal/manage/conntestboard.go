@@ -93,17 +93,8 @@ func ctRow(r ConnTestResult) string {
 	if r.Status == ctTesting {
 		done = r.Tried
 	}
-	echoes, bar := fmt.Sprintf("%d/%d", done, total), ctBar(float64(done)/float64(total))
-	if r.Status == ctTesting && r.Tried == 0 {
-		switch r.Phase {
-		case ctPhaseEchoVerified:
-			echoes, bar = "1 probe", "pending"
-		case ctPhaseTransportQueued, ctPhaseTransportSetup, ctPhaseInitialEcho, ctPhaseEchoRetry, ctPhaseTransportConnect, ctPhaseTransportCleanup:
-			echoes, bar = "--", "pending"
-		}
-	}
 	return fmt.Sprintf(ctRowFormat, ctEmoji(r.Status), ctKind(r.Kind), ctName(r.Transport),
-		ctStatusLabel(r), echoes, bar)
+		ctStatusLabel(r), fmt.Sprintf("%d/%d", done, total), ctBar(float64(done)/float64(total)))
 }
 
 func ctStatusLabel(r ConnTestResult) string {

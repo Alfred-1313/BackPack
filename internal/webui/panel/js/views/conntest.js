@@ -254,7 +254,7 @@ function rowHTML() {
   return `<span class="dot"></span>
     <span class="nm"><b></b><small></small></span>
     <span class="bar"><i></i></span>
-    <span class="ec"></span>
+    <span class="ec"><span class="ec-count"></span><small class="ec-percent"></small></span>
     <span class="fg"></span>
     <span class="st"></span>`;
 }
@@ -268,9 +268,9 @@ const rate = (avg, peak) => `<b>${mbps(Math.max(avg, peak || 0))}</b> Mb/s${peak
    list does not flicker every two seconds. */
 function fillRow(n, r) {
   const total = r.total || 60;
-  const testing = r.status === 'testing';
+  const done = (r.status === 'testing' ? r.tried : r.ok) ?? 0;
   const waiting = ['transport-queued', 'transport-initial', 'transport-verified', 'transport-retry'].includes(r.phase);
-  const share = Math.max(0, Math.min(1, testing ? (r.tried / total) : (r.ok / total)));
+  const share = Math.max(0, Math.min(1, done / total));
   n.className = `ct-row ${waiting ? "queued" : tone(r.status)}${r.uploadMbps ? ' has-speed' : ''}`;
   const nb = n.querySelector('.nm b');
   nb.textContent = r.name;
@@ -279,11 +279,9 @@ function fillRow(n, r) {
   sm.textContent = r.detail || (r.uploadMbps ? 'max: best second of both passes' : '');
   sm.title = r.detail || '';
   n.querySelector('.bar i').style.setProperty('--w', (share * 100).toFixed(1) + '%');
-  const beforeStability = waiting || (testing && !r.tried && ['transport-setup', 'transport-connect', 'transport-cleanup'].includes(r.phase));
-  let echoes = `${testing ? r.tried : r.ok}/${total}`;
-  if (r.phase === 'transport-verified') echoes = '1 probe';
-  else if (beforeStability || r.status === 'skipped' || (r.status === 'stopped' && !r.tried)) echoes = '—';
-  n.querySelector('.ec').textContent = echoes;
+  const skipped = r.status === 'skipped';
+  n.querySelector('.ec-count').textContent = skipped ? '—' : `${done}/${total}`;
+  n.querySelector('.ec-percent').textContent = skipped ? '' : `${Math.round(share * 100)}%`;
   n.querySelector('.fg').innerHTML = [
     r.rtt ? `<span><b>${r.rtt}</b> ms</span>` : '',
     r.mbps ? `<span>↓ ${rate(r.mbps, r.peakMbps)}</span>` : '',
