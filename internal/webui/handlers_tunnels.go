@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/backpack/backpack/internal/app"
 	"github.com/backpack/backpack/internal/manage"
 	"github.com/backpack/backpack/internal/node"
 )
@@ -90,7 +91,7 @@ func (s *server) handleTunnelCreate(w http.ResponseWriter, r *http.Request) {
 		n.Host = panelHost(r)
 		return manage.CreateTunnel(n)
 	}
-	serveCreate(w, r, create, func(n manage.NewTunnel) string { return n.Name })
+	serveCreate(w, r, create)
 }
 
 // handleTunnelSettings serves one tunnel's editable settings, for filling the
@@ -402,12 +403,12 @@ func (s *server) handleDirectDefaults(w http.ResponseWriter, r *http.Request) {
 
 // handleDirectCreate builds a direct tunnel from the form.
 func (s *server) handleDirectCreate(w http.ResponseWriter, r *http.Request) {
-	serveCreate(w, r, manage.CreateDirectTunnel, func(n manage.NewDirectTunnel) string { return n.Name })
+	serveCreate(w, r, manage.CreateDirectTunnel)
 }
 
 // serveCreate is a POST that builds a tunnel from a form: decode it, create the
 // tunnel, and report the unit and whether it came up.
-func serveCreate[F any](w http.ResponseWriter, r *http.Request, create func(F) (string, bool, error), name func(F) string) {
+func serveCreate[F any](w http.ResponseWriter, r *http.Request, create func(F) (string, bool, error)) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -424,7 +425,7 @@ func serveCreate[F any](w http.ResponseWriter, r *http.Request, create func(F) (
 	}
 	writeJSON(w, map[string]any{
 		"status":  "ok",
-		"name":    strings.TrimSpace(name(form)),
+		"name":    strings.TrimSuffix(strings.TrimPrefix(service, app.ServicePrefix), ".service"),
 		"service": service,
 		"active":  active,
 	})

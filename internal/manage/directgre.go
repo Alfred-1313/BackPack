@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/backpack/backpack/config"
+	"github.com/backpack/backpack/internal/app"
 	"github.com/backpack/backpack/internal/tui"
 	"github.com/backpack/backpack/internal/tunnel/l3"
 )
@@ -330,7 +331,7 @@ func greJoiningIn(tunnels map[string]config.L3Config, addr string, key uint32) s
 		if !l3.KernelCarrier(l.Carrier) {
 			continue
 		}
-		if strings.EqualFold(strings.Trim(l.Addr, "[]"), addr) && l.GREKey == key {
+		if sameGREEndpoint(l.Addr, addr) && l.GREKey == key {
 			return name
 		}
 	}
@@ -414,6 +415,10 @@ func greKharejRow(form PeerForm) (string, string) {
 // link and a managed node all build one from. It refuses what the wizard
 // refuses, in the same words.
 func (n NewDirectTunnel) greSpec(side directSide, carrier string) (l3Spec, error) {
+	return n.greSpecFor(side, carrier, "")
+}
+
+func (n NewDirectTunnel) greSpecFor(side directSide, carrier, existing string) (l3Spec, error) {
 	host := strings.Trim(strings.TrimSpace(n.PeerAddr), "[]")
 	if host == "" {
 		if side == sideIran {
@@ -440,7 +445,9 @@ func (n NewDirectTunnel) greSpec(side directSide, carrier string) (l3Spec, error
 	if !validName(name) {
 		return l3Spec{}, fmt.Errorf("tunnel name %q may use only letters, digits, dots and dashes", name)
 	}
-	name = uniqueName(name)
+	if name != existing && fileExists(app.ConfigPath(name)) {
+		return l3Spec{}, fmt.Errorf("a tunnel named %q already exists", name)
+	}
 
 	key := n.GREKey
 	if key == 0 {
@@ -450,7 +457,7 @@ func (n NewDirectTunnel) greSpec(side directSide, carrier string) (l3Spec, error
 		}
 		key = freeGREKey()
 	}
-	if other := greTunnelJoining(host, key); other != "" {
+	if other := greTunnelJoining(host, key); other != "" && other != existing {
 		return l3Spec{}, fmt.Errorf("tunnel %s on this server already joins %s with GRE key %d, and the "+
 			"kernel allows one per key — give this one another key", other, host, key)
 	}
@@ -476,7 +483,7 @@ func (n NewDirectTunnel) greSpec(side directSide, carrier string) (l3Spec, error
 		return l3Spec{}, err
 	}
 	if strings.TrimSpace(n.LocalIP) != "" {
-		if other := l3BlockOwner(localIP); other != "" {
+		if other := l3BlockOwnerExcept(localIP, existing); other != "" {
 			return l3Spec{}, fmt.Errorf("tunnel %s on this server already uses %sx, the block given for "+
 				"this one: pick a free block on the %s server and set up both ends again",
 				other, l3Block(localIP), map[directSide]string{sideIran: "kharej", sideKharej: "Iran"}[side])

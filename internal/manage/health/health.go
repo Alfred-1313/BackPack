@@ -85,7 +85,9 @@ func tunnelHealthWith(t core.Tunnel, pairs [][2]string) Health {
 	case !h.Active:
 		h.State, h.Detail = "stopped", "service is not running"
 	default:
-		h.Connected = tunnelHealthy(t, pairs)
+		if !tunnelspec.IsDirectKind(t) {
+			h.Connected = tunnelHealthy(t, pairs)
+		}
 		// tunnelHealthy answers the watchdog's question — "is this worth
 		// restarting?" — and for a datagram server it deliberately says yes
 		// always, because restarting something whose peer cannot be observed

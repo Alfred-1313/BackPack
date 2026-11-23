@@ -265,6 +265,14 @@ func SuggestDirectDefaults(side string) map[string]any {
 // either way, and the usual cause — a port already taken — is fixed by editing
 // the tunnel, not by creating it again.
 func CreateDirectTunnel(n NewDirectTunnel) (service string, active bool, err error) {
+	if n.isGREPeer() {
+		out, err := applyGREPeer(n, false)
+		return out.Service, out.Active, err
+	}
+	return createDirectTunnel(n)
+}
+
+func createDirectTunnel(n NewDirectTunnel) (service string, active bool, err error) {
 	spec, err := n.spec()
 	if err != nil {
 		return "", false, err
@@ -308,6 +316,10 @@ func CreateDirectTunnel(n NewDirectTunnel) (service string, active bool, err err
 // not it is already there. It is the direct half of ApplyTunnel; see there for
 // why a managed node has one verb rather than create and edit.
 func ApplyDirectTunnel(n NewDirectTunnel) (service string, active bool, created bool, err error) {
+	if n.isGREPeer() {
+		out, err := applyGREPeer(n, false)
+		return out.Service, out.Active, err == nil && !out.Updated, err
+	}
 	name, body, err := directBody(n)
 	if err != nil {
 		return "", false, false, err
@@ -1236,8 +1248,15 @@ func applyPckEdit(l *config.L3Config, e DirectEdit) error {
 // l3BlockOwner names the layer-3 tunnel on this machine that uses the block
 // addr belongs to, or "".
 func l3BlockOwner(addr string) string {
+	return l3BlockOwnerExcept(addr, "")
+}
+
+func l3BlockOwnerExcept(addr, except string) string {
 	block := l3Block(addr)
 	for _, t := range List() {
+		if t.Name == except {
+			continue
+		}
 		cfg, err := LoadTunnelConfig(t.Name)
 		if err != nil || !cfg.L3.Enabled() {
 			continue

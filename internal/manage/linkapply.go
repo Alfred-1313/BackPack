@@ -103,15 +103,6 @@ func ApplySetupLink(raw string, o LinkApplyOptions) (LinkApplied, error) {
 		return LinkApplied{}, fmt.Errorf("this link was made on a kharej server and is for the Iran side: " +
 			"paste it there, under sudo backpack → Setup from a link")
 	}
-	// A GRE link has no token to recognise it by; the same tunnel is the one
-	// that joins the same server with the same key.
-	if link.Kind == "direct" && l3.KernelCarrier(link.Tr) && link.Host != "" {
-		if existing := greTunnelJoining(link.Host, link.GREKey); existing != "" {
-			return LinkApplied{}, fmt.Errorf("this link has already been set up here, as tunnel %q — "+
-				"a second GRE link to the same server with the same key cannot exist; "+
-				"delete that one first to set it up again", existing)
-		}
-	}
 	if existing := tunnelWithToken(link.Tok); existing != "" {
 		// The same tunnel, set up again. That is what happens after the Iran
 		// side is edited — its transport, its port — and the kharej has to
@@ -259,7 +250,6 @@ func applyDirectLink(link ShareLink, o LinkApplyOptions) (LinkApplied, error) {
 	if !validName(form.Name) {
 		return LinkApplied{}, fmt.Errorf("%q is not a usable tunnel name — letters, digits, dots and dashes, up to 40", form.Name)
 	}
-	form.Name = freeName(form.Name)
 	if link.Tr == "spoof" && net.ParseIP(form.SpoofPeerIP) == nil {
 		// The one carrier whose listening end must be told where the Iran
 		// server really is: every packet it receives carries a forged source.
@@ -279,6 +269,10 @@ func applyDirectLink(link ShareLink, o LinkApplyOptions) (LinkApplied, error) {
 		}
 		form.ServerAddr = host
 	}
+	if n := form.ToNewDirectTunnel(); n.isGREPeer() {
+		return applyGREPeer(n, true)
+	}
+	form.Name = freeName(form.Name)
 	service, active, err := CreateDirectTunnel(form.ToNewDirectTunnel())
 	if err != nil {
 		return LinkApplied{}, err

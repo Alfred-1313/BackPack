@@ -437,7 +437,7 @@ function pckMarkup(set) {
     `<div class="hint">PCK has no TUN device, so it can't become a routing carrier — add a new tunnel on both servers.</div></div>` +
     ((set.pckNotes || []).length ? `<div class="hint pcknote">${esc(set.pckNotes.join(' · '))}</div>` : '') +
     (ports ? field('ports', 'Forwarded ports', 'Comma separated. PCK carries ports only, so at least one is needed.') +
-      sw('acceptUdp', 'Accept UDP', 'Carry UDP over the forwarded ports.') : '') +
+      sw('acceptUdp', 'Also forward UDP', 'Off: TCP only. On: TCP and UDP.') : '') +
     `<div class="f"><label>Performance preset</label><div class="sel" data-name="preset">Turbo<span class="sp"></span>${chev}</div>` +
     `<div class="tdesc" id="pckEffective">${set.pckEffective ? 'Runs with ' + esc(set.pckEffective) : ''}</div></div>` +
     `<div class="drawer"><button class="dhh" data-fn="dr" data-args="this">PCK fine-tune<span class="note">optional</span>` +
@@ -465,7 +465,7 @@ function directMarkup(set) {
       `the same on both servers.</div>`
       : `<div class="hint">Both ends must match — change the other server too.</div>`) + `</div>` +
     (ports ? field('ports', 'Forwarded ports', 'Comma separated. Blank leaves a plain TUN tunnel.') +
-      sw('acceptUdp', 'Accept UDP', 'Carry UDP over the forwarded ports.') : '') +
+      sw('acceptUdp', 'Also forward UDP', 'Off: TCP only. On: TCP and UDP.') : '') +
     `<div class="f"><label>Performance preset</label><div class="sel" data-name="preset">Turbo` +
     `<span class="sp"></span><svg class="x" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></div></div>` +
     `<div class="two">${field('mtu', 'MTU', gre ? '0 takes the interface’s MTU less GRE’s own.' : undefined)}<div></div></div>` +

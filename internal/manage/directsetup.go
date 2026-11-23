@@ -358,7 +358,10 @@ func setupL3FromLink(chosen string) {
 	}
 
 	form := MirrorForPeer(link)
-	form.Name = uniqueName(tui.PromptDefault("Tunnel Name", form.Name))
+	form.Name = tui.PromptDefault("Tunnel Name", form.Name)
+	if !l3.KernelCarrier(link.Tr) {
+		form.Name = uniqueName(form.Name)
+	}
 	if link.Tr == l3.CarrierPck && !paqet.PcapAvailable {
 		tui.Error(paqet.ErrNoPcap.Error())
 		tui.PressEnter()

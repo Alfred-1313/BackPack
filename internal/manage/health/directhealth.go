@@ -31,6 +31,9 @@ import (
 // observable can settle it, which callers should read as "leave it alone"
 // rather than "it is broken".
 func directHealthy(t core.Tunnel) (healthy, known bool) {
+	if t.Transport == "l3/gre" || t.Transport == "l3/ip6gre" {
+		return greHealth(t.Name)
+	}
 	if strings.HasPrefix(t.Transport, "l3/") {
 		// Every layer-3 carrier is a raw socket: pck, sni, xdi and spoof do not
 		// go through the kernel's stack at all, so the socket table cannot
