@@ -457,8 +457,13 @@ func (s *ConnTestIran) checkExtra(ctx context.Context, c connTestCase, report fu
 	} else {
 		row.Phase, row.Detail = ctPhaseEchoRetry, "initial check: "+ctExtraError(err)+". Full test pending"
 	}
-	if cleanErr := s.removeExtra(&c); cleanErr != nil {
-		row.Detail += "; temporary tunnel cleanup could not be confirmed"
+	if c.localStarted || c.peerStarted {
+		cleaning := row
+		cleaning.Phase, cleaning.Detail = ctPhaseTransportCleanup, "removing the temporary tunnel after the initial check"
+		report(cleaning)
+		if cleanErr := s.removeExtra(&c); cleanErr != nil {
+			row.Detail += "; temporary tunnel cleanup could not be confirmed"
+		}
 	}
 	report(row)
 }

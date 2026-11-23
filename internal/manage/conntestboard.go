@@ -80,7 +80,7 @@ func ctEmoji(status string) string {
 // Every emoji here takes two columns; the rest of the RESULT column is spaces.
 const ctRowFormat = "%s       %-9s %-16s %-11s %-8s %s"
 
-var ctHeader = fmt.Sprintf("%-8s %-9s %-16s %-11s %-8s %s", "RESULT", "KIND", "NAME", "STATUS", "ECHOES", "TESTING")
+var ctHeader = fmt.Sprintf("%-8s %-9s %-16s %-11s %-8s %s", "RESULT", "KIND", "NAME", "STATUS", "ECHOES", "STABILITY")
 
 // ctRow is one tunnel's line. While it runs, ECHOES and the bar are the echoes
 // sent; once it has a verdict, the echoes that came back.
@@ -93,21 +93,35 @@ func ctRow(r ConnTestResult) string {
 	if r.Status == ctTesting {
 		done = r.Tried
 	}
+	echoes, bar := fmt.Sprintf("%d/%d", done, total), ctBar(float64(done)/float64(total))
+	if r.Status == ctTesting && r.Tried == 0 {
+		switch r.Phase {
+		case ctPhaseEchoVerified:
+			echoes, bar = "1 probe", "pending"
+		case ctPhaseTransportQueued, ctPhaseTransportSetup, ctPhaseInitialEcho, ctPhaseEchoRetry, ctPhaseTransportConnect, ctPhaseTransportCleanup:
+			echoes, bar = "--", "pending"
+		}
+	}
 	return fmt.Sprintf(ctRowFormat, ctEmoji(r.Status), ctKind(r.Kind), ctName(r.Transport),
-		ctStatusLabel(r), fmt.Sprintf("%d/%d", done, total), ctBar(float64(done)/float64(total)))
+		ctStatusLabel(r), echoes, bar)
 }
 
 func ctStatusLabel(r ConnTestResult) string {
-	if ConnTestSpeedPhase(r.Phase) {
-		return "SPEED"
-	}
 	switch r.Phase {
-	case "speed-queued", ctPhaseAgain, ctPhaseTransportQueued:
-		return "QUEUED"
+	case "speed":
+		return "SPEED"
+	case ctPhaseSecond:
+		return "SPEED 2"
+	case "speed-queued":
+		return "AWAIT SPEED"
+	case ctPhaseAgain:
+		return "AWAIT PASS2"
+	case ctPhaseTransportQueued:
+		return "AWAIT SETUP"
 	case ctPhaseInitialEcho:
 		return "FIRST ECHO"
 	case ctPhaseEchoVerified:
-		return "ECHO OK"
+		return "FIRST OK"
 	case ctPhaseEchoRetry:
 		return "RETRY DUE"
 	case ctPhaseTransportSetup:

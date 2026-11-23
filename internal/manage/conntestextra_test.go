@@ -93,7 +93,7 @@ func TestConnectionTestQueueKeepsHelpersInTheRemainingTime(t *testing.T) {
 		t.Fatalf("time left %s, want %s", got, want)
 	}
 	for phase, want := range map[string]string{
-		ctPhaseTransportQueued:  "QUEUED",
+		ctPhaseTransportQueued:  "AWAIT SETUP",
 		ctPhaseTransportSetup:   "SETTING UP",
 		ctPhaseTransportConnect: "CONNECTING",
 		ctPhaseTransportEcho:    "ECHO TEST",

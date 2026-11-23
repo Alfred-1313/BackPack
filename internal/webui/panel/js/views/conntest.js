@@ -106,7 +106,7 @@ function startPane(v) {
   return `<div class="ct-l-in fade">
     <span class="ct-kick">New test</span>
     <div class="tl-lede"><b>Every transport, tried for real between this server and one kharej.</b>
-      <span>Five minutes of stability checks, then about 16–25 seconds of speed testing per healthy tunnel.
+      <span>Each stability test sends 60 echoes. Transports that need a temporary tunnel take turns on the two servers.
         Download and upload are measured with four connections and again with sixteen, one tunnel at a time;
         the max is the best second the tunnel carried. The test tunnels run on free ports and are
         removed when it ends — nothing is left behind on either server.</span></div>
@@ -241,9 +241,9 @@ function endPane(v) {
 /* ---- right: the transports ----------------------------------------------- */
 const tone = st => ({ ok: 'ok', unstable: 'wr', down: 'er', skipped: 'sk', stopped: 'sk' }[st] || 'run');
 const rowPhase = {
-  speed: 'Speed test', 'speed-second': 'Speed test', 'speed-queued': 'Awaiting speed',
-  'speed-again': 'Queued', 'transport-queued': 'Awaiting setup', 'transport-initial': 'First echo',
-  'transport-verified': 'Echo received', 'transport-retry': 'Retry pending', 'transport-setup': 'Setting up',
+  speed: 'Speed test', 'speed-second': 'Speed retest', 'speed-queued': 'Awaiting speed',
+  'speed-again': 'Awaiting speed retest', 'transport-queued': 'Awaiting setup', 'transport-initial': 'First echo',
+  'transport-verified': 'First echo OK', 'transport-retry': 'Retry pending', 'transport-setup': 'Setting up',
   'transport-connect': 'Connecting', 'transport-echo': 'Checking echoes', 'transport-cleanup': 'Cleaning up',
 };
 
@@ -279,7 +279,11 @@ function fillRow(n, r) {
   sm.textContent = r.detail || (r.uploadMbps ? 'max: best second of both passes' : '');
   sm.title = r.detail || '';
   n.querySelector('.bar i').style.setProperty('--w', (share * 100).toFixed(1) + '%');
-  n.querySelector('.ec').textContent = r.status === 'skipped' || (r.status === 'stopped' && !r.tried) || waiting ? '—' : `${testing ? r.tried : r.ok}/${total}`;
+  const beforeStability = waiting || (testing && !r.tried && ['transport-setup', 'transport-connect', 'transport-cleanup'].includes(r.phase));
+  let echoes = `${testing ? r.tried : r.ok}/${total}`;
+  if (r.phase === 'transport-verified') echoes = '1 probe';
+  else if (beforeStability || r.status === 'skipped' || (r.status === 'stopped' && !r.tried)) echoes = '—';
+  n.querySelector('.ec').textContent = echoes;
   n.querySelector('.fg').innerHTML = [
     r.rtt ? `<span><b>${r.rtt}</b> ms</span>` : '',
     r.mbps ? `<span>↓ ${rate(r.mbps, r.peakMbps)}</span>` : '',

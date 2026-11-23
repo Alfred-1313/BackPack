@@ -161,3 +161,25 @@ func (b *ctBoard) set(i int, r ConnTestResult) {
 	b.rows[i] = r
 	b.mu.Unlock()
 }
+
+func TestLiveRowDistinguishesSetupAndSpeedQueues(t *testing.T) {
+	for _, tc := range []struct {
+		phase                   string
+		count                   int
+		label, echoes, progress string
+	}{
+		{ctPhaseTransportQueued, 0, "AWAIT SETUP", "--", "pending"},
+		{ctPhaseTransportSetup, 0, "SETTING UP", "--", "pending"},
+		{ctPhaseTransportCleanup, 0, "CLEANING UP", "--", "pending"},
+		{ctPhaseEchoVerified, 0, "FIRST OK", "1 probe", "pending"},
+		{ctPhaseEchoRetry, 0, "RETRY DUE", "--", "pending"},
+		{"speed-queued", 60, "AWAIT SPEED", "60/60", "100%"},
+		{ctPhaseAgain, 60, "AWAIT PASS2", "60/60", "100%"},
+		{ctPhaseSecond, 60, "SPEED 2", "60/60", "100%"},
+	} {
+		r := ConnTestResult{Kind: "direct", Transport: "gre", Status: ctTesting, Phase: tc.phase, Total: 60, Tried: tc.count, OK: tc.count}
+		if got := ctRow(r); !strings.Contains(got, tc.label) || !strings.Contains(got, tc.echoes) || !strings.HasSuffix(got, tc.progress) || tc.count == 0 && strings.Contains(got, "0/60") {
+			t.Errorf("%s: %q", tc.phase, got)
+		}
+	}
+}
