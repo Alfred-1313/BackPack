@@ -164,7 +164,7 @@ func ctComputeBest(results []ConnTestResult, cases []*connTestCase, pmtu int, lo
 	// else the one that carried the most.
 	best := -1
 	for i, r := range results {
-		if r.Kind == "spoof" || r.Status == ctSkipped || r.Tried == 0 || r.OK == 0 {
+		if r.Kind == "spoof" || r.Status == ctSkipped || r.Status == ctStopped || r.Tried == 0 || r.OK == 0 {
 			continue
 		}
 		if best < 0 {

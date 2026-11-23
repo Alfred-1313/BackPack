@@ -386,7 +386,7 @@ func TestConnTestCancellationCannotPassAPartialSoak(t *testing.T) {
 			cancel()
 		}
 	})
-	if r.Status != ctUnstable || r.Tried != 1 || !strings.Contains(r.Detail, "stopped") {
+	if r.Status != ctStopped || r.OK != 1 || r.Tried != 1 || !strings.Contains(r.Detail, "stopped") {
 		t.Fatalf("partial soak incorrectly passed: %+v", r)
 	}
 }

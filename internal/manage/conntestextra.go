@@ -499,6 +499,9 @@ func (s *ConnTestIran) probeExtra(ctx context.Context, c *connTestCase, report f
 	}()
 	if err := s.setupExtra(ctx, c, mode); err != nil {
 		row.Status, row.Detail, row.Phase = ctSkipped, "Could not prepare tunnel: "+ctExtraError(err), ""
+		if ctx.Err() != nil {
+			row.Status, row.Detail = ctStopped, "stopped during tunnel setup"
+		}
 		report(row)
 		return
 	}
@@ -515,7 +518,7 @@ func (s *ConnTestIran) probeExtra(ctx context.Context, c *connTestCase, report f
 		return
 	}
 	if ctx.Err() != nil {
-		row.Status, row.Phase, row.Detail = ctUnstable, "", "stopped before speed test"
+		row.Status, row.Phase, row.Detail = ctStopped, "", "stopped before speed test"
 		report(row)
 		return
 	}
@@ -523,7 +526,9 @@ func (s *ConnTestIran) probeExtra(ctx context.Context, c *connTestCase, report f
 	report(row)
 	dial := func() (net.Conn, error) { return ctDial(ctx, c, s.link.L3) }
 	speed, err := ctSpeed(ctx, dial)
-	if err != nil {
+	if ctx.Err() != nil {
+		row.Status, row.Phase, row.Detail = ctStopped, "", "stopped during speed test"
+	} else if err != nil {
 		row.Status, row.Phase, row.Detail = ctUnstable, "", "speed test failed ("+ctShortErr(err)+")"
 	} else {
 		ctPutSpeed(&row, ctSpeedAgain(ctx, dial, speed))

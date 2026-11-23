@@ -70,7 +70,7 @@ func ctEmoji(status string) string {
 		return "🟢"
 	case ctDown:
 		return "🔴"
-	case ctSkipped:
+	case ctSkipped, ctStopped:
 		return "⚪"
 	default: // testing, unstable
 		return "🟡"
@@ -224,7 +224,7 @@ func ctGroups(results []ConnTestResult) [][]ConnTestResult {
 			default:
 				downReverse = append(downReverse, r)
 			}
-		case ctSkipped:
+		case ctSkipped, ctStopped:
 			skipped = append(skipped, r)
 		default:
 			unstable = append(unstable, r)

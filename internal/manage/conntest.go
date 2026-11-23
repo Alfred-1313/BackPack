@@ -382,6 +382,7 @@ const (
 	ctUnstable = "unstable"
 	ctDown     = "down"
 	ctSkipped  = "skipped"
+	ctStopped  = "stopped"
 )
 
 // ctNeedsV2Note is what a direct PCK or GRE row that never came up adds: both
@@ -1180,7 +1181,7 @@ func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResul
 			}
 			if ctx.Err() != nil {
 				row := results[i]
-				row.Status, row.Detail, row.Phase = ctSkipped, "test stopped", ""
+				row.Status, row.Detail, row.Phase = ctStopped, "test stopped", ""
 				reportRow(i, row)
 				continue
 			}
@@ -1237,7 +1238,7 @@ func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResul
 			continue
 		}
 		if ctx.Err() != nil {
-			r.Status, r.Detail, r.Phase = ctUnstable, "stopped before speed test", ""
+			r.Status, r.Detail, r.Phase = ctStopped, "stopped before speed test", ""
 			reportRow(i, r)
 			continue
 		}
@@ -1245,7 +1246,9 @@ func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResul
 		reportRow(i, r)
 		speed, err := ctSpeed(ctx, func() (net.Conn, error) { return ctDial(ctx, c, s.link.L3) })
 		r.Phase, r.Detail = "", ""
-		if err != nil {
+		if ctx.Err() != nil {
+			r.Status, r.Detail = ctStopped, "stopped during speed test"
+		} else if err != nil {
 			r.Status, r.Detail = ctUnstable, "speed test failed ("+ctShortErr(err)+")"
 		} else {
 			speeds[i] = speed
@@ -1388,13 +1391,15 @@ func (s *ConnTestIran) spoofProbe(ctx context.Context, c *connTestCase, kharej s
 	for {
 		select {
 		case <-ctx.Done():
-			r.Status, r.Detail = ctUnstable, "stopped before the spoofing test completed"
-			if r.OK == 0 {
-				r.Status = ctDown
-			}
+			r.Status, r.Detail = ctStopped, "stopped before the spoofing test completed"
 			report(r)
 			return
 		case got := <-finished:
+			if ctx.Err() != nil {
+				r.Status, r.Detail = ctStopped, "stopped before the spoofing test completed"
+				report(r)
+				return
+			}
 			r.Tried, r.OK = n, got.arrived
 			switch {
 			case got.err != nil:
@@ -1534,7 +1539,7 @@ func ctProbe(ctx context.Context, c *connTestCase, l3Echo int, report func(ConnT
 	var conn net.Conn
 	for conn == nil {
 		if ctx.Err() != nil {
-			r.Status, r.Detail = ctDown, "stopped"
+			r.Status, r.Detail = ctStopped, "stopped before the first echo"
 			say("")
 			return r
 		}
@@ -1618,10 +1623,7 @@ func ctProbe(ctx context.Context, c *connTestCase, l3Echo int, report func(ConnT
 
 	switch {
 	case ctx.Err() != nil:
-		r.Status, r.Detail = ctUnstable, "stopped before the test completed"
-		if r.OK == 0 {
-			r.Status = ctDown
-		}
+		r.Status, r.Detail = ctStopped, "stopped before the test completed"
 	case r.OK == connTestSoak && r.Tried == connTestSoak:
 		if c.udp {
 			r.Status = ctOK

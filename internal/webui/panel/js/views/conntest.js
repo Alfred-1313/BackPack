@@ -239,7 +239,7 @@ function endPane(v) {
 }
 
 /* ---- right: the transports ----------------------------------------------- */
-const tone = st => ({ ok: 'ok', unstable: 'wr', down: 'er', skipped: 'sk' }[st] || 'run');
+const tone = st => ({ ok: 'ok', unstable: 'wr', down: 'er', skipped: 'sk', stopped: 'sk' }[st] || 'run');
 const rowPhase = {
   speed: 'Speed test', 'speed-second': 'Speed test', 'speed-queued': 'Awaiting speed',
   'speed-again': 'Queued', 'transport-queued': 'Awaiting setup', 'transport-initial': 'First echo',
@@ -247,7 +247,7 @@ const rowPhase = {
   'transport-connect': 'Connecting', 'transport-echo': 'Checking echoes', 'transport-cleanup': 'Cleaning up',
 };
 
-const statusWord = st => ({ ok: 'Held', unstable: 'Unstable', down: 'Down', skipped: 'Skipped', testing: 'Testing' }[st] || st);
+const statusWord = st => ({ ok: 'Held', unstable: 'Unstable', down: 'Down', skipped: 'Skipped', stopped: 'Stopped', testing: 'Testing' }[st] || st);
 const keyOf = r => `${r.kind}:${r.tr}`;
 
 function rowHTML() {
@@ -279,7 +279,7 @@ function fillRow(n, r) {
   sm.textContent = r.detail || (r.uploadMbps ? 'max: best second of both passes' : '');
   sm.title = r.detail || '';
   n.querySelector('.bar i').style.setProperty('--w', (share * 100).toFixed(1) + '%');
-  n.querySelector('.ec').textContent = r.status === 'skipped' || waiting ? '—' : `${testing ? r.tried : r.ok}/${total}`;
+  n.querySelector('.ec').textContent = r.status === 'skipped' || (r.status === 'stopped' && !r.tried) || waiting ? '—' : `${testing ? r.tried : r.ok}/${total}`;
   n.querySelector('.fg').innerHTML = [
     r.rtt ? `<span><b>${r.rtt}</b> ms</span>` : '',
     r.mbps ? `<span>↓ ${rate(r.mbps, r.peakMbps)}</span>` : '',
@@ -467,7 +467,7 @@ export function connTestView(ctx) {
 
     /* Grouped by kind; best first once finished, in the order they were
        started while running so a row does not jump around under the eye. */
-    const order = { ok: 0, unstable: 1, testing: 1, down: 2, skipped: 3 };
+    const order = { ok: 0, unstable: 1, testing: 1, down: 2, skipped: 3, stopped: 3 };
     const want = new Set(shown.map(keyOf));
     for (const [k, n] of rows) if (!want.has(k)) { n.remove(); rows.delete(k); }
     KINDS.forEach(g => {
