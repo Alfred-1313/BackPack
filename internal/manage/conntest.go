@@ -1582,13 +1582,19 @@ func ctProbe(ctx context.Context, c *connTestCase, l3Echo int, report func(ConnT
 	var firstLoss time.Duration
 	soakStart := time.Now()
 	for i := 0; i < connTestSoak && ctx.Err() == nil; i++ {
-		ctSleep(ctx, time.Until(soakStart.Add(time.Duration(i)*time.Second)))
+		scheduled := soakStart.Add(time.Duration(i) * time.Second)
+		ctSleep(ctx, time.Until(scheduled))
 		if ctx.Err() != nil {
 			break
 		}
+		// A lost echo consumes its own deadline instead of delaying every
+		// later sample by a fresh dial and read timeout.
+		deadline := scheduled.Add(ctEchoWait)
 		r.Tried++
 		if conn == nil {
-			cn, err := dial()
+			attempt, cancel := context.WithDeadline(ctx, deadline)
+			cn, err := ctDial(attempt, c, l3Echo)
+			cancel()
 			if err != nil {
 				if firstLoss == 0 {
 					firstLoss = time.Since(soakStart)
@@ -1601,7 +1607,7 @@ func ctProbe(ctx context.Context, c *connTestCase, l3Echo int, report func(ConnT
 		t0 := time.Now()
 		active := conn
 		stopClose := context.AfterFunc(ctx, func() { active.Close() })
-		err := ctEcho(conn, c.udp)
+		err := ctEchoBefore(conn, c.udp, deadline)
 		stopClose()
 		if err != nil {
 			conn.Close()
@@ -1676,11 +1682,17 @@ func connectWaitFor(c *connTestCase) time.Duration {
 	return connTestConnectWait
 }
 
+const ctEchoWait = 4 * time.Second
+
 // ctEcho sends a small random payload and requires it back unchanged.
 func ctEcho(c net.Conn, udp bool) error {
+	return ctEchoBefore(c, udp, time.Now().Add(ctEchoWait))
+}
+
+func ctEchoBefore(c net.Conn, udp bool, deadline time.Time) error {
 	msg := make([]byte, 512)
 	_, _ = rand.Read(msg)
-	_ = c.SetDeadline(time.Now().Add(4 * time.Second))
+	_ = c.SetDeadline(deadline)
 	defer c.SetDeadline(time.Time{})
 	if n, err := c.Write(msg); err != nil {
 		return err

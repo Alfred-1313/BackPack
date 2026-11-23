@@ -391,6 +391,38 @@ func TestConnTestCancellationCannotPassAPartialSoak(t *testing.T) {
 	}
 }
 
+func TestConnTestLostEchoesKeepTheirScheduledDeadlines(t *testing.T) {
+	l, err := net.ListenPacket("udp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+	// Verify the connection and the first stability echo. Receive every
+	// subsequent datagram without answering it.
+	go func() {
+		buf := make([]byte, 512)
+		for seen := 0; ; seen++ {
+			n, peer, err := l.ReadFrom(buf)
+			if err != nil {
+				return
+			}
+			if seen < 2 {
+				_, _ = l.WriteTo(buf[:n], peer)
+			}
+		}
+	}()
+	originalSoak := connTestSoak
+	connTestSoak = 4
+	defer func() { connTestSoak = originalSoak }()
+	ctx, cancel := context.WithTimeout(context.Background(), 9*time.Second)
+	defer cancel()
+	c := &connTestCase{kind: "reverse", tr: "udp", udp: true, entry: l.LocalAddr().(*net.UDPAddr).Port}
+	r := ctProbe(ctx, c, 0, nil)
+	if r.Status != ctUnstable || r.Tried != 4 || r.OK != 1 {
+		t.Fatalf("unanswered echoes extended the soak past its budget: %+v", r)
+	}
+}
+
 type ctShortWriter struct{ net.Conn }
 
 func (c ctShortWriter) Write(p []byte) (int, error) { return len(p) - 1, nil }
