@@ -163,3 +163,51 @@ func TestHelperStabilityStartsAfterMatchingPayload(t *testing.T) {
 		}
 	}
 }
+
+func TestConnectionTestNegotiatesParallelHelpers(t *testing.T) {
+	key := base64.RawURLEncoding.EncodeToString(make([]byte, ctPairKeySize))
+	aead, err := ctExtraCipher(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	control := &ctExtraControl{key: aead}
+	for _, tc := range []struct {
+		value    any
+		parallel bool
+	}{
+		{true, false},
+		{ctExtraParallel, true},
+	} {
+		msg, err := ctExtraSeal(aead, "ready", tc.value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if control.answer("extra-ready", msg) != "ok" || control.parallelReady() != tc.parallel {
+			t.Fatalf("readiness %v did not negotiate the expected helper mode", tc.value)
+		}
+	}
+}
+
+func TestConnectionTestReleasesOnlyTheNamedHelper(t *testing.T) {
+	a, otherA := net.Pipe()
+	b, otherB := net.Pipe()
+	t.Cleanup(func() {
+		a.Close()
+		b.Close()
+		otherA.Close()
+		otherB.Close()
+	})
+	first, second := &ctEchoes{}, &ctEchoes{}
+	first.add(a)
+	second.add(b)
+	worker := &ctExtraWorker{parallel: true, instances: map[string]*ctExtraInstance{
+		"first":  {echo: first},
+		"second": {echo: second},
+	}}
+	if err := worker.close("first"); err != nil {
+		t.Fatal(err)
+	}
+	if !first.closed || second.closed || worker.instances["first"] != nil || worker.instances["second"] == nil {
+		t.Fatal("closing one helper affected another helper's echo listener")
+	}
+}

@@ -162,11 +162,28 @@ func ctExtraPort(mode string) (int, error) {
 }
 
 type ctExtraWorker struct {
+	parallel  bool
+	instances map[string]*ctExtraInstance
+}
+
+type ctExtraInstance struct {
 	mode, name string
 	echo       *ctEchoes
 }
 
-func (w *ctExtraWorker) close() error {
+func (w *ctExtraWorker) close(name string) error {
+	instance, ok := w.instances[name]
+	if !ok {
+		return nil
+	}
+	if err := instance.close(); err != nil {
+		return err
+	}
+	delete(w.instances, name)
+	return nil
+}
+
+func (w *ctExtraInstance) close() error {
 	if w.echo != nil {
 		w.echo.close()
 		w.echo = nil
@@ -197,12 +214,10 @@ func (w *ctExtraWorker) perform(ctx context.Context, link ConnTestLink, job ctEx
 		}
 		return ctExtraPort(job.Mode)
 	case "remove":
-		if w.name == job.Name {
-			return 0, w.close()
-		}
-		return 0, nil
+		return 0, w.close(job.Name)
 	case "mux":
-		if w.name != job.Name || w.mode != "reverse-mux" {
+		instance := w.instances[job.Name]
+		if instance == nil || instance.mode != "reverse-mux" {
 			return 0, errors.New("the matching Reverse Mux test is not started")
 		}
 		data, err := base64.StdEncoding.DecodeString(job.Token)
@@ -212,15 +227,27 @@ func (w *ctExtraWorker) perform(ctx context.Context, link ConnTestLink, job ctEx
 		_, err = ctOmniRun(ctx, job.Token, "mux-join")
 		return 0, err
 	case "join":
-		if err := w.close(); err != nil {
-			return 0, err
+		if !w.parallel {
+			for name := range w.instances {
+				if err := w.close(name); err != nil {
+					return 0, err
+				}
+			}
 		}
-		return 0, w.join(ctx, link, job)
+		if w.instances[job.Name] != nil || len(w.instances) >= len(ctExtraCases()) {
+			return 0, errors.New("no slot for this temporary test tunnel")
+		}
+		instance := &ctExtraInstance{}
+		err := instance.join(ctx, link, job)
+		if instance.name != "" {
+			w.instances[job.Name] = instance
+		}
+		return 0, err
 	}
 	return 0, errors.New("invalid test operation")
 }
 
-func (w *ctExtraWorker) join(ctx context.Context, link ConnTestLink, job ctExtraJob) error {
+func (w *ctExtraInstance) join(ctx context.Context, link ConnTestLink, job ctExtraJob) error {
 	if job.Mode == ctGostDirect {
 		raw, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(job.Token, "bpgost1."))
 		var token struct {
@@ -279,7 +306,12 @@ func ctStartExtraWorker(ctx context.Context, link ConnTestLink, out io.Writer) f
 	if err != nil {
 		return nil
 	}
-	hello, err := ctExtraSeal(key, "ready", true)
+	parallel := link.ParallelExtra
+	var readiness any = true
+	if parallel {
+		readiness = ctExtraParallel
+	}
+	hello, err := ctExtraSeal(key, "ready", readiness)
 	if err != nil {
 		return nil
 	}
@@ -293,20 +325,22 @@ func ctStartExtraWorker(ctx context.Context, link ConnTestLink, out io.Writer) f
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		ctExtraWork(ctx, link, out)
+		ctExtraWork(ctx, link, parallel, out)
 	}()
 	return func() { cancel(); <-done }
 }
 
-func ctExtraWork(ctx context.Context, link ConnTestLink, out io.Writer) {
+func ctExtraWork(ctx context.Context, link ConnTestLink, parallel bool, out io.Writer) {
 	key, err := ctExtraCipher(link.pairKey)
 	if err != nil {
 		return
 	}
-	w := &ctExtraWorker{}
+	w := &ctExtraWorker{parallel: parallel, instances: make(map[string]*ctExtraInstance)}
 	defer func() {
-		if err := w.close(); err != nil {
-			fmt.Fprintln(out, "Temporary transport cleanup:", ctExtraError(err))
+		for name := range w.instances {
+			if err := w.close(name); err != nil {
+				fmt.Fprintln(out, "Temporary transport cleanup:", ctExtraError(err))
+			}
 		}
 	}()
 	var sequence uint64
@@ -428,44 +462,68 @@ func (s *ConnTestIran) removeExtra(c *connTestCase) error {
 		ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
 		defer cancel()
 		_, peerErr = s.coord.extra.exchange(ctx, ctExtraJob{Action: "remove", Name: c.name, Mode: mode})
+		c.peerStarted = peerErr != nil
 	}
 	if c.localStarted {
 		localErr = ctExtraRemove(mode, c.name)
+		c.localStarted = localErr != nil
 	}
 	return errors.Join(peerErr, localErr)
 }
 
-func (s *ConnTestIran) probeExtra(ctx context.Context, c *connTestCase, nativeDone <-chan struct{}, report func(ConnTestResult)) {
-	mode := strings.TrimPrefix(c.tr, ctOmniPrefix)
-	c.name = ctExtraName()
-	row := ConnTestResult{Kind: c.kind, Transport: c.tr, Status: ctTesting, Total: connTestSoak, Phase: ctPhaseTransportSetup, Detail: "preparing temporary tunnel"}
-	report(row)
-	defer func() {
-		if !c.localStarted && !c.peerStarted {
-			return
-		}
-		cleaning := row
-		cleaning.Phase, cleaning.Detail = ctPhaseTransportCleanup, "removing temporary tunnel on both servers"
-		report(cleaning)
-		if err := s.removeExtra(c); err != nil {
-			row.Detail = strings.Trim(strings.Join([]string{row.Detail, "temporary tunnel cleanup could not be confirmed"}, "; "), "; ")
-		}
+func (s *ConnTestIran) prepareExtra(ctx context.Context, c *connTestCase, report func(ConnTestResult)) (ConnTestResult, bool) {
+	row := ConnTestResult{Kind: c.kind, Transport: c.tr, Status: ctTesting, Total: connTestSoak}
+	if ctx.Err() != nil {
+		row.Status, row.Detail = ctStopped, "test stopped before tunnel setup"
 		report(row)
-	}()
-	if err := s.setupExtra(ctx, c, mode); err != nil {
+		return row, false
+	}
+	c.name = ctExtraName()
+	row.Phase, row.Detail = ctPhaseTransportSetup, "preparing temporary tunnel"
+	report(row)
+	if err := s.setupExtra(ctx, c, strings.TrimPrefix(c.tr, ctOmniPrefix)); err != nil {
 		row.Status, row.Detail, row.Phase = ctSkipped, "Could not prepare tunnel: "+ctExtraError(err), ""
 		if ctx.Err() != nil {
 			row.Status, row.Detail = ctStopped, "stopped during tunnel setup"
 		}
 		report(row)
-		return
+		return row, false
 	}
-	row = ctProbe(ctx, c, s.link.L3, func(r ConnTestResult) {
+	return row, true
+}
+
+func (s *ConnTestIran) extraStability(ctx context.Context, c *connTestCase, report func(ConnTestResult)) ConnTestResult {
+	return ctProbe(ctx, c, s.link.L3, func(r ConnTestResult) {
 		if r.Status == ctTesting && r.Phase == "" {
 			r.Phase, r.Detail = ctPhaseTransportEcho, "checking stability through the tunnel"
 		}
 		report(r)
 	})
+}
+
+func (s *ConnTestIran) cleanupExtra(c *connTestCase, row ConnTestResult, report func(ConnTestResult)) {
+	if !c.localStarted && !c.peerStarted {
+		return
+	}
+	cleaning := row
+	cleaning.Phase, cleaning.Detail = ctPhaseTransportCleanup, "removing temporary tunnel on both servers"
+	report(cleaning)
+	const unconfirmed = "temporary tunnel cleanup could not be confirmed"
+	row.Detail = strings.TrimSuffix(strings.TrimSuffix(row.Detail, unconfirmed), "; ")
+	if err := s.removeExtra(c); err != nil {
+		row.Detail = strings.Trim(strings.Join([]string{row.Detail, unconfirmed}, "; "), "; ")
+	}
+	report(row)
+}
+
+// An older peer has just one helper slot, so finish that pair before the next join.
+func (s *ConnTestIran) probeExtra(ctx context.Context, c *connTestCase, nativeDone <-chan struct{}, report func(ConnTestResult)) {
+	row, ok := s.prepareExtra(ctx, c, report)
+	defer func() { s.cleanupExtra(c, row, report) }()
+	if !ok {
+		return
+	}
+	row = s.extraStability(ctx, c, report)
 	if row.Phase != "speed-queued" {
 		return
 	}

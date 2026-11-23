@@ -17,6 +17,7 @@ import (
 
 const ctPairKeySize = 32
 const ctExtraChunk = 700
+const ctExtraParallel = "parallel-v1"
 
 type ctExtraJob struct {
 	ID     uint64 `json:"i"`
@@ -72,12 +73,13 @@ func ctExtraOpen(aead cipher.AEAD, label, value string, out any) error {
 // A single job is outstanding. Both ends keep it until its encrypted reply is
 // acknowledged, so a lost TCP/UDP response cannot start a helper a second time.
 type ctExtraControl struct {
-	mu    sync.Mutex
-	key   cipher.AEAD
-	ready bool
-	id    uint64
-	body  string
-	reply chan ctExtraReply
+	mu       sync.Mutex
+	key      cipher.AEAD
+	ready    bool
+	parallel bool
+	id       uint64
+	body     string
+	reply    chan ctExtraReply
 }
 
 func (c *ctExtraControl) answer(command, value string) string {
@@ -85,6 +87,11 @@ func (c *ctExtraControl) answer(command, value string) string {
 	defer c.mu.Unlock()
 	switch command {
 	case "extra-ready":
+		var capability string
+		if ctExtraOpen(c.key, "ready", value, &capability) == nil && capability == ctExtraParallel {
+			c.ready, c.parallel = true, true
+			return "ok"
+		}
 		var ready bool
 		if ctExtraOpen(c.key, "ready", value, &ready) == nil && ready {
 			c.ready = true
@@ -114,6 +121,15 @@ func (c *ctExtraControl) answer(command, value string) string {
 		return "ok"
 	}
 	return ""
+}
+
+func (c *ctExtraControl) parallelReady() bool {
+	if c == nil {
+		return false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.parallel
 }
 
 func (c *ctExtraControl) exchange(ctx context.Context, job ctExtraJob) (ctExtraReply, error) {

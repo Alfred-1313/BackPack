@@ -153,7 +153,8 @@ type ConnTestLink struct {
 	Preset string `json:"pr,omitempty"`
 	// New peers may choose a direct listener port on the machine that binds it.
 	// An older peer keeps the port picked on Iran, as before.
-	DirectPorts bool `json:"dp,omitempty"`
+	DirectPorts   bool `json:"dp,omitempty"`
+	ParallelExtra bool `json:"xp,omitempty"`
 	// The spoofing check: the forged source, and the UDP port each side's
 	// receiver counts probes on. Empty SpoofSrc is no check.
 	SpoofSrc string `json:"ss,omitempty"`
@@ -688,6 +689,7 @@ func StartConnTestIran(o ConnTestOptions) (*ConnTestIran, string, error) {
 				return fail(err)
 			}
 			s.link.pairKey = base64.RawURLEncoding.EncodeToString(key[:])
+			s.link.ParallelExtra = true
 			aead, err := ctExtraCipher(s.link.pairKey)
 			if err != nil {
 				return fail(err)
@@ -1153,7 +1155,7 @@ func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResul
 		if c.skip != "" {
 			results[i].Status, results[i].Detail = ctSkipped, c.skip
 		} else if c.extra {
-			results[i].Phase, results[i].Detail = ctPhaseTransportQueued, "waiting for a temporary tunnel slot"
+			results[i].Phase, results[i].Detail = ctPhaseTransportQueued, "waiting for temporary tunnel setup"
 		}
 	}
 	// The kharej sees the same rows, a question at a time.
@@ -1168,8 +1170,9 @@ func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResul
 		}
 	}
 
-	// The peer can hold one temporary helper tunnel at a time. Its stability
-	// check can overlap the native checks, but speed tests share the link.
+	// Older peers keep only one helper pair. Updated peers keep each pair by
+	// name so the stability probes can overlap and all speed tests run later.
+	parallelExtra := s.link.ParallelExtra && s.coord.extra.parallelReady()
 	nativeDone := make(chan struct{})
 	nextExtra := 0
 	runNextExtra := func() bool {
@@ -1213,17 +1216,40 @@ func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResul
 		wg.Wait()
 		close(nativeDone)
 	}()
-	// Start a full helper check now. If it fails early, the next helper can
-	// take the slot while the native stability checks are still running.
-earlyHelpers:
-	for runNextExtra() {
-		select {
-		case <-nativeDone:
-			break earlyHelpers
-		default:
+	if parallelExtra {
+		var probes sync.WaitGroup
+		// The control channel has one outstanding setup request. As soon as
+		// the pair is ready its echoes run alongside the other probes.
+		for i, c := range s.cases {
+			if !c.extra || c.skip != "" {
+				continue
+			}
+			report := func(row ConnTestResult) { reportRow(i, row) }
+			if _, ok := s.prepareExtra(ctx, c, report); !ok {
+				continue
+			}
+			probes.Go(func() { s.extraStability(ctx, c, report) })
+		}
+		probes.Wait()
+		nextExtra = len(s.cases)
+	} else {
+	earlyHelpers:
+		for runNextExtra() {
+			select {
+			case <-nativeDone:
+				break earlyHelpers
+			default:
+			}
 		}
 	}
 	<-nativeDone
+	if parallelExtra {
+		for i, c := range s.cases {
+			if c.extra && results[i].Phase != "speed-queued" {
+				s.cleanupExtra(c, results[i], func(row ConnTestResult) { reportRow(i, row) })
+			}
+		}
+	}
 	var failed []string
 	for i, c := range s.cases {
 		if c.extra {
@@ -1298,6 +1324,13 @@ earlyHelpers:
 	// any remaining helper pairs take their turns.
 	s.closeTestEngines()
 	for runNextExtra() {
+	}
+	if parallelExtra {
+		for i, c := range s.cases {
+			if c.extra {
+				s.cleanupExtra(c, results[i], func(row ConnTestResult) { reportRow(i, row) })
+			}
+		}
 	}
 
 	// The kharej's path-MTU measurement, which it has usually sent long before.
@@ -2477,7 +2510,7 @@ func runConnTestKharejLink(ctx context.Context, link ConnTestLink, out io.Writer
 		ctKharejSpoof(ctx, link, root)
 	}
 	go ctKharejPMTU(ctx, link)
-	fmt.Fprintln(out, "Iran is measuring payload delivery, stability and speed. Optional helper transports run one at a time.")
+	fmt.Fprintln(out, "Iran is measuring payload delivery and stability before measuring speeds.")
 
 	// The verdict, and the rows as they fill until it comes.
 	for {

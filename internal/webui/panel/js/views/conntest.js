@@ -106,7 +106,7 @@ function startPane(v) {
   return `<div class="ct-l-in fade">
     <span class="ct-kick">New test</span>
     <div class="tl-lede"><b>Every transport, tried for real between this server and one kharej.</b>
-      <span>Each stability test sends 60 echoes. Transports that need a temporary tunnel take turns on the two servers.
+      <span>Each stability test sends 60 echoes. Transports start checking as soon as both ends are ready.
         Download and upload are measured with four connections and again with sixteen, one tunnel at a time;
         the max is the best second the tunnel carried. The test tunnels run on free ports and are
         removed when it ends — nothing is left behind on either server.</span></div>
