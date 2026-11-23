@@ -104,6 +104,12 @@ func ctStatusLabel(r ConnTestResult) string {
 	switch r.Phase {
 	case "speed-queued", ctPhaseAgain, ctPhaseTransportQueued:
 		return "QUEUED"
+	case ctPhaseInitialEcho:
+		return "FIRST ECHO"
+	case ctPhaseEchoVerified:
+		return "ECHO OK"
+	case ctPhaseEchoRetry:
+		return "RETRY DUE"
 	case ctPhaseTransportSetup:
 		return "SETTING UP"
 	case ctPhaseTransportConnect:

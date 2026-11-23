@@ -25,6 +25,9 @@ const ctGostDirect = "gost-direct"
 const ctOmniPrefix = "omni-"
 
 const (
+	ctPhaseInitialEcho      = "transport-initial"
+	ctPhaseEchoVerified     = "transport-verified"
+	ctPhaseEchoRetry        = "transport-retry"
 	ctPhaseTransportQueued  = "transport-queued"
 	ctPhaseTransportSetup   = "transport-setup"
 	ctPhaseTransportConnect = "transport-connect"
@@ -418,7 +421,66 @@ func (s *ConnTestIran) setupExtra(ctx context.Context, c *connTestCase, mode str
 	return err
 }
 
-func (s *ConnTestIran) probeExtra(ctx context.Context, c *connTestCase, nativeStable <-chan struct{}, report func(ConnTestResult)) {
+func (s *ConnTestIran) removeExtra(c *connTestCase) error {
+	mode := strings.TrimPrefix(c.tr, ctOmniPrefix)
+	var peerErr, localErr error
+	if c.peerStarted {
+		ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
+		defer cancel()
+		_, peerErr = s.coord.extra.exchange(ctx, ctExtraJob{Action: "remove", Name: c.name, Mode: mode})
+	}
+	if c.localStarted {
+		localErr = ctExtraRemove(mode, c.name)
+	}
+	return errors.Join(peerErr, localErr)
+}
+
+// checkExtra uses its own disposable pair. Only the regular stability run
+// contributes samples, speed figures and final verdicts.
+func (s *ConnTestIran) checkExtra(ctx context.Context, c connTestCase, report func(ConnTestResult)) {
+	c.name = ctExtraName()
+	row := ConnTestResult{Kind: c.kind, Transport: c.tr, Status: ctTesting, Phase: ctPhaseTransportSetup,
+		Total: connTestSoak, Detail: "preparing the initial connection check"}
+	report(row)
+	setup, cancel := context.WithTimeout(ctx, 50*time.Second)
+	err := s.setupExtra(setup, &c, strings.TrimPrefix(c.tr, ctOmniPrefix))
+	cancel()
+	if err == nil {
+		row.Phase, row.Detail = ctPhaseInitialEcho, "checking a 512-byte echo through the tunnel"
+		report(row)
+		probe, stop := context.WithTimeout(ctx, 8*time.Second)
+		err = ctInitialEcho(probe, &c, s.link.L3)
+		stop()
+	}
+	if err == nil {
+		row.Phase, row.Detail = ctPhaseEchoVerified, "initial echo received; full stability test pending"
+	} else {
+		row.Phase, row.Detail = ctPhaseEchoRetry, "initial check: "+ctExtraError(err)+". Full test pending"
+	}
+	if cleanErr := s.removeExtra(&c); cleanErr != nil {
+		row.Detail += "; temporary tunnel cleanup could not be confirmed"
+	}
+	report(row)
+}
+
+func ctInitialEcho(ctx context.Context, c *connTestCase, port int) error {
+	for ctx.Err() == nil {
+		conn, err := ctDial(ctx, c, port)
+		if err == nil {
+			interrupt := context.AfterFunc(ctx, func() { conn.Close() })
+			err = ctEcho(conn, c.udp)
+			interrupt()
+			conn.Close()
+			if err == nil {
+				return nil
+			}
+		}
+		ctSleep(ctx, 250*time.Millisecond)
+	}
+	return ctx.Err()
+}
+
+func (s *ConnTestIran) probeExtra(ctx context.Context, c *connTestCase, report func(ConnTestResult)) {
 	mode := strings.TrimPrefix(c.tr, ctOmniPrefix)
 	c.name = ctExtraName()
 	row := ConnTestResult{Kind: c.kind, Transport: c.tr, Status: ctTesting, Total: connTestSoak, Phase: ctPhaseTransportSetup, Detail: "preparing temporary tunnel"}
@@ -430,16 +492,7 @@ func (s *ConnTestIran) probeExtra(ctx context.Context, c *connTestCase, nativeSt
 		cleaning := row
 		cleaning.Phase, cleaning.Detail = ctPhaseTransportCleanup, "removing temporary tunnel on both servers"
 		report(cleaning)
-		ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
-		defer cancel()
-		var peerErr, localErr error
-		if c.peerStarted {
-			_, peerErr = s.coord.extra.exchange(ctx, ctExtraJob{Action: "remove", Name: c.name, Mode: mode})
-		}
-		if c.localStarted {
-			localErr = ctExtraRemove(mode, c.name)
-		}
-		if localErr != nil || peerErr != nil {
+		if err := s.removeExtra(c); err != nil {
 			row.Detail = strings.Trim(strings.Join([]string{row.Detail, "temporary tunnel cleanup could not be confirmed"}, "; "), "; ")
 		}
 		report(row)
@@ -454,16 +507,12 @@ func (s *ConnTestIran) probeExtra(ctx context.Context, c *connTestCase, nativeSt
 			r.Phase, r.Detail = ctPhaseTransportEcho, "checking stability through the tunnel"
 		}
 		if r.Phase == "speed-queued" {
-			r.Detail = "stability passed; waiting for the other stability probes"
+			r.Detail = "stability passed; preparing speed test"
 		}
 		report(r)
 	})
 	if row.Phase != "speed-queued" {
 		return
-	}
-	select {
-	case <-nativeStable:
-	case <-ctx.Done():
 	}
 	if ctx.Err() != nil {
 		row.Status, row.Phase, row.Detail = ctUnstable, "", "stopped before speed test"

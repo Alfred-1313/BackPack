@@ -170,7 +170,7 @@ function settled(v) {
   const speed = live.find(r => r.phase === 'speed' || r.phase === 'speed-second');
   if (speed?.phase === 'speed-second') return `Second speed pass on ${speed.name}.${queue}`;
   if (speed) return `Measuring download and upload on ${speed.name}.${queue}`;
-  const active = live.find(r => ['transport-setup', 'transport-connect', 'transport-echo', 'transport-cleanup'].includes(r.phase));
+  const active = live.find(r => ['transport-setup', 'transport-initial', 'transport-connect', 'transport-echo', 'transport-cleanup'].includes(r.phase));
   if (active) return `${rowPhase[active.phase]} ${active.name}.${queue}`;
   if (waiting) {
     const next = live.find(r => r.phase === 'transport-queued');
@@ -241,8 +241,9 @@ function endPane(v) {
 /* ---- right: the transports ----------------------------------------------- */
 const tone = st => ({ ok: 'ok', unstable: 'wr', down: 'er', skipped: 'sk' }[st] || 'run');
 const rowPhase = {
-  speed: 'Speed test', 'speed-second': 'Speed test', 'speed-queued': 'Queued',
-  'speed-again': 'Queued', 'transport-queued': 'Queued', 'transport-setup': 'Setting up',
+  speed: 'Speed test', 'speed-second': 'Speed test', 'speed-queued': 'Awaiting speed',
+  'speed-again': 'Queued', 'transport-queued': 'Awaiting setup', 'transport-initial': 'First echo',
+  'transport-verified': 'Echo received', 'transport-retry': 'Retry pending', 'transport-setup': 'Setting up',
   'transport-connect': 'Connecting', 'transport-echo': 'Checking echoes', 'transport-cleanup': 'Cleaning up',
 };
 
@@ -268,7 +269,7 @@ const rate = (avg, peak) => `<b>${mbps(Math.max(avg, peak || 0))}</b> Mb/s${peak
 function fillRow(n, r) {
   const total = r.total || 60;
   const testing = r.status === 'testing';
-  const waiting = r.phase === 'transport-queued';
+  const waiting = ['transport-queued', 'transport-initial', 'transport-verified', 'transport-retry'].includes(r.phase);
   const share = Math.max(0, Math.min(1, testing ? (r.tried / total) : (r.ok / total)));
   n.className = `ct-row ${waiting ? "queued" : tone(r.status)}${r.uploadMbps ? ' has-speed' : ''}`;
   const nb = n.querySelector('.nm b');

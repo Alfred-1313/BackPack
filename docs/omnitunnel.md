@@ -62,12 +62,15 @@ last forward. The menu asks you to confirm the removal.
 
 The standard Connection Test includes the helper carriers and GOST
 Direct when both servers use a current build. Its native GRE row tests plain kernel GRE.
-On the IPv4 path it creates a temporary pair per carrier, interleaves its run
-with the native speed tests, checks the same stability echoes and speed samples
-as the other transports, then removes the test pair. An unavailable
-helper or a setup failure is reported as skipped with its setup diagnostic.
-The probe sends traffic on the selected route; support for a carrier is
-independent of how it performs on that route.
+On IPv4, the tester creates one temporary pair at a time and sends a random
+512-byte payload through it before speed testing starts. **Echo received**
+means the payload returned intact. **Retry pending** shows the reason the
+initial check could not verify delivery. Both proceed to the full test.
+
+The full run creates a fresh temporary pair for each carrier, measures the
+usual stability echoes and speed samples, and removes the pair. The initial
+echo does not count toward the 60 stability samples. An unavailable helper
+or a full-test setup failure shows as skipped with its diagnostic.
 
 Use **Test a configured OmniTunnel or GOST connection** in Connection Test,
 or **Connection Test ? Configured tunnel** in the CLI. Start the temporary
