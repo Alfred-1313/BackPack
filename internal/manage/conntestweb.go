@@ -21,7 +21,7 @@ func ConnTestJoinWait() time.Duration { return connTestJoinWait }
 func ConnTestRunTime() time.Duration {
 	return connTestConnectWait + time.Duration(connTestSoak)*time.Second + 45*time.Second +
 		ConnTestSpeedTime(len(connTestReverse)-1+len(connTestDirect)) +
-		time.Duration(len(ctExtraCases()))*(ctExtraTime()+ctInitialCheckTime)
+		time.Duration(len(ctExtraCases()))*ctExtraTime()
 }
 
 // ConnTestSpeedTime estimates the serial speed phase for healthy tunnels:
@@ -54,8 +54,6 @@ func ConnTestSpeedLeft(phases []string) time.Duration {
 	return left
 }
 
-const ctInitialCheckTime = 25 * time.Second
-
 func ctExtraTime() time.Duration {
 	return connTestConnectWait + time.Duration(connTestSoak)*time.Second + ConnTestSpeedTime(1) + 70*time.Second
 }
@@ -75,17 +73,15 @@ func ConnTestTimeLeft(rows []ConnTestResult) time.Duration {
 		}
 		switch row.Phase {
 		case ctPhaseTransportQueued:
-			helpers += ctInitialCheckTime + ctExtraTime()
-		case ctPhaseInitialEcho:
-			helpers += ctInitialCheckTime + ctExtraTime()
-			active = true
-		case ctPhaseEchoVerified, ctPhaseEchoRetry:
 			helpers += ctExtraTime()
 		case ctPhaseTransportSetup, ctPhaseTransportConnect:
 			helpers += ctExtraTime()
 			active = true
-		case "speed", ctPhaseSecond:
+		case "speed":
 			helpers += ConnTestSpeedTime(1)
+			active = true
+		case ctPhaseSecond:
+			helpers += ctSpeedSecondPass()
 			active = true
 		case ctPhaseTransportCleanup:
 			helpers += 40 * time.Second
@@ -104,7 +100,7 @@ func ConnTestTimeLeft(rows []ConnTestResult) time.Duration {
 		return 0
 	}
 	if left == 0 {
-		// The first helper can reach speed while the native rows are all queued.
+		// A helper can be active while all native speed tests are still queued.
 		for _, phase := range native {
 			if phase == "speed-queued" {
 				left += ConnTestSpeedTime(1)

@@ -1153,7 +1153,7 @@ func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResul
 		if c.skip != "" {
 			results[i].Status, results[i].Detail = ctSkipped, c.skip
 		} else if c.extra {
-			results[i].Phase, results[i].Detail = ctPhaseTransportQueued, "waiting for the initial tunnel echo"
+			results[i].Phase, results[i].Detail = ctPhaseTransportQueued, "waiting for a temporary tunnel slot"
 		}
 	}
 	// The kharej sees the same rows, a question at a time.
@@ -1168,8 +1168,9 @@ func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResul
 		}
 	}
 
-	// The initial payload checks run alongside native stability. The full tests
-	// then share the serial bandwidth schedule with the native transports.
+	// The peer can hold one temporary helper tunnel at a time. Its stability
+	// check can overlap the native checks, but speed tests share the link.
+	nativeDone := make(chan struct{})
 	nextExtra := 0
 	runNextExtra := func() bool {
 		for nextExtra < len(s.cases) {
@@ -1185,7 +1186,7 @@ func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResul
 				reportRow(i, row)
 				continue
 			}
-			s.probeExtra(ctx, c, func(row ConnTestResult) { reportRow(i, row) })
+			s.probeExtra(ctx, c, nativeDone, func(row ConnTestResult) { reportRow(i, row) })
 			return true
 		}
 		return false
@@ -1208,14 +1209,21 @@ func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResul
 			ctProbe(ctx, c, s.link.L3, report)
 		}(i, c)
 	}
-	// The peer manages one temporary pair at a time. Release each after its
-	// first echo so the next carrier can start before any bandwidth runs.
-	for i, c := range s.cases {
-		if c.extra && c.skip == "" && ctx.Err() == nil {
-			s.checkExtra(ctx, *c, func(row ConnTestResult) { reportRow(i, row) })
+	go func() {
+		wg.Wait()
+		close(nativeDone)
+	}()
+	// Start a full helper check now. If it fails early, the next helper can
+	// take the slot while the native stability checks are still running.
+earlyHelpers:
+	for runNextExtra() {
+		select {
+		case <-nativeDone:
+			break earlyHelpers
+		default:
 		}
 	}
-	wg.Wait()
+	<-nativeDone
 	var failed []string
 	for i, c := range s.cases {
 		if c.extra {
@@ -1227,7 +1235,6 @@ func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResul
 		}
 	}
 	s.stopTestEngines(failed)
-	runNextExtra()
 
 	// Stability probes finish before any bandwidth test starts. Heavy traffic
 	// must not change another tunnel's loss/RTT or share its speed measurement.

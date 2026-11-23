@@ -89,7 +89,7 @@ func TestConnectionTestQueueKeepsHelpersInTheRemainingTime(t *testing.T) {
 		{Transport: "omni-icmp", Phase: ctPhaseTransportQueued, Status: ctTesting},
 		{Transport: ctGostDirect, Phase: ctPhaseTransportQueued, Status: ctTesting},
 	}
-	if got, want := ConnTestTimeLeft(rows), ctSpeedSecondPass()+2*(ctInitialCheckTime+ctExtraTime()); got != want {
+	if got, want := ConnTestTimeLeft(rows), ctSpeedSecondPass()+2*ctExtraTime(); got != want {
 		t.Fatalf("time left %s, want %s", got, want)
 	}
 	for phase, want := range map[string]string{
@@ -105,11 +105,11 @@ func TestConnectionTestQueueKeepsHelpersInTheRemainingTime(t *testing.T) {
 	}
 	rows[0].Phase = ""
 	rows[1].Phase = ctPhaseTransportCleanup
-	if got, want := ConnTestTimeLeft(rows), 40*time.Second+ctInitialCheckTime+ctExtraTime(); got != want {
+	if got, want := ConnTestTimeLeft(rows), 40*time.Second+ctExtraTime(); got != want {
 		t.Fatalf("time left during cleanup %s, want %s", got, want)
 	}
 	rows[1].Phase, rows[1].Total, rows[1].Tried = ctPhaseTransportEcho, 60, 17
-	if got, want := ConnTestTimeLeft(rows), 43*time.Second+ConnTestSpeedTime(1)+ctInitialCheckTime+ctExtraTime(); got != want {
+	if got, want := ConnTestTimeLeft(rows), 43*time.Second+ConnTestSpeedTime(1)+ctExtraTime(); got != want {
 		t.Fatalf("time left during echoes %s, want %s", got, want)
 	}
 	rows[0].Status = ctTesting
@@ -117,12 +117,12 @@ func TestConnectionTestQueueKeepsHelpersInTheRemainingTime(t *testing.T) {
 		t.Fatalf("should keep the overall estimate while native stability is in progress, got %s", got)
 	}
 	rows[0].Phase, rows[1].Phase = "speed-queued", "speed"
-	if got, want := ConnTestTimeLeft(rows), ConnTestSpeedTime(2)+ctInitialCheckTime+ctExtraTime(); got != want {
+	if got, want := ConnTestTimeLeft(rows), ConnTestSpeedTime(2)+ctExtraTime(); got != want {
 		t.Fatalf("time left with native speed queued %s, want %s", got, want)
 	}
 }
 
-func TestInitialEchoRequiresMatchingPayload(t *testing.T) {
+func TestHelperStabilityStartsAfterMatchingPayload(t *testing.T) {
 	for _, match := range []bool{true, false} {
 		l, err := net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
@@ -135,22 +135,31 @@ func TestInitialEchoRequiresMatchingPayload(t *testing.T) {
 					return
 				}
 				payload := make([]byte, 512)
-				if _, err := io.ReadFull(conn, payload); err == nil {
+				for {
+					if _, err := io.ReadFull(conn, payload); err != nil {
+						break
+					}
 					if !match {
 						payload[0] ^= 1
 					}
-					_, _ = conn.Write(payload)
+					if _, err := conn.Write(payload); err != nil {
+						break
+					}
 				}
 				conn.Close()
 			}
 		}()
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		route := connTestCase{kind: "direct", extra: true, entry: l.Addr().(*net.TCPAddr).Port}
-		err = ctInitialEcho(ctx, &route, 0)
+		result := ctProbe(ctx, &route, 0, func(row ConnTestResult) {
+			if row.OK == 1 {
+				cancel()
+			}
+		})
 		cancel()
 		l.Close()
-		if (err == nil) != match {
-			t.Fatalf("matching payload %t, initial echo returned %v", match, err)
+		if got := result.OK > 0; got != match {
+			t.Fatalf("matching payload %t, stability verified %d echoes", match, result.OK)
 		}
 	}
 }

@@ -435,57 +435,7 @@ func (s *ConnTestIran) removeExtra(c *connTestCase) error {
 	return errors.Join(peerErr, localErr)
 }
 
-// checkExtra uses its own disposable pair. Only the regular stability run
-// contributes samples, speed figures and final verdicts.
-func (s *ConnTestIran) checkExtra(ctx context.Context, c connTestCase, report func(ConnTestResult)) {
-	c.name = ctExtraName()
-	row := ConnTestResult{Kind: c.kind, Transport: c.tr, Status: ctTesting, Phase: ctPhaseTransportSetup,
-		Total: connTestSoak, Detail: "preparing the initial connection check"}
-	report(row)
-	setup, cancel := context.WithTimeout(ctx, 50*time.Second)
-	err := s.setupExtra(setup, &c, strings.TrimPrefix(c.tr, ctOmniPrefix))
-	cancel()
-	if err == nil {
-		row.Phase, row.Detail = ctPhaseInitialEcho, "checking a 512-byte echo through the tunnel"
-		report(row)
-		probe, stop := context.WithTimeout(ctx, 8*time.Second)
-		err = ctInitialEcho(probe, &c, s.link.L3)
-		stop()
-	}
-	if err == nil {
-		row.Phase, row.Detail = ctPhaseEchoVerified, "initial echo received; full stability test pending"
-	} else {
-		row.Phase, row.Detail = ctPhaseEchoRetry, "initial check: "+ctExtraError(err)+". Full test pending"
-	}
-	if c.localStarted || c.peerStarted {
-		cleaning := row
-		cleaning.Phase, cleaning.Detail = ctPhaseTransportCleanup, "removing the temporary tunnel after the initial check"
-		report(cleaning)
-		if cleanErr := s.removeExtra(&c); cleanErr != nil {
-			row.Detail += "; temporary tunnel cleanup could not be confirmed"
-		}
-	}
-	report(row)
-}
-
-func ctInitialEcho(ctx context.Context, c *connTestCase, port int) error {
-	for ctx.Err() == nil {
-		conn, err := ctDial(ctx, c, port)
-		if err == nil {
-			interrupt := context.AfterFunc(ctx, func() { conn.Close() })
-			err = ctEcho(conn, c.udp)
-			interrupt()
-			conn.Close()
-			if err == nil {
-				return nil
-			}
-		}
-		ctSleep(ctx, 250*time.Millisecond)
-	}
-	return ctx.Err()
-}
-
-func (s *ConnTestIran) probeExtra(ctx context.Context, c *connTestCase, report func(ConnTestResult)) {
+func (s *ConnTestIran) probeExtra(ctx context.Context, c *connTestCase, nativeDone <-chan struct{}, report func(ConnTestResult)) {
 	mode := strings.TrimPrefix(c.tr, ctOmniPrefix)
 	c.name = ctExtraName()
 	row := ConnTestResult{Kind: c.kind, Transport: c.tr, Status: ctTesting, Total: connTestSoak, Phase: ctPhaseTransportSetup, Detail: "preparing temporary tunnel"}
@@ -514,13 +464,14 @@ func (s *ConnTestIran) probeExtra(ctx context.Context, c *connTestCase, report f
 		if r.Status == ctTesting && r.Phase == "" {
 			r.Phase, r.Detail = ctPhaseTransportEcho, "checking stability through the tunnel"
 		}
-		if r.Phase == "speed-queued" {
-			r.Detail = "stability passed; preparing speed test"
-		}
 		report(r)
 	})
 	if row.Phase != "speed-queued" {
 		return
+	}
+	select {
+	case <-ctx.Done():
+	case <-nativeDone:
 	}
 	if ctx.Err() != nil {
 		row.Status, row.Phase, row.Detail = ctStopped, "", "stopped before speed test"
@@ -536,6 +487,8 @@ func (s *ConnTestIran) probeExtra(ctx context.Context, c *connTestCase, report f
 	} else if err != nil {
 		row.Status, row.Phase, row.Detail = ctUnstable, "", "speed test failed ("+ctShortErr(err)+")"
 	} else {
+		row.Phase, row.Detail = ctPhaseSecond, "second download and upload pass"
+		report(row)
 		ctPutSpeed(&row, ctSpeedAgain(ctx, dial, speed))
 	}
 	report(row)
