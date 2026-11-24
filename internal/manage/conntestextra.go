@@ -521,8 +521,7 @@ func (s *ConnTestIran) prepareExtra(ctx context.Context, c *connTestCase, report
 	return row, true
 }
 
-func (s *ConnTestIran) prepareExtraCases(ctx context.Context, workers int, report func(int, ConnTestResult)) []bool {
-	ready := make([]bool, len(s.cases))
+func (s *ConnTestIran) probeParallelExtras(ctx context.Context, workers int, report func(int, ConnTestResult)) {
 	queue := make(chan int, len(s.cases))
 	for i, c := range s.cases {
 		if c.extra && c.skip == "" {
@@ -530,23 +529,21 @@ func (s *ConnTestIran) prepareExtraCases(ctx context.Context, workers int, repor
 		}
 	}
 	close(queue)
-	var setups sync.WaitGroup
+	var setups, probes sync.WaitGroup
 	for worker := range workers {
 		setups.Go(func() {
 			for i := range queue {
 				c := s.cases[i]
 				c.extraWorker = worker
-				row, ok := s.prepareExtra(ctx, c, func(row ConnTestResult) { report(i, row) })
-				ready[i] = ok
-				if ok {
-					row.Phase, row.Detail = ctPhaseStabilityReady, "temporary tunnel ready; waiting for stability checks"
-					report(i, row)
+				update := func(row ConnTestResult) { report(i, row) }
+				if _, ok := s.prepareExtra(ctx, c, update); ok {
+					probes.Go(func() { s.extraStability(ctx, c, update) })
 				}
 			}
 		})
 	}
 	setups.Wait()
-	return ready
+	probes.Wait()
 }
 
 func (s *ConnTestIran) extraStability(ctx context.Context, c *connTestCase, report func(ConnTestResult)) ConnTestResult {
@@ -571,6 +568,21 @@ func (s *ConnTestIran) cleanupExtra(c *connTestCase, row ConnTestResult, report 
 		row.Detail = strings.Trim(strings.Join([]string{row.Detail, unconfirmed}, "; "), "; ")
 	}
 	report(row)
+}
+
+// Each lane keeps its removal requests in order while independent lanes clean up concurrently.
+func (s *ConnTestIran) cleanupExtraCases(workers int, rows []ConnTestResult, report func(int, ConnTestResult), includeSpeedQueued bool) {
+	var cleanup sync.WaitGroup
+	for worker := range workers {
+		cleanup.Go(func() {
+			for i, c := range s.cases {
+				if c.extra && c.extraWorker == worker && (includeSpeedQueued || rows[i].Phase != "speed-queued") {
+					s.cleanupExtra(c, rows[i], func(row ConnTestResult) { report(i, row) })
+				}
+			}
+		})
+	}
+	cleanup.Wait()
 }
 
 // An older peer has just one helper slot, so finish that pair before the next join.

@@ -1115,6 +1115,9 @@ func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResul
 	}
 	s.coord.mu.Unlock()
 	for _, c := range s.cases {
+		if ctx.Err() != nil {
+			break
+		}
 		if c.kind != "direct" || c.skip != "" || c.extra {
 			continue
 		}
@@ -1163,8 +1166,6 @@ func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResul
 			results[i].Status, results[i].Detail = ctSkipped, c.skip
 		} else if c.extra {
 			results[i].Phase, results[i].Detail = ctPhaseTransportQueued, "waiting for temporary tunnel setup"
-		} else if setupWorkers > 1 && c.kind != "spoof" {
-			results[i].Phase, results[i].Detail = ctPhaseStabilityReady, "waiting for temporary tunnels to be ready"
 		}
 	}
 	// The kharej sees the same rows, a question at a time.
@@ -1179,8 +1180,8 @@ func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResul
 		}
 	}
 
-	// Older peers keep only one helper pair. Updated peers retain the
-	// temporary tunnels for the common stability phase and subsequent speed passes.
+	// Older peers keep only one helper pair. Updated peers can retain prepared
+	// tunnels for the speed passes while subsequent tunnels are built.
 	nativeDone := make(chan struct{})
 	nextExtra := 0
 	runNextExtra := func() bool {
@@ -1203,49 +1204,23 @@ func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResul
 		return false
 	}
 	var wg sync.WaitGroup
-	// The spoofing peer sends as soon as it joins, so receive that probe
-	// during preparation. All ordinary tunnel probes share the same start.
 	for i, c := range s.cases {
-		if c.kind == "spoof" && c.skip == "" {
-			wg.Go(func() { s.spoofProbe(ctx, c, kharej, func(r ConnTestResult) { reportRow(i, r) }) })
-		}
-	}
-	var ready []bool
-	if setupWorkers > 1 {
-		ready = s.prepareExtraCases(ctx, setupWorkers, reportRow)
-	}
-	for i, c := range s.cases {
-		if c.skip != "" || c.kind == "spoof" {
+		if c.skip != "" || c.extra {
 			continue
 		}
 		report := func(r ConnTestResult) { reportRow(i, r) }
-		if !c.extra {
+		if c.kind == "spoof" {
+			wg.Go(func() { s.spoofProbe(ctx, c, kharej, report) })
+		} else {
 			wg.Go(func() { ctProbe(ctx, c, s.link.L3, report) })
-		} else if ready != nil && ready[i] {
-			wg.Go(func() { s.extraStability(ctx, c, report) })
 		}
 	}
 	go func() {
 		wg.Wait()
 		close(nativeDone)
 	}()
-	if setupWorkers > 1 {
-		nextExtra = len(s.cases)
-	} else if parallelExtra {
-		var probes sync.WaitGroup
-		// The control channel has one outstanding setup request. As soon as
-		// the pair is ready its echoes run alongside the other probes.
-		for i, c := range s.cases {
-			if !c.extra || c.skip != "" {
-				continue
-			}
-			report := func(row ConnTestResult) { reportRow(i, row) }
-			if _, ok := s.prepareExtra(ctx, c, report); !ok {
-				continue
-			}
-			probes.Go(func() { s.extraStability(ctx, c, report) })
-		}
-		probes.Wait()
+	if parallelExtra {
+		s.probeParallelExtras(ctx, setupWorkers, reportRow)
 		nextExtra = len(s.cases)
 	} else {
 	earlyHelpers:
@@ -1258,12 +1233,8 @@ func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResul
 		}
 	}
 	<-nativeDone
-	if parallelExtra {
-		for i, c := range s.cases {
-			if c.extra && results[i].Phase != "speed-queued" {
-				s.cleanupExtra(c, results[i], func(row ConnTestResult) { reportRow(i, row) })
-			}
-		}
+	if parallelExtra && ctx.Err() == nil {
+		s.cleanupExtraCases(setupWorkers, results, reportRow, false)
 	}
 	var failed []string
 	for i, c := range s.cases {
@@ -1341,11 +1312,7 @@ func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResul
 	for runNextExtra() {
 	}
 	if parallelExtra {
-		for i, c := range s.cases {
-			if c.extra {
-				s.cleanupExtra(c, results[i], func(row ConnTestResult) { reportRow(i, row) })
-			}
-		}
+		s.cleanupExtraCases(setupWorkers, results, reportRow, true)
 	}
 
 	// The kharej's path-MTU measurement, which it has usually sent long before.

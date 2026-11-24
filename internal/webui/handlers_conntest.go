@@ -31,6 +31,7 @@ const (
 	ctStarting = "starting"
 	ctWaiting  = "waiting" // for the kharej to check in
 	ctRunning  = "running"
+	ctStopping = "stopping"
 	ctFinished = "done"
 	ctFailed   = "failed"
 	ctStopped  = "stopped"
@@ -124,8 +125,12 @@ func (c *conntestRunner) update(f func(v *conntestView)) {
 func (c *conntestRunner) busy() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	switch c.v.State {
-	case ctStarting, ctWaiting, ctRunning:
+	return conntestBusy(c.v.State)
+}
+
+func conntestBusy(state string) bool {
+	switch state {
+	case ctStarting, ctWaiting, ctRunning, ctStopping:
 		return true
 	}
 	return false
@@ -133,11 +138,27 @@ func (c *conntestRunner) busy() bool {
 
 func (c *conntestRunner) stop() {
 	c.mu.Lock()
-	cancel := c.cancel
-	c.mu.Unlock()
-	if cancel != nil {
-		cancel()
+	defer c.mu.Unlock()
+	if conntestBusy(c.v.State) && c.v.State != ctStopping {
+		c.v.State = ctStopping
+		c.cancel()
 	}
+}
+
+func (c *conntestRunner) finish(ctx context.Context, failure string, best *manage.ConnTestBest) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.cancel = nil
+	c.v.State, c.v.Finished = ctFinished, time.Now().Unix()
+	c.v.Best = best
+	if ctx.Err() != nil {
+		c.v.State = ctStopped
+		return true
+	}
+	if failure != "" {
+		c.v.State, c.v.Error = ctFailed, failure
+	}
+	return false
 }
 
 func rowOf(r manage.ConnTestResult) conntestRow {
@@ -155,7 +176,7 @@ func rowOf(r manage.ConnTestResult) conntestRow {
 func (c *conntestRunner) start(parent context.Context, hosts []string, preset string) error {
 	ctx, cancel := context.WithCancel(parent)
 	c.mu.Lock()
-	if c.v.State == ctStarting || c.v.State == ctWaiting || c.v.State == ctRunning {
+	if conntestBusy(c.v.State) {
 		c.mu.Unlock()
 		cancel()
 		return fmt.Errorf("a connection test is already running — stop it first")
@@ -167,11 +188,17 @@ func (c *conntestRunner) start(parent context.Context, hosts []string, preset st
 		Context: ctx, Preset: preset, Direct: os.Geteuid() == 0, ExtraTransports: true, SpoofSrc: manage.ConnTestSpoofSource,
 	}, hosts)
 	if err != nil {
+		stopped := c.finish(ctx, err.Error(), nil)
 		cancel()
-		c.update(func(v *conntestView) { v.State, v.Error, v.Finished = ctFailed, err.Error(), time.Now().Unix() })
+		if stopped {
+			return nil
+		}
 		return err
 	}
 	c.update(func(v *conntestView) {
+		if v.State == ctStopping {
+			return
+		}
 		v.State, v.Link = ctWaiting, link
 		v.Command = "sudo backpack link apply '" + link + "'"
 		v.Install = manage.InstallCommand(link)
@@ -179,7 +206,6 @@ func (c *conntestRunner) start(parent context.Context, hosts []string, preset st
 	})
 	go func() {
 		defer cancel()
-		defer suite.Close()
 		paths := suite.Run(ctx, func(paths []manage.ConnTestPath) {
 			c.update(func(v *conntestView) {
 				v.Paths = nil
@@ -196,37 +222,36 @@ func (c *conntestRunner) start(parent context.Context, hosts []string, preset st
 				}
 				if active >= 0 {
 					p := v.Paths[active]
-					v.State, v.Host, v.Kharej, v.Rows = ctRunning, p.Host, p.Kharej, append([]conntestRow(nil), p.Rows...)
+					v.Host, v.Kharej, v.Rows = p.Host, p.Kharej, append([]conntestRow(nil), p.Rows...)
+					if v.State == ctStopping {
+						return
+					}
+					v.State = ctRunning
 					v.Ran = p.Started
 					v.Ends = time.Unix(p.Started, 0).Add(manage.ConnTestRunTime()).Unix()
 					if left := manage.ConnTestTimeLeft(paths[active].Rows); left > 0 {
 						v.Ends = time.Now().Add(left + 15*time.Second).Unix()
 					}
-				} else {
+				} else if v.State != ctStopping {
 					v.State = ctWaiting
 					v.Deadline = time.Now().Add(manage.ConnTestJoinWait()).Unix()
 				}
 			})
 		})
+		suite.Close()
 		best := manage.ConnTestSuiteBest(paths)
-		c.update(func(v *conntestView) {
-			v.State, v.Finished = ctFinished, time.Now().Unix()
-			completed := false
-			for _, p := range paths {
-				if p.State == "done" {
-					completed = true
-				}
+		var recommendation *manage.ConnTestBest
+		if best.Transport != "" {
+			recommendation = &best
+		}
+		failure := "No selected path completed; inspect each path's coordinator or preparation error. Tunnel protocols were not measured on unavailable paths."
+		for _, p := range paths {
+			if p.State == "done" {
+				failure = ""
+				break
 			}
-			if !completed {
-				v.State, v.Error = ctFailed, "No selected path completed; inspect each path's coordinator or preparation error. Tunnel protocols were not measured on unavailable paths."
-			}
-			if ctx.Err() != nil {
-				v.State, v.Error = ctStopped, ""
-			}
-			if best.Transport != "" {
-				v.Best = &best
-			}
-		})
+		}
+		c.finish(ctx, failure, recommendation)
 	}()
 	return nil
 }

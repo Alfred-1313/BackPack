@@ -23,7 +23,8 @@ const PRESETS = [
   { v: 'aggressive', label: 'Aggressive', note: 'fast links' },
 ];
 
-const ACTIVE = ['starting', 'waiting', 'running'];
+const STOPPABLE = ['starting', 'waiting', 'running'];
+const ACTIVE = [...STOPPABLE, 'stopping'];
 const KINDS = [
   { k: 'reverse', label: 'Reverse', note: 'kharej dials in' },
   { k: 'direct', label: 'Direct', note: 'Iran dials out · layer 3' },
@@ -46,7 +47,7 @@ const phase = v => v.state || 'idle';
 const now = () => Math.floor(Date.now() / 1000);
 const JOIN = 15 * 60;
 
-const stepOf = st => (st === 'done' ? 3 : st === 'running' ? 2 : st === 'waiting' || st === 'starting' ? 1 : 0);
+const stepOf = st => (st === 'done' ? 3 : st === 'running' || st === 'stopping' ? 2 : st === 'waiting' || st === 'starting' ? 1 : 0);
 
 let preset = 'turbo';
 let pathMode = '';
@@ -106,7 +107,7 @@ function startPane(v) {
   return `<div class="ct-l-in fade">
     <span class="ct-kick">New test</span>
     <div class="tl-lede"><b>Every transport, tried for real between this server and one kharej.</b>
-      <span>Temporary tunnels are prepared first. Then transports check stability together before speed testing.
+      <span>Each transport checks stability as soon as its test tunnel is ready. Speed testing follows the stability checks.
         Download and upload are measured with four connections and again with sixteen, one tunnel at a time;
         the max is the best second the tunnel carried. The test tunnels run on free ports and are
         removed when it ends — nothing is left behind on either server.</span></div>
@@ -170,6 +171,13 @@ function settled(v) {
   const speed = live.find(r => r.phase === 'speed' || r.phase === 'speed-second');
   if (speed?.phase === 'speed-second') return `Second speed pass on ${speed.name}.${queue}`;
   if (speed) return `Measuring download and upload on ${speed.name}.${queue}`;
+  const checking = live.filter(r => r.phase === 'transport-echo' || (r.status === 'testing' && !r.phase && r.tried > 0)).length;
+  const preparing = live.filter(r => ['transport-setup', 'transport-connect'].includes(r.phase)).length;
+  if (checking || preparing) return [
+    checking && `${checking} checking stability`,
+    preparing && `${preparing} setting up`,
+    waiting && `${waiting} awaiting setup`,
+  ].filter(Boolean).join(' · ');
   const active = live.find(r => ['transport-setup', 'transport-initial', 'transport-connect', 'transport-echo', 'transport-cleanup'].includes(r.phase));
   if (active) return `${rowPhase[active.phase]} ${active.name}.${queue}`;
   if (waiting) {
@@ -227,12 +235,19 @@ function bestPane(v) {
     ${foot}</div>`;
 }
 
+function stoppingPane() {
+  return `<div class="ct-l-in fade" role="status">
+    <div class="ct-wtitle"><b>Stopping the test</b><i class="ct-dots"><i></i><i></i><i></i></i></div>
+    <p class="ct-wsub">Removing temporary test tunnels.</p>
+  </div>`;
+}
+
 function endPane(v) {
   const failed = phase(v) === 'failed';
   return `<div class="ct-l-in fade">
     <span class="ct-kick ${failed ? 'er' : ''}">${failed ? 'Did not finish' : 'Stopped'}</span>
     <div class="tl-lede"><b>${failed ? 'The test did not finish' : 'The test was stopped'}</b>
-      <span>${v.error ? esc(v.error) : 'Every test tunnel has been removed.'}</span></div>
+      ${v.error ? `<span>${esc(v.error)}</span>` : ''}</div>
     <span class="sp"></span>
     <button class="tl-btn solid ct-go" id="ctNew">${ICON.again}Start a new test</button>
   </div>`;
@@ -365,6 +380,7 @@ export function connTestView(ctx) {
   let last = null, fresh = false, timer = null, tick = null, alive = true;
   let leftSig = '', rightMode = '', headSig = '';
   let selectedPath = -1, pathsSig = '';
+  let pollGeneration = 0;
   const rows = new Map();
 
   const dockDot = st => {
@@ -402,6 +418,7 @@ export function connTestView(ctx) {
     if (fresh || st === 'idle') html = startPane(v);
     else if (st === 'starting' || st === 'waiting') html = waitPane(v);
     else if (st === 'running') html = runPane(v);
+    else if (st === 'stopping') html = stoppingPane();
     else if (st === 'done') html = bestPane(v);
     else html = endPane(v);
     left.innerHTML = html;
@@ -411,7 +428,7 @@ export function connTestView(ctx) {
   };
 
   const paintRight = (v, st) => {
-    const showRows = !fresh && (st === 'running' || st === 'done' || ((st === 'failed' || st === 'stopped') && v.rows?.length));
+    const showRows = !fresh && (st === 'running' || st === 'done' || (['failed', 'stopping', 'stopped'].includes(st) && v.rows?.length));
     const mode = (showRows ? 'rows' : (fresh ? 'idle' : st)) + ':' + (v.host || '');
     const all = v.rows || [];
     /* Keep failed and unsupported rows visible for the selected family. */
@@ -476,7 +493,7 @@ export function connTestView(ctx) {
       let items = shown.filter(r => r.kind === g.k);
       let grp = list.querySelector(`.ct-group[data-k="${g.k}"]`);
       if (!items.length) { grp?.remove(); return; }
-      if (st !== 'running') {
+      if (st !== 'running' && st !== 'stopping') {
         items = items.slice().sort((a, b) => (order[a.status] - order[b.status]) || ((b.mbps || 0) - (a.mbps || 0)));
       }
       if (!grp) {
@@ -506,7 +523,7 @@ export function connTestView(ctx) {
     last = v;
     const st = phase(v);
     stateEl.textContent = { idle: 'Ready', starting: 'Starting', waiting: 'Waiting', running: 'Testing',
-      done: 'Finished', failed: 'Failed', stopped: 'Stopped' }[st] || st;
+      stopping: 'Stopping', done: 'Finished', failed: 'Failed', stopped: 'Stopped' }[st] || st;
     stateEl.className = 'cnt ' + (ACTIVE.includes(st) ? 'live' : st === 'done' ? 'ok' : st === 'failed' ? 'er' : '');
     dockDot(st);
     const stp = stepper(fresh ? 'idle' : st);
@@ -520,18 +537,23 @@ export function connTestView(ctx) {
       pathsSig = ps;
       $('#ctPaths',view).innerHTML = fresh || !paths.length ? '' : `<div class="tl-seg">${paths.map((p,i) =>
         `<button type="button" data-route="${i}" class="${i === at ? 'on' : ''}" aria-pressed="${i === at}"><b>${esc(p.family)} · ${esc(p.host)}</b><small>${esc(p.state)}${p.best?.tr ? ` · ${esc(p.best.name || p.best.tr)} · ${(p.best.mb || 0).toFixed(2)} ↓ / ${(p.best.upload_mb || 0).toFixed(2)} ↑ Mb/s · ${p.best.rt || 0} ms` : ''}</small></button>`).join('')}</div>
-        ${ACTIVE.includes(st) ? '<button type="button" class="tl-btn" id="ctStopPaths">Stop all IP paths</button>' : ''}
+        ${STOPPABLE.includes(st) ? '<button type="button" class="tl-btn" id="ctStopPaths">Stop all IP paths</button>' : ''}
         ${v.best?.tr ? `<p class="tl-meta">Recommended: ${esc(v.best.family)} · ${esc(v.best.host)} · ${esc(v.best.name || v.best.tr)}</p>` : ''}`;
     }
     const p = !fresh && !['idle','starting'].includes(st) ? paths[at] : null;
     const detail = p ? { ...v, ...p, state: phase(p) === 'unavailable' ? 'failed' : p.state, ran: p.started, best: p.best?.tr ? p.best : null } : v;
-    if (ACTIVE.includes(st) && p && phase(p) === 'done') detail.suiteActive = true;
+    if (st === 'stopping') detail.state = st;
+    if (STOPPABLE.includes(st) && p && phase(p) === 'done') detail.suiteActive = true;
     paintLeft(detail, phase(detail));
     paintRight(detail, phase(detail));
   };
 
   const load = async () => {
-    try { paint(await api.connTest()); } catch (e) { if (!last) oops(e); }
+    const generation = pollGeneration;
+    try {
+      const v = await api.connTest();
+      if (alive && generation === pollGeneration) paint(v);
+    } catch (e) { if (alive && !last) oops(e); }
   };
 
   const schedule = () => {
@@ -583,9 +605,14 @@ export function connTestView(ctx) {
       return;
     }
     if (b.id === 'ctStop' || b.id === 'ctStopPaths') {
-      if (!await confirmBox({ title: 'Stop the test?', body: 'Every test tunnel here is taken down; the kharej stops too.', go: 'Stop' })) return;
-      try { paint(await api.connTestStop()); toast('Stopping the test…'); } catch (e) { oops(e); }
-      setTimeout(load, 1200);
+      if (!await confirmBox({ title: 'Stop the test?', body: 'Stop measurements and remove the temporary test tunnels.', go: 'Stop' })) return;
+      b.disabled = true;
+      try {
+        const v = await api.connTestStop();
+        pollGeneration++;
+        if (alive) paint(v);
+        schedule();
+      } catch (e) { b.disabled = false; oops(e); }
     }
   });
 

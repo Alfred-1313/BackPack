@@ -1,6 +1,7 @@
 package webui
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -8,6 +9,39 @@ import (
 	"strings"
 	"testing"
 )
+
+func TestConnectionTestStopStaysBusyUntilCleanupFinishes(t *testing.T) {
+	for _, state := range []string{ctStarting, ctWaiting, ctRunning} {
+		t.Run(state, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			s := &server{conntest: conntestRunner{v: conntestView{State: state}, cancel: cancel}}
+			post := func(action string) *httptest.ResponseRecorder {
+				t.Helper()
+				w := httptest.NewRecorder()
+				r := httptest.NewRequest(http.MethodPost, "/api/conntest", strings.NewReader("action="+action))
+				r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+				s.handleConnTest(w, r)
+				return w
+			}
+			for range 2 {
+				w := post("stop")
+				var v conntestView
+				if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &v) != nil || v.State != ctStopping || v.Finished != 0 {
+					t.Fatalf("stop response: %d %s", w.Code, w.Body)
+				}
+			}
+			if ctx.Err() != context.Canceled || post("start").Code != http.StatusConflict {
+				t.Fatal("stop must cancel the run and prevent a restart during cleanup")
+			}
+			s.conntest.finish(ctx, "startup interrupted", nil)
+			v := s.conntest.view()
+			if v.State != ctStopped || v.Finished == 0 || v.Error != "" || s.conntest.busy() {
+				t.Fatalf("cleanup should complete cancellation: %+v", v)
+			}
+		})
+	}
+}
 
 func TestConnectionTestPanelAdvertisesAddressCandidatesWithoutStartingATest(t *testing.T) {
 	s := &server{}
