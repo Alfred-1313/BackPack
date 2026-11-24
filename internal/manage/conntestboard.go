@@ -16,7 +16,7 @@ import (
 // The Connection Test's table, drawn while the test runs.
 //
 // Each tunnel is one row, and a row changes as its echoes come back: STATUS
-// reads TESTING, ECHOES counts the echoes sent so far, and the bar fills with
+// reads Testing, ECHOES counts the echoes sent so far, and the bar fills with
 // them — progress = sent / total, from the test itself, not an animation. Only
 // rows that changed are rewritten, in place, so the screen does not flicker
 // with seventeen tunnels reporting at once. When the test ends the table is
@@ -77,66 +77,88 @@ func ctEmoji(status string) string {
 	}
 }
 
-// Every emoji here takes two columns; the rest of the RESULT column is spaces.
-const ctRowFormat = "%s       %-9s %-16s %-11s %-8s %s"
+const ctRowFormat = "%-7s  %-16s  %-13s  %6s  %s"
 
-var ctHeader = fmt.Sprintf("%-8s %-9s %-16s %-11s %-8s %s", "RESULT", "KIND", "NAME", "STATUS", "ECHOES", "STABILITY")
+func ctTableHeader(meter string) string {
+	return fmt.Sprintf(ctRowFormat, "KIND", "TRANSPORT", "STATUS", "ECHOES", meter)
+}
 
 // ctRow is one tunnel's line. While it runs, ECHOES and the bar are the echoes
 // sent; once it has a verdict, the echoes that came back.
 func ctRow(r ConnTestResult) string {
-	total := r.Total
-	if total <= 0 {
-		total = connTestSoak
+	echoes, progress := "—", ""
+	if ctHasEchoCount(r) {
+		total := r.Total
+		if total <= 0 {
+			total = connTestSoak
+		}
+		done := r.OK
+		if r.Status == ctTesting {
+			done = r.Tried
+		}
+		echoes = fmt.Sprintf("%d/%d", done, total)
+		progress = ctBar(float64(done) / float64(total))
 	}
-	done := r.OK
-	if r.Status == ctTesting {
-		done = r.Tried
+	return strings.TrimRight(fmt.Sprintf(ctRowFormat, ctKind(r.Kind), ctName(r.Transport),
+		ctStatusLabel(r), echoes, progress), " ")
+}
+
+func ctHasEchoCount(r ConnTestResult) bool {
+	if r.Tried > 0 || r.OK > 0 {
+		return true
 	}
-	return fmt.Sprintf(ctRowFormat, ctEmoji(r.Status), ctKind(r.Kind), ctName(r.Transport),
-		ctStatusLabel(r), fmt.Sprintf("%d/%d", done, total), ctBar(float64(done)/float64(total)))
+	switch r.Phase {
+	case ctPhaseTransportQueued, ctPhaseStabilityReady, ctPhaseTransportSetup, ctPhaseTransportConnect,
+		ctPhaseInitialEcho, ctPhaseEchoVerified, ctPhaseEchoRetry, ctPhaseTransportCleanup:
+		return false
+	}
+	return r.Status != ctSkipped && r.Status != ctStopped
 }
 
 func ctStatusLabel(r ConnTestResult) string {
 	switch r.Phase {
 	case "speed":
-		return "SPEED"
+		return "Speed test"
 	case ctPhaseSecond:
-		return "SPEED 2"
+		return "Speed retest"
 	case "speed-queued":
-		return "AWAIT SPEED"
+		return "Speed queued"
 	case ctPhaseAgain:
-		return "AWAIT PASS2"
+		return "Retest queued"
 	case ctPhaseTransportQueued:
-		return "AWAIT SETUP"
+		return "Queued"
 	case ctPhaseStabilityReady:
-		return "READY"
+		return "Ready"
 	case ctPhaseInitialEcho:
-		return "FIRST ECHO"
+		return "First echo"
 	case ctPhaseEchoVerified:
-		return "FIRST OK"
+		return "First echo OK"
 	case ctPhaseEchoRetry:
-		return "RETRY DUE"
+		return "Retry pending"
 	case ctPhaseTransportSetup:
-		return "SETTING UP"
+		return "Setting up"
 	case ctPhaseTransportConnect:
-		return "CONNECTING"
+		return "Connecting"
 	case ctPhaseTransportEcho:
-		return "ECHO TEST"
+		return "Testing"
 	case ctPhaseTransportCleanup:
-		return "CLEANING UP"
+		return "Cleaning up"
 	}
-	return strings.ToUpper(r.Status)
+	if r.Status == ctOK {
+		return "OK"
+	}
+	return ctKind(r.Status)
 }
 
-func ctRule() string { return strings.Repeat("─", 60) }
+func ctRule() string { return strings.Repeat("─", 63) }
 
 // ConnTestTable is the verdict as text: the grouped table and the tunnels
 // that carried everything.
 func ConnTestTable(results []ConnTestResult) string {
 	var b strings.Builder
-	b.WriteString(ctHeader + "\n")
-	for _, group := range ctGroups(results) {
+	b.WriteString(ctTableHeader("STABILITY") + "\n")
+	groups := ctGroups(results)
+	for _, group := range groups {
 		b.WriteString("\n")
 		for _, r := range group {
 			b.WriteString(ctRow(r) + "\n")
@@ -144,7 +166,7 @@ func ConnTestTable(results []ConnTestResult) string {
 	}
 	b.WriteString("\n" + ctRule() + "\n\nWorks Steadily:\n\n")
 	steady := 0
-	for _, group := range ctGroups(results) {
+	for _, group := range groups {
 		for _, r := range group {
 			if r.Status != ctOK {
 				continue
@@ -303,18 +325,35 @@ func (b *ctBoard) loop() {
 	}
 }
 
-// lines is the live region: title, rule, header, one line per tunnel, rule.
+// lines is the live region. The transport rows stay in their original order.
 func (b *ctBoard) lines() []string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if len(b.rows) == 0 {
 		return nil
 	}
-	out := []string{"CONNECTION TEST — " + b.title, ctRule(), "", ctHeader, ""}
+	out := []string{"CONNECTION TEST — " + b.title, "", ctRule(), ctTableHeader("PROGRESS")}
+	var finished, active, queued int
 	for _, r := range b.rows {
+		if r.Transport == "" {
+			continue
+		}
+		switch r.Phase {
+		case ctPhaseTransportQueued, ctPhaseStabilityReady, "speed-queued", ctPhaseAgain:
+			queued++
+		case "":
+			if r.Status != ctTesting {
+				finished++
+			} else {
+				active++
+			}
+		default:
+			active++
+		}
 		out = append(out, ctRow(r))
 	}
-	return append(out, "", ctRule())
+	out[1] = fmt.Sprintf("Finished %d/%d  ·  Active %d  ·  Queued %d", finished, finished+active+queued, active, queued)
+	return append(out, ctRule())
 }
 
 // draw rewrites the lines that changed since the last draw, and nothing else.

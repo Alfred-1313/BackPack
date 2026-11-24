@@ -93,11 +93,11 @@ func TestConnectionTestQueueKeepsHelpersInTheRemainingTime(t *testing.T) {
 		t.Fatalf("time left %s, want %s", got, want)
 	}
 	for phase, want := range map[string]string{
-		ctPhaseTransportQueued:  "AWAIT SETUP",
-		ctPhaseTransportSetup:   "SETTING UP",
-		ctPhaseTransportConnect: "CONNECTING",
-		ctPhaseTransportEcho:    "ECHO TEST",
-		ctPhaseTransportCleanup: "CLEANING UP",
+		ctPhaseTransportQueued:  "Queued",
+		ctPhaseTransportSetup:   "Setting up",
+		ctPhaseTransportConnect: "Connecting",
+		ctPhaseTransportEcho:    "Testing",
+		ctPhaseTransportCleanup: "Cleaning up",
 	} {
 		if got := ctStatusLabel(ConnTestResult{Status: ctTesting, Phase: phase}); got != want {
 			t.Errorf("phase %s: label %s, want %s", phase, got, want)

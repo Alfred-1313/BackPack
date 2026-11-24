@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestTheBarIsFilledByTheRealShare(t *testing.T) {
@@ -27,22 +28,22 @@ func TestTheBarIsFilledByTheRealShare(t *testing.T) {
 // a verdict, the echoes that came back.
 func TestARowShowsProgressWhileTestingAndTheVerdictAfter(t *testing.T) {
 	running := ConnTestResult{Kind: "reverse", Transport: "stealth", Status: ctTesting, Tried: 30, OK: 20, Total: 60}
-	if row := ctRow(running); !strings.Contains(row, "TESTING") || !strings.Contains(row, "30/60") ||
-		!strings.Contains(row, "▰▰▰▰▱▱▱▱  50%") || !strings.HasPrefix(row, "🟡") {
+	if row := ctRow(running); !strings.Contains(row, "Testing") || !strings.Contains(row, "30/60") ||
+		!strings.Contains(row, "▰▰▰▰▱▱▱▱  50%") || !strings.HasPrefix(row, "Reverse") {
 		t.Errorf("running row: %q", row)
 	}
 	done := ConnTestResult{Kind: "reverse", Transport: "stealth", Status: ctUnstable, Tried: 60, OK: 52, Total: 60}
-	if row := ctRow(done); !strings.Contains(row, "UNSTABLE") || !strings.Contains(row, "52/60") ||
+	if row := ctRow(done); !strings.Contains(row, "Unstable") || !strings.Contains(row, "52/60") ||
 		!strings.Contains(row, "87%") || !strings.Contains(row, "Stealth") {
 		t.Errorf("unstable row: %q", row)
 	}
 	down := ConnTestResult{Kind: "direct", Transport: "sni", Status: ctDown, Total: 60}
-	if row := ctRow(down); !strings.HasPrefix(row, "🔴") || !strings.Contains(row, "0/60") ||
+	if row := ctRow(down); !strings.Contains(row, "Down") || !strings.Contains(row, "0/60") ||
 		!strings.Contains(row, "▱▱▱▱▱▱▱▱   0%") || !strings.Contains(row, "Direct") {
 		t.Errorf("down row: %q", row)
 	}
 	ok := ConnTestResult{Kind: "direct", Transport: "xdi", Status: ctOK, Tried: 60, OK: 60, Total: 60}
-	if row := ctRow(ok); !strings.HasPrefix(row, "🟢") || !strings.Contains(row, "▰▰▰▰▰▰▰▰ 100%") || !strings.Contains(row, "xDi") {
+	if row := ctRow(ok); !strings.Contains(row, "OK") || !strings.Contains(row, "▰▰▰▰▰▰▰▰ 100%") || !strings.Contains(row, "xDi") {
 		t.Errorf("ok row: %q", row)
 	}
 }
@@ -55,7 +56,7 @@ func TestTheVerdictIsGroupedAndListsWhatWorks(t *testing.T) {
 		{Kind: "direct", Transport: "pck", Status: ctOK, OK: 60, Tried: 60, Total: 60, RTTms: 69, Mbps: 29.9},
 		{Kind: "direct", Transport: "quic", Status: ctDown, Total: 60},
 	})
-	order := []string{"Direct    PCK", "Direct    UDP", "Reverse   TCP", "Reverse   KCP FEC", "Direct    QUIC", "Works Steadily:",
+	order := []string{"Direct   PCK", "Direct   UDP", "Reverse  TCP", "Reverse  KCP FEC", "Direct   QUIC", "Works Steadily:",
 		"🟢 Direct PCK                 69ms    29.9 Mbps", "🟢 Direct UDP                 73ms    28.0 Mbps"}
 	at := 0
 	for _, want := range order {
@@ -93,6 +94,9 @@ func TestTheLiveTableRewritesOnlyWhatChanged(t *testing.T) {
 	if !strings.Contains(out.String(), "CONNECTION TEST — 1.2.3.4") {
 		t.Fatalf("first draw: %q", out.String())
 	}
+	if !strings.Contains(out.String(), "Finished 0/2  ·  Active 2  ·  Queued 0") {
+		t.Fatalf("summary missing: %q", out.String())
+	}
 	out.Reset()
 	b.draw()
 	if out.Len() != 0 {
@@ -128,10 +132,13 @@ func TestConnTestManagedNamesKeepColumnsAligned(t *testing.T) {
 			t.Fatalf("name touches RTT: %q", line)
 		}
 	}
-	for _, r := range rows {
-		line := strings.Replace(ctRow(r), "🟢", "  ", 1)
-		if strings.Index(line, "OK") != strings.Index(ctHeader, "STATUS") {
-			t.Fatalf("header drifted: %q / %q", ctHeader, line)
+	header := ctTableHeader("PROGRESS")
+	for _, r := range append(rows, ConnTestResult{Kind: "direct", Transport: "omni-ws", Status: ctTesting, Phase: ctPhaseAgain, Tried: 60, OK: 60}) {
+		line := ctRow(r)
+		if strings.Index(line, ctStatusLabel(r)) != strings.Index(header, "STATUS") ||
+			strings.IndexAny(line, "▰▱") != strings.Index(header, "PROGRESS") ||
+			utf8.RuneCountInString(line) != utf8.RuneCountInString(ctRule()) {
+			t.Fatalf("columns drifted: %q / %q", header, line)
 		}
 	}
 	measured := -1
@@ -163,20 +170,25 @@ func (b *ctBoard) set(i int, r ConnTestResult) {
 }
 
 func TestLiveRowDistinguishesSetupAndSpeedQueues(t *testing.T) {
+	skipped := ConnTestResult{Kind: "reverse", Transport: "reality", Status: ctSkipped, Total: 60}
+	if got := ctRow(skipped); !strings.Contains(got, "Skipped") || !strings.HasSuffix(got, "—") {
+		t.Errorf("skipped row should have no echo measurement: %q", got)
+	}
 	for _, tc := range []struct {
 		phase                   string
 		count                   int
 		label, echoes, progress string
 	}{
-		{ctPhaseTransportQueued, 0, "AWAIT SETUP", "0/60", "  0%"},
-		{ctPhaseTransportSetup, 0, "SETTING UP", "0/60", "  0%"},
-		{ctPhaseTransportCleanup, 0, "CLEANING UP", "0/60", "  0%"},
-		{ctPhaseEchoVerified, 0, "FIRST OK", "0/60", "  0%"},
-		{ctPhaseEchoRetry, 0, "RETRY DUE", "0/60", "  0%"},
-		{ctPhaseTransportEcho, 9, "ECHO TEST", "9/60", " 15%"},
-		{"speed-queued", 60, "AWAIT SPEED", "60/60", "100%"},
-		{ctPhaseAgain, 60, "AWAIT PASS2", "60/60", "100%"},
-		{ctPhaseSecond, 60, "SPEED 2", "60/60", "100%"},
+		{ctPhaseTransportQueued, 0, "Queued", "—", "—"},
+		{ctPhaseTransportSetup, 0, "Setting up", "—", "—"},
+		{ctPhaseTransportCleanup, 0, "Cleaning up", "—", "—"},
+		{ctPhaseTransportCleanup, 22, "Cleaning up", "22/60", " 37%"},
+		{ctPhaseEchoVerified, 0, "First echo OK", "—", "—"},
+		{ctPhaseEchoRetry, 0, "Retry pending", "—", "—"},
+		{ctPhaseTransportEcho, 9, "Testing", "9/60", " 15%"},
+		{"speed-queued", 60, "Speed queued", "60/60", "100%"},
+		{ctPhaseAgain, 60, "Retest queued", "60/60", "100%"},
+		{ctPhaseSecond, 60, "Speed retest", "60/60", "100%"},
 	} {
 		r := ConnTestResult{Kind: "direct", Transport: "gre", Status: ctTesting, Phase: tc.phase, Total: 60, Tried: tc.count, OK: tc.count}
 		if got := ctRow(r); !strings.Contains(got, tc.label) || !strings.Contains(got, tc.echoes) || !strings.HasSuffix(got, tc.progress) {
