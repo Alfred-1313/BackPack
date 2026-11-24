@@ -32,42 +32,53 @@ export function bindExtraTransports(root, options) {
     const gost = value === 'gost-direct';
     const title = item.label;
     const form = document.createElement('form');
-    form.innerHTML = '<h3>'+esc(title)+'</h3><label>On this server<select name="role"><option value="setup">Iran - create tunnel</option><option value="join">Kharej - apply setup token</option></select></label><div data-fields></div><button type="submit" class="nb solid2">Create tunnel</button><pre aria-live="polite"></pre><button type="button" class="nb" data-copy hidden>Copy setup token</button>';
+    const fields = [['name', 'Tunnel name'], ...(!gost ? [['local', 'Iran IPv4']] : []),
+      ['peer', 'Kharej IPv4'], ...(gost
+        ? [['ingress', 'Public TCP port on Iran'], ['port', 'GOST TLS port on Kharej'], ['target', 'Service port on Kharej (127.0.0.1)']]
+        : [['omniport', 'Kharej tunnel port (optional)']])];
+    form.innerHTML = `<h3>${esc(title)}</h3>
+      ${fields.map(([key, label]) => `<label>${label}<input ${key === 'omniport' ? '' : 'required'} autocomplete="off" name="${key}"></label>`).join('')}
+      <button type="submit" class="nb solid2">Create tunnel</button>
+      <pre aria-live="polite"></pre><button type="button" class="nb" data-copy hidden>Copy Kharej command</button>`;
     panel.append(form);
     const result = form.querySelector('pre'), copy = form.querySelector('[data-copy]');
     const submit = form.querySelector('[type="submit"]');
-    const role = form.elements.role;
-    let token = '';
-    const refresh = () => {
-      const join = role.value === 'join';
-      const fields = join ? [['token','Setup token']] : [['name','Tunnel name'],...(!gost ? [['local','Iran IPv4']] : []),
-        ['peer','Kharej IPv4'],...(gost ? [['ingress','Public TCP port on Iran'],['port','GOST TLS port on Kharej'],['target','Service port on Kharej (127.0.0.1)']] : [['omniport','Kharej tunnel port (optional)']])];
-      form.querySelector('[data-fields]').innerHTML = fields.map(([key,label]) => '<label>'+label+'<input '+(key === 'omniport' ? '' : 'required')+' autocomplete="off" name="'+key+'"></label>').join('');
-      submit.textContent = join ? 'Apply setup token' : 'Create tunnel';
-      result.textContent=''; copy.hidden=true;
-    };
-    refresh(); role.onchange = refresh;
-    copy.onclick = async () => flashCopied(copy, await copyText(token));
+    const shellArg = text => "'" + text.replaceAll("'", "'\\''") + "'";
+    let command = '';
+    copy.onclick = async () => flashCopied(copy, await copyText(command));
     form.onsubmit = async event => {
       event.preventDefault();
       const f = Object.fromEntries([...new FormData(form)].map(([name, value]) => [name, value.trim()]));
-      submit.disabled = role.disabled = true; result.textContent='Working...'; copy.hidden=true;
+      submit.disabled = true;
+      result.textContent = 'Creating the tunnel on Iran…';
+      copy.hidden = true;
       try {
+        let token, output;
         if (gost) {
-          const {role: action, ...fields} = f;
-          const data = await api.gostDirect({...fields, action});
+          const data = await api.gostDirect({ ...f, action: 'setup' });
           token = data.token;
-          result.textContent = data.unit + (token ? '\nOn Kharej apply the token here or with backpack gost-direct join.\n'+token : '');
+          output = data.unit;
         } else {
-          const args = f.role === 'join' ? ['join',value] : ['setup',value,f.name,f.local,f.peer];
-          if (f.role === 'setup' && f.omniport?.trim()) args.push(f.omniport.trim());
-          const data = await api.omniRun(args,f.token || '');
-          result.textContent = data.output.replace(/\x1b\[[0-9;]*m/g,'').trim() || 'Done';
-          token = result.textContent.split(/\r?\n/).map(s=>s.trim()).find(s=>/^[A-Za-z0-9+/]{16,}={0,2}$/.test(s)) || '';
+          const args = ['setup', value, f.name, f.local, f.peer];
+          if (f.omniport) args.push(f.omniport);
+          const data = await api.omniRun(args);
+          output = data.output.replace(/\x1b\[[0-9;]*m/g, '').trim();
+          token = output.split(/\r?\n/).map(line => line.trim()).find(line => /^[A-Za-z0-9+/]{16,}={0,2}$/.test(line));
         }
-        copy.hidden = !token;
-      } catch (err) { result.textContent = err.message; }
-      finally { submit.disabled = role.disabled = false; }
+        if (!token) {
+          result.textContent = 'The server did not return a setup token.' + (output ? '\n' + output : '');
+          return;
+        }
+
+        const join = gost ? 'sudo backpack gost-direct join' : 'sudo backpack omni join ' + shellArg(value);
+        command = `printf '%s\\n' ${shellArg(token)} | ${join}`;
+        result.textContent = 'Tunnel created on Iran. Run this command on Kharej.\n\n' + command;
+        copy.hidden = false;
+      } catch (err) {
+        result.textContent = err.message;
+      } finally {
+        submit.disabled = false;
+      }
     };
   }
   function attach() {
