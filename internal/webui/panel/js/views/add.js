@@ -449,6 +449,10 @@ export function addView(ctx) {
         if (note) note.textContent = direct
           ? chosen.carrier === 'gretap'
             ? 'Direct: GRETAP carries Ethernet frames between two IPv4 endpoints.'
+            : chosen.carrier === 'l2tpv3'
+              ? 'Direct: L2TPv3 carries Ethernet over IP protocol 115.'
+              : chosen.carrier === 'easytier'
+                ? 'Direct: EasyTier connects over TCP using a shared network name and secret.'
             : 'Direct: Iran connects to Kharej. Peer-to-peer carriers exchange packets in both directions.'
           : 'Reverse — the kharej dials in to Iran. Try this first.';
         if (direct) suggestDirect(chosen.side);
@@ -464,7 +468,7 @@ export function addView(ctx) {
            carrier was shown on every direct tunnel, on both sides — including
            the one telling the operator it was required. */
         const matchesCarrier = carrier => carrier === 'gre'
-          ? ['gre', 'ip6gre', 'gretap'].includes(chosen.carrier)
+          ? ['gre', 'ip6gre', 'gretap'].includes(chosen.carrier) || chosen.carrier === 'l2tpv3'
           : chosen.carrier === carrier;
         root.querySelectorAll('[data-when]').forEach(n => {
           const when = n.dataset.when;
@@ -745,7 +749,7 @@ export function addView(ctx) {
             grid.after(box);
           }
           const direct = !!grid.closest('[data-mode="dir"], .step3direct');
-          box.hidden = direct && chosen.carrier === 'gretap';
+          box.hidden = direct && ['gretap', 'l2tpv3', 'easytier'].includes(chosen.carrier);
           if (box.hidden) return;
           const p = chosen.preset || 'turbo';
           let cells;

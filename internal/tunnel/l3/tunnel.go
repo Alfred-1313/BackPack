@@ -345,7 +345,7 @@ func New(cfg Config, log *logrus.Logger) (*Tunnel, error) {
 	return &Tunnel{
 		cfg:           cfg,
 		pck:           pck,
-		kernel:        KernelCarrier(cfg.Carrier),
+		kernel:        ExternalInterfaceCarrier(cfg.Carrier),
 		encap:         encap,
 		log:           log,
 		replies:       make(chan handshakeReply, 4),
@@ -364,7 +364,7 @@ func (t *Tunnel) Run(ctx context.Context) error {
 		return t.runPaqet(ctx)
 	}
 	if t.kernel {
-		return t.runKernelGRE(ctx)
+		return t.runRoutedLink(ctx)
 	}
 	carrier, peer, err := openCarrierContext(ctx, t.cfg)
 	if err != nil {

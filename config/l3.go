@@ -2,6 +2,20 @@ package config
 
 import "strings"
 
+// RoutedLinkSettings holds the carrier-specific settings for L2TPv3 and EasyTier.
+type RoutedLinkSettings struct {
+	// L2TPTunnelID identifies this endpoint's L2TPv3 tunnel.
+	L2TPTunnelID uint32 `toml:"l2tp_tunnel_id" json:"l2tpTunnelId,omitempty"`
+	// L2TPPeerTunnelID matches the tunnel ID on the other endpoint.
+	L2TPPeerTunnelID uint32 `toml:"l2tp_peer_tunnel_id" json:"l2tpPeerTunnelId,omitempty"`
+	// L2TPSessionID identifies this endpoint's L2TPv3 Ethernet session.
+	L2TPSessionID uint32 `toml:"l2tp_session_id" json:"l2tpSessionId,omitempty"`
+	// L2TPPeerSessionID matches the session ID on the other endpoint.
+	L2TPPeerSessionID uint32 `toml:"l2tp_peer_session_id" json:"l2tpPeerSessionId,omitempty"`
+	// EasyTierNetwork is the network name shared by the two EasyTier endpoints.
+	EasyTierNetwork string `toml:"easytier_network" json:"easytierNetwork,omitempty"`
+}
+
 // L3Config is a direct layer-3 tunnel: an interface on each host carrying
 // whole IP packets between them, rather than a set of forwarded ports.
 //
@@ -35,6 +49,7 @@ import "strings"
 // whichever host can accept an inbound connection listens, and the other
 // dials.
 type L3Config struct {
+	RoutedLinkSettings
 	// Mode is "dial" or "listen". Empty means there is no layer-3 tunnel in
 	// this configuration, which is how every pre-existing config reads.
 	Mode string `toml:"mode"`

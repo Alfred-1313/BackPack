@@ -34,6 +34,7 @@ import (
 
 // NewDirectTunnel is a filled direct-tunnel form.
 type NewDirectTunnel struct {
+	config.RoutedLinkSettings
 	// Side is "iran" or "kharej". Iran dials out and exposes the ports; kharej
 	// waits and holds the real service.
 	Side string `json:"side"`
@@ -177,7 +178,7 @@ func carrierNames() []string {
 // offeredCarrier reports whether a carrier is one the screens offer. ip6gre is
 // offered under GRE's entry.
 func offeredCarrier(name string) bool {
-	if name == l3.CarrierIP6GRE || name == l3.CarrierGRETAP {
+	if name == l3.CarrierIP6GRE || name == l3.CarrierGRETAP || name == l3.CarrierL2TPv3 || name == l3.CarrierEasyTier {
 		return true
 	}
 	for _, c := range DirectCarriers() {
@@ -200,6 +201,12 @@ func PanelDirectCarriers() []map[string]string {
 	return append(out, map[string]string{
 		"value": l3.CarrierGRETAP, "label": "GRETAP", "needsRoot": "1", "kernel": "1",
 		"desc": "Ethernet over GRE between IPv4 endpoints · IP protocol 47 · unencrypted",
+	}, map[string]string{
+		"value": l3.CarrierL2TPv3, "label": "L2TPv3 (IP)", "needsRoot": "1", "kernel": "1",
+		"desc": "Ethernet over IPv4 using IP protocol 115 · unencrypted",
+	}, map[string]string{
+		"value": l3.CarrierEasyTier, "label": "EasyTier", "needsRoot": "1",
+		"desc": "Encrypted private EasyTier network over TCP",
 	})
 }
 
@@ -305,6 +312,9 @@ func createDirectTunnel(n NewDirectTunnel) (service string, active bool, err err
 	if err != nil {
 		return "", false, err
 	}
+	if err := routedLinkRunnable(spec.Carrier); err != nil {
+		return "", false, err
+	}
 	if err := writeDirectConfig(name, body); err != nil {
 		return "", false, err
 	}
@@ -328,6 +338,9 @@ func ApplyDirectTunnel(n NewDirectTunnel) (service string, active bool, created 
 		return "", false, false, err
 	}
 	if err := pckRunnable(n.Carrier); err != nil {
+		return "", false, false, err
+	}
+	if err := routedLinkRunnable(n.Carrier); err != nil {
 		return "", false, false, err
 	}
 	path := app.ConfigPath(name)
@@ -443,8 +456,11 @@ func (n NewDirectTunnel) spec() (l3Spec, error) {
 	}
 	// A kernel GRE link has no port and no token, and names the other server
 	// on both sides; see directgre.go.
-	if l3.KernelCarrier(carrier) {
+	if l3.PortlessLinkCarrier(carrier) {
 		return n.greSpec(side, carrier)
+	}
+	if carrier == l3.CarrierEasyTier {
+		return n.easyTierSpec(side)
 	}
 	// PCK is a port-forwarding transport with no TUN and none of its keys; see
 	// directpck.go.
@@ -712,14 +728,14 @@ func directSettingsFrom(name string, l config.L3Config) DirectSettings {
 	// The menu offers what an edit can move this tunnel onto: another datagram
 	// carrier, or — for a GRE tunnel — GRE alone. The two kinds are built from
 	// different facts, so one is never edited into the other.
-	kernel := l3.KernelCarrier(carrier)
+	kernel := l3.PortlessLinkCarrier(carrier)
 	family := carrierFamily(carrier)
 	var carriers []map[string]string
 	for _, c := range PanelDirectCarriers() {
 		// A removed carrier has no family of its own: it can be moved onto
 		// either of the other two kinds of tunnel, apart from GRE.
 		if family == "" {
-			if !l3.KernelCarrier(c["value"]) {
+			if !l3.ExternalInterfaceCarrier(c["value"]) {
 				carriers = append(carriers, c)
 			}
 			continue
@@ -809,8 +825,8 @@ func directSettingsFrom(name string, l config.L3Config) DirectSettings {
 // protect.
 func carrierFamily(carrier string) string {
 	switch {
-	case carrier == l3.CarrierGRETAP:
-		return l3.CarrierGRETAP
+	case carrier == l3.CarrierGRETAP || carrier == l3.CarrierL2TPv3 || carrier == l3.CarrierEasyTier:
+		return carrier
 	case l3.KernelCarrier(carrier):
 		return "kernel"
 	case carrier == l3.CarrierPck:
@@ -1040,7 +1056,7 @@ func applyDirectEdit(l config.L3Config, e DirectEdit) (config.L3Config, error) {
 		}
 		// GRE is a link naming both servers' real addresses, with no port and
 		// no token; a datagram tunnel's file has none of that to move it onto.
-		if l3.KernelCarrier(carrier) != l3.KernelCarrier(l.Carrier) {
+		if l3.PortlessLinkCarrier(carrier) != l3.PortlessLinkCarrier(l.Carrier) {
 			return l, fmt.Errorf("a GRE tunnel is set up anew rather than changed into or out of: " +
 				"add the new tunnel on both servers, then delete this one")
 		}
@@ -1129,8 +1145,8 @@ func applyDirectEdit(l config.L3Config, e DirectEdit) (config.L3Config, error) {
 		}
 	}
 	if e.FEC != nil {
-		if *e.FEC && l3.KernelCarrier(l.Carrier) {
-			return l, fmt.Errorf("a GRE tunnel has no error correction: the kernel sends it, " +
+		if *e.FEC && l3.ExternalInterfaceCarrier(l.Carrier) {
+			return l, fmt.Errorf("this interface carrier has no error correction: its transport handles the packets, " +
 				"and FEC works only on Backpack's own carriers")
 		}
 		if *e.FEC && pck {
@@ -1159,21 +1175,22 @@ func directSpecFrom(name string, l config.L3Config) l3Spec {
 		side = sideKharej
 	}
 	return l3Spec{
-		Name:      name,
-		Side:      side,
-		Carrier:   orDefault(l.Carrier, "udp"),
-		Encap:     orDefault(l.Encap, "gre"),
-		SNIDomain: l.SNIDomain,
-		GREKey:    l.GREKey,
-		Addr:      l.Addr,
-		GRELocal:  l.GRELocal,
-		Token:     l.Token,
-		Iface:     orDefault(l.Iface, "bp0"),
-		LocalIP:   l.LocalIP,
-		PeerIP:    l.PeerIP,
-		MTU:       l.MTU,
-		AutoMTU:   l.AutoMTU,
-		SockBuf:   l.SockBuf, MSSClamp: l.MSSClamp,
+		RoutedLinkSettings: l.RoutedLinkSettings,
+		Name:               name,
+		Side:               side,
+		Carrier:            orDefault(l.Carrier, "udp"),
+		Encap:              orDefault(l.Encap, "gre"),
+		SNIDomain:          l.SNIDomain,
+		GREKey:             l.GREKey,
+		Addr:               l.Addr,
+		GRELocal:           l.GRELocal,
+		Token:              l.Token,
+		Iface:              orDefault(l.Iface, "bp0"),
+		LocalIP:            l.LocalIP,
+		PeerIP:             l.PeerIP,
+		MTU:                l.MTU,
+		AutoMTU:            l.AutoMTU,
+		SockBuf:            l.SockBuf, MSSClamp: l.MSSClamp,
 		FECData: l.FECData, FECParity: l.FECParity,
 		Preset: l.Preset, TxQueueLen: l.TxQueueLen, Qdisc: l.Qdisc,
 		Ports:          l.Ports,

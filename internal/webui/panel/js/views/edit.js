@@ -458,20 +458,22 @@ function directMarkup(set) {
   const ports = !!set.holdsPorts;
   const gre = !!set.kernel;
   const kernelName = set.carrier === 'gretap' ? 'GRETAP' : 'GRE';
+  const l2tp = set.carrier === 'l2tpv3';
   return `<div class="pane" data-tab="Direct">` +
     `<div class="f"><label>Carrier</label><div class="sel" data-name="carrier">${esc(set.carrier || '')}` +
     `<span class="sp"></span><svg class="x" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></div>` +
     (set.unrunnable ? `<div class="hint warn">${esc(set.unrunnable)}</div>` : '') +
-    (gre ? `<div class="hint warn">${kernelName} is not encrypted. GRE key ${esc(String(set.greKey || 0))}, ` +
+    (l2tp ? '<div class="hint warn">L2TPv3 uses unencrypted IP protocol 115.</div>'
+      : gre ? `<div class="hint warn">${kernelName} is not encrypted. GRE key ${esc(String(set.greKey || 0))}, ` +
       `the same on both servers.</div>`
       : `<div class="hint">Both ends must match — change the other server too.</div>`) + `</div>` +
     (ports ? field('ports', 'Forwarded ports', 'Comma separated. Blank leaves a plain TUN tunnel.') +
       sw('acceptUdp', 'Also forward UDP', 'Off: TCP only. On: TCP and UDP.') : '') +
     `<div class="f"><label>Performance preset</label><div class="sel" data-name="preset">Turbo` +
     `<span class="sp"></span><svg class="x" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></div></div>` +
-    `<div class="two">${field('mtu', 'MTU', gre ? '0 takes the interface’s MTU less GRE’s own.' : undefined)}<div></div></div>` +
+    `<div class="two">${field('mtu', 'MTU', gre ? '0 derives the MTU from the underlay interface.' : undefined)}<div></div></div>` +
     sw('autoMtu', 'Auto MTU', 'Measure the path and correct the MTU once up.') +
-    (gre ? '' : sw('fec', 'Error correction (FEC)', 'Spare packets repair loss. Both ends must match.')) +
+    (gre || set.carrier === 'easytier' ? '' : sw('fec', 'Error correction (FEC)', 'Spare packets repair loss. Both ends must match.')) +
     (set.carrier === 'spoof' ? sw('stealth', 'Stealth', 'Padding and header cosmetics. Both ends must match.') : '') +
     (ports ? `<div class="two">${field('maxConnections', 'Max connections', '0 is no limit.')}` +
       `${field('bandwidthMbps', 'Bandwidth (Mbit/s)', '0 is no limit.')}</div>` : '') +

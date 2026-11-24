@@ -106,9 +106,14 @@ type ShareLink struct {
 	// whose Iran side had set one of them came up on the kharej without it:
 	// a GRE key the other end did not expect drops every packet, and so does
 	// a segment cap or an MTU the two ends disagree on.
-	GREKey  uint32 `json:"gk,omitempty"`
-	L3MSS   int    `json:"lm,omitempty"`
-	AutoMTU *bool  `json:"am,omitempty"`
+	GREKey            uint32 `json:"gk,omitempty"`
+	L3MSS             int    `json:"lm,omitempty"`
+	AutoMTU           *bool  `json:"am,omitempty"`
+	L2TPTunnelID      uint32 `json:"lt,omitempty"`
+	L2TPPeerTunnelID  uint32 `json:"lp,omitempty"`
+	L2TPSessionID     uint32 `json:"ls,omitempty"`
+	L2TPPeerSessionID uint32 `json:"lr,omitempty"`
+	EasyTierNetwork   string `json:"en,omitempty"`
 
 	// The forged-source carrier's paired half. SrcIPs is what the PRODUCER
 	// forges — the receiver turns it into what it expects from its peer, which
@@ -290,7 +295,7 @@ func DecodeShareLink(s string) (out ShareLink, err error) {
 // checkShareLink refuses a decoded link that cannot build anything.
 func checkShareLink(out ShareLink) error {
 	// The one tunnel with no token is kernel GRE, which has no secret at all.
-	kernel := out.Kind == "direct" && l3.KernelCarrier(out.Tr)
+	kernel := out.Kind == "direct" && l3.PortlessLinkCarrier(out.Tr)
 	if (out.Tok == "" && !kernel) || out.Tr == "" {
 		return fmt.Errorf("the setup link is missing the token or the transport — it was not made by this version")
 	}
@@ -319,6 +324,7 @@ func (l ShareLink) PeerSide() string {
 // the same reason the mirroring does: two copies of it would eventually
 // disagree, and the disagreement would be invisible until a tunnel went quiet.
 type PeerForm struct {
+	config.RoutedLinkSettings
 	Kind string `json:"kind"` // "reverse" or "direct"
 	Side string `json:"side"` // the side this form is for
 	Name string `json:"name,omitempty"`
@@ -425,7 +431,7 @@ func MirrorForPeer(l ShareLink) PeerForm {
 	// what the panel marks, so it is built from what was actually filled rather
 	// than written out twice. A GRE link has neither a token nor a port.
 	paired := []string{"token", "tunnelPort"}
-	if l.Kind == "direct" && l3.KernelCarrier(l.Tr) {
+	if l.Kind == "direct" && l3.PortlessLinkCarrier(l.Tr) {
 		paired = nil
 	}
 	// A PCK link has no tunnel addresses, MTU or error correction to carry, and
@@ -469,6 +475,11 @@ func MirrorForPeer(l ShareLink) PeerForm {
 		// The private network's two addresses swap: the producer's local is the
 		// receiver's peer.
 		f.LocalIP, f.PeerIP = l.PeerIP, hostOf(l.LocalIP)
+		if l.Tr == l3.CarrierL2TPv3 || l.Tr == l3.CarrierEasyTier {
+			if _, prefix, ok := strings.Cut(l.LocalIP, "/"); ok && f.LocalIP != "" && !strings.Contains(f.LocalIP, "/") {
+				f.LocalIP += "/" + prefix
+			}
+		}
 		if pck {
 			// An Iran side that has not been updated still writes them; they
 			// mean nothing to this engine and are not carried on.
@@ -488,7 +499,7 @@ func MirrorForPeer(l ShareLink) PeerForm {
 		// Iran dials kharej on a direct tunnel, so only the Iran side is asked
 		// for an address to reach — except on GRE, whose link names both
 		// servers: the kharej's names Iran's, which the link carries.
-		if f.Side == "kharej" && l3.KernelCarrier(l.Tr) && l.Host != "" {
+		if f.Side == "kharej" && l3.PortlessLinkCarrier(l.Tr) && l.Host != "" {
 			f.ServerAddr = l.Host
 			paired = append(paired, "serverAddr")
 		}
@@ -497,6 +508,15 @@ func MirrorForPeer(l ShareLink) PeerForm {
 			paired = append(paired, "serverAddr")
 			f.Ports = l.Ports
 			f.AcceptUDP = l.AcceptUDP
+		}
+		switch l.Tr {
+		case l3.CarrierL2TPv3:
+			f.L2TPTunnelID, f.L2TPPeerTunnelID = l.L2TPPeerTunnelID, l.L2TPTunnelID
+			f.L2TPSessionID, f.L2TPPeerSessionID = l.L2TPPeerSessionID, l.L2TPSessionID
+			paired = append(paired, "l2tpTunnelId", "l2tpPeerTunnelId", "l2tpSessionId", "l2tpPeerSessionId")
+		case l3.CarrierEasyTier:
+			f.EasyTierNetwork = l.EasyTierNetwork
+			paired = append(paired, "easytierNetwork")
 		}
 	}
 
@@ -670,7 +690,7 @@ func shareLinkOf(name, host string, cfg config.Config) (string, error) {
 		}
 		l.Tok = cfg.L3.Token
 		l.Tr = orDefault(cfg.L3.Carrier, "udp")
-		if l3.KernelCarrier(l.Tr) {
+		if l3.PortlessLinkCarrier(l.Tr) {
 			// The kharej's GRE link names this server's real address, of the
 			// tunnel's own family, so a host that cannot be that is replaced.
 			l.Tok = ""
@@ -695,6 +715,9 @@ func shareLinkOf(name, host string, cfg config.Config) (string, error) {
 		l.LocalIP, l.PeerIP = cfg.L3.LocalIP, cfg.L3.PeerIP
 		l.FECData, l.FECParity = cfg.L3.FECData, cfg.L3.FECParity
 		l.GREKey, l.L3MSS, l.AutoMTU = cfg.L3.GREKey, cfg.L3.MSSClamp, cfg.L3.AutoMTU
+		l.L2TPTunnelID, l.L2TPPeerTunnelID = cfg.L3.L2TPTunnelID, cfg.L3.L2TPPeerTunnelID
+		l.L2TPSessionID, l.L2TPPeerSessionID = cfg.L3.L2TPSessionID, cfg.L3.L2TPPeerSessionID
+		l.EasyTierNetwork = cfg.L3.EasyTierNetwork
 		sc := cfg.L3.SpoofConfig
 		l.Profile, l.Uplink, l.Downlink = sc.SpoofProfile, sc.SpoofUplink, sc.SpoofDownlink
 		l.SrcIPs = strings.Join(nonEmpty(append([]string{sc.SpoofSrcIP}, sc.SpoofSrcPool...)), ", ")
@@ -734,7 +757,7 @@ func shareLinkOf(name, host string, cfg config.Config) (string, error) {
 
 	// A kernel GRE tunnel has no token to hand over, and needs none: what the
 	// two ends share is each other's address and the GRE key.
-	if l.Tok == "" && !(l.Kind == "direct" && l3.KernelCarrier(l.Tr)) {
+	if l.Tok == "" && !(l.Kind == "direct" && l3.PortlessLinkCarrier(l.Tr)) {
 		return "", fmt.Errorf("%q has no token to hand over", name)
 	}
 	if cfg.Server.HasManagedHelper() {

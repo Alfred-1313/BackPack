@@ -9,6 +9,7 @@
  */
 export const NUMERIC = new Set([
   'greKey', 'maxConnections', 'bandwidthMbps',
+  'l2tpTunnelId', 'l2tpPeerTunnelId', 'l2tpSessionId', 'l2tpPeerSessionId',
   'pckConns', 'pckKcpMtu', 'pckKcpSndWnd', 'pckKcpRcvWnd',
   'limits.maxConnections', 'limits.bandwidthMbps',
   'tune.keepAlive', 'tune.heartbeat', 'tune.mss', 'tune.channelSize',

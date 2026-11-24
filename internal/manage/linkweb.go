@@ -39,7 +39,8 @@ type SetupLinkInfo struct {
 	// token, so the screen's warning names what it does hold.
 	GRE bool `json:"gre,omitempty"`
 	// GRETAP is configured from the other server's Add tunnel form.
-	GRETAPPeer *PeerForm `json:"gretapPeer,omitempty"`
+	GRETAPPeer      *PeerForm `json:"gretapPeer,omitempty"`
+	PanelDirectPeer *PeerForm `json:"panelDirectPeer,omitempty"`
 }
 
 // SetupLinkFor builds a tunnel's setup link. host overrides the address the
@@ -65,7 +66,7 @@ func SetupLinkFor(name, host string) (SetupLinkInfo, error) {
 	// A GRE link's kharej names this server, so the address the link holds is
 	// the one that counts, and without it `link apply` refuses: the line has to
 	// carry --host, and the screen has to say which address goes there.
-	gre := l3.KernelCarrier(l.Tr) && l.Kind == "direct"
+	gre := l3.PortlessLinkCarrier(l.Tr) && l.Kind == "direct"
 	if gre {
 		info.Host, info.NeedsAddress, info.GRE = l.Host, l.Host == "", true
 	}
@@ -75,6 +76,14 @@ func SetupLinkFor(name, host string) (SetupLinkInfo, error) {
 			peer.LocalIP += "/" + prefix
 		}
 		info.GRETAPPeer, info.Where = &peer, "Add a tunnel → Direct → GRETAP"
+		return info, nil
+	}
+	if l.Kind == "direct" && (l.Tr == l3.CarrierL2TPv3 || l.Tr == l3.CarrierEasyTier) {
+		peer := MirrorForPeer(l)
+		if _, prefix, ok := strings.Cut(l.LocalIP, "/"); ok && peer.LocalIP != "" && !strings.Contains(peer.LocalIP, "/") {
+			peer.LocalIP += "/" + prefix
+		}
+		info.PanelDirectPeer, info.Where = &peer, "Add a tunnel → Direct → "+carrierLabel(l.Tr)
 		return info, nil
 	}
 	if info.For == "kharej" {

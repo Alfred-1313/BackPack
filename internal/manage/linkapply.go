@@ -260,7 +260,7 @@ func applyDirectLink(link ShareLink, o LinkApplyOptions) (LinkApplied, error) {
 		}
 		form.SpoofPeerIP = ip.String()
 	}
-	if l3.KernelCarrier(link.Tr) && strings.TrimSpace(form.ServerAddr) == "" {
+	if l3.PortlessLinkCarrier(link.Tr) && strings.TrimSpace(form.ServerAddr) == "" {
 		// The kharej's GRE link names the Iran server's real address.
 		host := strings.Trim(strings.TrimSpace(o.Host), "[]")
 		if host == "" {

@@ -27,12 +27,12 @@ func TestTheAddFormFitsAPckTunnel(t *testing.T) {
 	// The TUN's rows are marked !pck.
 	for _, name := range []string{"localIp", "peerIp", "greKey"} {
 		re := regexp.MustCompile(`<div class="f3[^"]*" data-when="([^"]*)">(?:<label>[^<]*</label>)?(?:<div class="hint"[^>]*>[^<]*</div>)?[^"]*?name="` + name + `"`)
-		if m := re.FindStringSubmatch(direct); m == nil || m[1] != "!pck" {
+		if m := re.FindStringSubmatch(direct); m == nil || !strings.Contains("-"+m[1]+"-", "-!pck-") {
 			t.Errorf("the %s row is shown on PCK: %q", name, m)
 		}
 	}
 	for _, label := range []string{"Error correction (FEC)", "Stealth"} {
-		if !regexp.MustCompile(`data-when="!gre-!pck"><div class="tx"><b>` + regexp.QuoteMeta(label)).MatchString(direct) {
+		if !regexp.MustCompile(`data-when="!gre-!pck(?:-![a-z0-9]+)*"><div class="tx"><b>` + regexp.QuoteMeta(label)).MatchString(direct) {
 			t.Errorf("%s is offered on PCK, which cannot have it", label)
 		}
 	}

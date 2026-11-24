@@ -85,7 +85,7 @@ func GREEndpointMatches(carrier string, ip net.IP) bool {
 	if ip == nil {
 		return false
 	}
-	if carrier == CarrierGRETAP {
+	if carrier == CarrierGRETAP || carrier == CarrierL2TPv3 {
 		return ip.To4() != nil
 	}
 	return carrier == GRECarrierFor(ip)
@@ -248,8 +248,8 @@ func greFamilyFits(carrier, field string, ip net.IP) error {
 	if GREEndpointMatches(carrier, ip) {
 		return nil
 	}
-	if carrier == CarrierGRETAP {
-		return fmt.Errorf("l3: %s %s must be IPv4 for GRETAP", field, ip)
+	if carrier == CarrierGRETAP || carrier == CarrierL2TPv3 {
+		return fmt.Errorf("l3: %s %s must be IPv4 for %s", field, ip, strings.ToUpper(carrier))
 	}
 	if carrier == CarrierGRE {
 		return fmt.Errorf("l3: %s %s is IPv6, and carrier %q is GRE over IPv4 — use carrier = %q",

@@ -24,6 +24,7 @@ import (
 
 // L3Spec is everything the wizard collected for an [l3] tunnel.
 type L3Spec struct {
+	config.RoutedLinkSettings
 	Name    string
 	Side    DirectSide
 	Carrier string
@@ -93,6 +94,9 @@ func (s L3Spec) DefaultName() string {
 }
 
 func (s L3Spec) Render() string {
+	if s.Carrier == l3.CarrierL2TPv3 || s.Carrier == l3.CarrierEasyTier {
+		return s.renderRoutedLink()
+	}
 	if l3.KernelCarrier(s.Carrier) {
 		return s.renderGRE()
 	}
@@ -545,6 +549,12 @@ func tomlList(items []string) string {
 // management screens. The key is shown because both ends must agree on it and
 // a mismatch is otherwise invisible.
 func L3EncapLabel(l config.L3Config) string {
+	switch l.Carrier {
+	case l3.CarrierL2TPv3:
+		return "L2TPv3 over IPv4 (IP protocol 115), unencrypted"
+	case l3.CarrierEasyTier:
+		return "EasyTier over TCP, encrypted"
+	}
 	// PCK is not wrapped at all: it is KCP and smux streams inside crafted TCP
 	// segments, and "GRE + Noise" would name a layer it has none of.
 	if l.Carrier == l3.CarrierPck {

@@ -165,7 +165,7 @@ func ValidateConfigFile(path string) []string {
 		if m := strings.ToLower(strings.TrimSpace(cfg.L3.Mode)); m != "dial" && m != "listen" {
 			add("[l3] mode is %q; it has to be \"dial\" or \"listen\"", cfg.L3.Mode)
 		}
-		if l3.KernelCarrier(cfg.L3.Carrier) {
+		if l3.PortlessLinkCarrier(cfg.L3.Carrier) {
 			// A GRE link names the other server alone, and has no secret.
 			if strings.TrimSpace(cfg.L3.Addr) == "" {
 				add("[l3] addr is empty; a GRE tunnel names the other server's address")

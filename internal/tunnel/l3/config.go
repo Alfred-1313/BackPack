@@ -57,6 +57,7 @@ const (
 
 // Config is one resolved layer-3 tunnel, already validated.
 type Config struct {
+	config.RoutedLinkSettings
 	// Mode is ModeDial or ModeListen.
 	Mode string
 
@@ -207,7 +208,7 @@ func (c *Config) Validate() error {
 	// Lower-cased first: whether this is a kernel GRE link decides what addr
 	// and token have to be.
 	c.Carrier = strings.ToLower(strings.TrimSpace(c.Carrier))
-	kernel := KernelCarrier(c.Carrier)
+	kernel := PortlessLinkCarrier(c.Carrier)
 
 	if strings.TrimSpace(c.Addr) == "" {
 		switch {
@@ -290,6 +291,9 @@ func (c *Config) Validate() error {
 	if err := CheckTunnelEnds(c.LocalIP, c.PeerIP); err != nil {
 		return err
 	}
+	if err := c.validateRoutedLink(); err != nil {
+		return err
+	}
 
 	if c.TxQueueLen <= 0 {
 		c.TxQueueLen = defaultTxQueueLen
@@ -303,6 +307,9 @@ func (c *Config) Validate() error {
 	// On a kernel GRE link zero stays zero: the engine works it out from the
 	// interface the route to the other server leaves by, minus what GRE adds,
 	// which is a better figure than any default (see greMTUFor).
+	if c.MTU == 0 && c.Carrier == CarrierEasyTier {
+		c.MTU = 1360
+	}
 	if c.MTU == 0 && !kernel {
 		c.MTU = defaultMTU
 	}
@@ -390,26 +397,27 @@ func CheckTunnelEnds(localIP, peerIP string) error {
 // ConfigFromTable maps the on-disk table to the settings used at startup and validation.
 func ConfigFromTable(table config.L3Config) (Config, error) {
 	tunnelCfg := Config{
-		Mode:           table.Mode,
-		Addr:           table.Addr,
-		GRELocal:       table.GRELocal,
-		Token:          table.Token,
-		Carrier:        table.Carrier,
-		Encap:          table.Encap,
-		GREKey:         table.GREKey,
-		Iface:          table.Iface,
-		LocalIP:        table.LocalIP,
-		PeerIP:         table.PeerIP,
-		MTU:            table.MTU,
-		SockBuf:        table.SockBuf,
-		TxQueueLen:     table.TxQueueLen,
-		Qdisc:          table.Qdisc,
-		MSSClamp:       table.MSSClamp,
-		AutoMTU:        table.AutoMTUEnabled(),
-		Ports:          table.Ports,
-		AcceptUDP:      table.AcceptUDP,
-		MaxConnections: table.MaxConnections,
-		BandwidthMbps:  table.BandwidthMbps,
+		RoutedLinkSettings: table.RoutedLinkSettings,
+		Mode:               table.Mode,
+		Addr:               table.Addr,
+		GRELocal:           table.GRELocal,
+		Token:              table.Token,
+		Carrier:            table.Carrier,
+		Encap:              table.Encap,
+		GREKey:             table.GREKey,
+		Iface:              table.Iface,
+		LocalIP:            table.LocalIP,
+		PeerIP:             table.PeerIP,
+		MTU:                table.MTU,
+		SockBuf:            table.SockBuf,
+		TxQueueLen:         table.TxQueueLen,
+		Qdisc:              table.Qdisc,
+		MSSClamp:           table.MSSClamp,
+		AutoMTU:            table.AutoMTUEnabled(),
+		Ports:              table.Ports,
+		AcceptUDP:          table.AcceptUDP,
+		MaxConnections:     table.MaxConnections,
+		BandwidthMbps:      table.BandwidthMbps,
 		// Read only by the carrier they belong to; ignored otherwise.
 		Preset:           table.Preset,
 		PckConns:         table.PckConns,

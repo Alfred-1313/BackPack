@@ -139,6 +139,9 @@ func Delete(name string) error {
 		if cfg.L3.Enabled() && l3.KernelCarrier(cfg.L3.Carrier) {
 			l3.CleanupGRE(cfg.L3.Iface, strings.ToLower(strings.TrimSpace(cfg.L3.Carrier)), cfg.L3.Addr)
 		}
+		if cfg.L3.Enabled() && strings.EqualFold(strings.TrimSpace(cfg.L3.Carrier), l3.CarrierL2TPv3) {
+			l3.CleanupL2TP(l3.Config{RoutedLinkSettings: cfg.L3.RoutedLinkSettings, Iface: cfg.L3.Iface, Addr: cfg.L3.Addr})
+		}
 		// And the rule that let its interface's traffic in, which a killed
 		// engine left in place.
 		if cfg.L3.Enabled() {

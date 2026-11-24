@@ -47,6 +47,7 @@ var shareFieldIDs = []string{
 	"hi", "hu", "hp", "hid", "hn", "hpa", "hh", "hk", "hsid", "hca",
 	"pn", "pm", "pu", "ps", "pw", "pb",
 	"eg",
+	"lt", "lp", "ls", "lr", "en",
 }
 
 // shareWords are the values a link repeats, each written as its index. Never
@@ -55,7 +56,7 @@ var shareWords = []string{
 	"reverse", "direct", "iran", "kharej",
 	"tcp", "tcpmux", "stealth", "pck", "ws", "wss", "wsmux", "wssmux", "kcp", "quic", "udp",
 	"xdi", "sni", "spoof", "gre", "balance", "turbo", "aggressive", "throughput",
-	"ip6gre", "gretap",
+	"ip6gre", "gretap", "l2tpv3", "easytier",
 }
 
 // How a string value is written.

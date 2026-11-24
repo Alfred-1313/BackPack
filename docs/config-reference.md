@@ -44,6 +44,16 @@ them both ends have to agree on. This says what exists.
 | `pck_gateway_mac` | `string` | PckGatewayMAC is the next hop's hardware address, used when frames are injected at the link layer. Empty means read it from the kernel's neighbour table, which is where it already is. Set it only where that lookup is wrong — some virtualised networks answer ARP with an address the hypervisor then rewrites. |
 | `pck_interface` | `string` | PckInterface pins the carrier to a named egress device. Empty — the normal case — lets the route to the peer choose, which is right on every host with one uplink and on most with several. |
 
+## RoutedLinkSettings
+
+| Key | Type | Description |
+|---|---|---|
+| `easytier_network` | `string` | EasyTierNetwork is the network name shared by the two EasyTier endpoints. |
+| `l2tp_peer_session_id` | `uint32` | L2TPPeerSessionID matches the session ID on the other endpoint. |
+| `l2tp_peer_tunnel_id` | `uint32` | L2TPPeerTunnelID matches the tunnel ID on the other endpoint. |
+| `l2tp_session_id` | `uint32` | L2TPSessionID identifies this endpoint's L2TPv3 Ethernet session. |
+| `l2tp_tunnel_id` | `uint32` | L2TPTunnelID identifies this endpoint's L2TPv3 tunnel. |
+
 ## [client.gost]
 
 | Key | Type | Description |
@@ -306,4 +316,4 @@ them both ends have to agree on. This says what exists.
 
 ---
 
-*Generated from `config/` on 2026-11-19. Last verified against Backpack v2.0.0.*
+*Generated from `config/` on 2026-11-24. Last verified against Backpack v2.0.0.*

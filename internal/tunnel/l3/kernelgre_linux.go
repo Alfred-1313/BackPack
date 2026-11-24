@@ -50,9 +50,17 @@ func (t *Tunnel) runKernelGRE(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	name := spec.Name
+	accept := installGREAccept(spec, t.log)
+	defer accept.remove()
+	t.log.Infof("l3: %s up on %s, %s → %s (key %d), mtu %d. Kernel GRE is IP protocol 47 and unencrypted",
+		spec.Carrier, spec.Name, local, remote, spec.Key, mtu)
+	return t.watchRoutedLink(ctx, link, remote.String(), "IP protocol 47", nil)
+}
+
+func (t *Tunnel) watchRoutedLink(ctx context.Context, link *greLink, peer, underlay string, ended <-chan struct{}) error {
+	name := link.name
 	t.gre.iface.Store(&name)
-	t.setCurrentMTU(mtu)
+	t.setCurrentMTU(link.MTU())
 	defer func() {
 		last, _ := readGRECounters(name)
 		t.gre.retire(last)
@@ -60,23 +68,14 @@ func (t *Tunnel) runKernelGRE(ctx context.Context) error {
 		metrics.ClearPeer()
 	}()
 
-	accept := installGREAccept(spec, t.log)
-	defer accept.remove()
 	inside := installIfaceAccept(name, t.log)
 	defer inside.remove()
-
-	key := "no key"
-	if spec.Key != 0 {
-		key = fmt.Sprintf("key %d", spec.Key)
-	}
-	t.log.Infof("l3: %s up on %s, %s → %s (%s), mtu %d. Kernel GRE is IP protocol 47 and unencrypted: "+
-		"whatever crosses it is in the clear unless it is encrypted itself", spec.Carrier, name, local, remote, key, mtu)
 
 	peerInner := net.ParseIP(hostPart(t.cfg.PeerIP))
 	localInner := net.ParseIP(hostPart(t.cfg.LocalIP))
 	pinger, err := openGREPinger(localInner, peerInner, func() {
 		t.gre.lastAnswer.Store(time.Now().UnixNano())
-		metrics.ReportPeer(remote.String())
+		metrics.ReportPeer(peer)
 	})
 	if err != nil {
 		// The link works without it; only the screens are blind.
@@ -117,20 +116,20 @@ func (t *Tunnel) runKernelGRE(ctx context.Context) error {
 			t.log.Infof("l3: the other end answers across %s (%s)", name, peerInner)
 			reported = true
 		case !up && reported:
-			t.log.Warnf("l3: the other end has not answered across %s for %s — check that its tunnel is "+
-				"running and that nothing between the two servers drops IP protocol 47", name, greSilentAfter)
+			t.log.Warnf("l3: the other end has not answered across %s for %s — check its tunnel and reachability over %s",
+				name, greSilentAfter, underlay)
 			metrics.ClearPeer()
 			reported = false
 		case !up && !reported && !toldNever && pinger != nil && time.Since(started) >= greNeverAnsweredAfter:
-			t.log.Warnf("l3: the other end has not answered across %s since the tunnel started %s ago — check "+
-				"that its tunnel is running with this server's address (%s) and the same key, and that nothing "+
-				"between the two servers drops IP protocol 47. Many providers and filtered routes do; if this "+
-				"one does, GRE cannot work here — use xDi or PCK instead", name, greNeverAnsweredAfter, local)
+			t.log.Warnf("l3: no answer across %s since startup %s ago — check the paired settings and reachability over %s",
+				name, greNeverAnsweredAfter, underlay)
 			toldNever = true
 		}
 		select {
 		case <-ctx.Done():
 			return nil
+		case <-ended:
+			return fmt.Errorf("l3: %s helper exited", t.cfg.Carrier)
 		case <-tick.C:
 		}
 	}
@@ -205,6 +204,7 @@ type greLink struct {
 	name     string
 	mssClamp int
 	log      *logrus.Logger
+	cleanup  func()
 
 	mu  sync.Mutex
 	mtu int
@@ -296,7 +296,11 @@ func (l *greLink) Close() {
 	mtu := l.mtu
 	l.mu.Unlock()
 	mssclamp.Remove("l3", l.name, mtu, l.mssClamp)
-	_ = exec.Command("ip", greLinkDelArgs(l.name)...).Run()
+	if l.cleanup != nil {
+		l.cleanup()
+	} else {
+		_ = exec.Command("ip", greLinkDelArgs(l.name)...).Run()
+	}
 }
 
 // removeStaleGRE deletes a GRE link under this tunnel's name, and refuses to
@@ -441,18 +445,21 @@ func installGREAccept(s greLinkSpec, log *logrus.Logger) *greAccept {
 	if s.Carrier == CarrierIP6GRE {
 		tool = "ip6tables"
 	}
+	return installOuterAccept(tool, greAcceptRule(s.Name, s.Remote), log)
+}
+
+func installOuterAccept(tool string, rule []string, log *logrus.Logger) *greAccept {
 	if _, err := exec.LookPath(tool); err != nil {
 		return nil
 	}
-	a := &greAccept{tool: tool, rule: greAcceptRule(s.Name, s.Remote)}
+	a := &greAccept{tool: tool, rule: rule}
 	if exec.Command(tool, append([]string{"-C"}, a.rule...)...).Run() == nil {
 		a.active = true
 		return a
 	}
 	if out, err := exec.Command(tool, append([]string{"-I"}, a.rule...)...).CombinedOutput(); err != nil {
-		log.Warnf("l3: could not let GRE from %s in through the firewall (%v: %s). If this server's "+
-			"firewall drops IP protocol 47 the tunnel cannot come up — allow it: %s -I INPUT -p 47 -s %s -j ACCEPT",
-			s.Remote, err, strings.TrimSpace(string(out)), tool, s.Remote)
+		log.Warnf("l3: cannot install the tunnel ingress rule %s -I %s (%v: %s)",
+			tool, strings.Join(rule, " "), err, strings.TrimSpace(string(out)))
 		return a
 	}
 	a.active = true

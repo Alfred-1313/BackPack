@@ -71,8 +71,7 @@ func formNames(t *testing.T) map[string]bool {
 func jsonTags(prefix string, v any) map[string]string {
 	out := map[string]string{}
 	rt := reflect.TypeOf(v)
-	for i := 0; i < rt.NumField(); i++ {
-		f := rt.Field(i)
+	for _, f := range reflect.VisibleFields(rt) {
 		tag := strings.Split(f.Tag.Get("json"), ",")[0]
 		if tag == "" || tag == "-" {
 			continue
@@ -240,8 +239,7 @@ func TestTheFormSendsNumbersForTheFieldsGoDeclaresNumeric(t *testing.T) {
 		"limits.": manage.TunnelLimits{},
 	} {
 		rt := reflect.TypeOf(v)
-		for i := 0; i < rt.NumField(); i++ {
-			f := rt.Field(i)
+		for _, f := range reflect.VisibleFields(rt) {
 			name, _, _ := strings.Cut(f.Tag.Get("json"), ",")
 			if name == "" || name == "-" {
 				continue
