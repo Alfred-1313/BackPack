@@ -55,12 +55,12 @@ func TestConnectionTestExtraJobAuthenticationAndChunking(t *testing.T) {
 	}
 	result := make(chan response, 1)
 	go func() {
-		r, err := ctrl.exchange(ctx, ctExtraJob{Action: "join", Token: token})
+		r, err := ctrl.exchange(ctx, 0, ctExtraJob{Action: "join", Token: token})
 		result <- response{r, err}
 	}()
 	var job ctExtraJob
 	for ctx.Err() == nil {
-		job, err = ctExtraReadJob(ctx, link, aead)
+		job, err = ctExtraReadJob(ctx, link, aead, 0)
 		if err != nil || job.ID != 0 {
 			break
 		}
@@ -209,5 +209,53 @@ func TestConnectionTestReleasesOnlyTheNamedHelper(t *testing.T) {
 	}
 	if !first.closed || second.closed || worker.instances["first"] != nil || worker.instances["second"] == nil {
 		t.Fatal("closing one helper affected another helper's echo listener")
+	}
+}
+
+func TestConnectionTestKeepsSimultaneousSetupJobsSeparate(t *testing.T) {
+	key := base64.RawURLEncoding.EncodeToString(make([]byte, ctPairKeySize))
+	aead, err := ctExtraCipher(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	control := &ctExtraControl{key: aead}
+	hello, err := ctExtraSeal(aead, "ready", ctExtraParallelSetup)
+	if err != nil || control.answer("extra-ready", hello) != "ok" || control.setupWorkers() != 4 {
+		t.Fatalf("parallel setup was not negotiated: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	type result struct {
+		reply ctExtraReply
+		err   error
+	}
+	replies := [2]chan result{make(chan result, 1), make(chan result, 1)}
+	for worker := range replies {
+		go func() {
+			reply, err := control.exchange(ctx, worker, ctExtraJob{Action: "port"})
+			replies[worker] <- result{reply, err}
+		}()
+	}
+	var IDs [2]uint64
+	for IDs[0] == 0 || IDs[1] == 0 {
+		control.mu.Lock()
+		IDs = [2]uint64{control.jobs[0].id, control.jobs[1].id}
+		control.mu.Unlock()
+		if ctx.Err() != nil {
+			t.Fatal("both jobs were not available concurrently")
+		}
+		ctSleep(ctx, 5*time.Millisecond)
+	}
+	for _, worker := range []int{1, 0} {
+		msg, err := ctExtraSeal(aead, "reply", ctExtraReply{ID: IDs[worker], Port: 21000 + worker})
+		if err != nil || control.answer("extra-reply", msg) != "ok" {
+			t.Fatalf("worker %d reply rejected: %v", worker, err)
+		}
+	}
+	for worker, result := range replies {
+		got := <-result
+		if got.err != nil || got.reply.Port != 21000+worker {
+			t.Fatalf("worker %d got %+v", worker, got)
+		}
 	}
 }

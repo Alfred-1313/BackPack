@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/backpack/backpack/internal/gostdirect"
@@ -29,6 +30,7 @@ const (
 	ctPhaseEchoVerified     = "transport-verified"
 	ctPhaseEchoRetry        = "transport-retry"
 	ctPhaseTransportQueued  = "transport-queued"
+	ctPhaseStabilityReady   = "stability-ready"
 	ctPhaseTransportSetup   = "transport-setup"
 	ctPhaseTransportConnect = "transport-connect"
 	ctPhaseTransportEcho    = "transport-echo"
@@ -127,7 +129,17 @@ func ctExtraRemove(mode, name string) error {
 // When an auxiliary carrier uses a span of ports, reserve and release the
 // whole span on the listening host. Probe ports are outside the default local
 // ephemeral range. The actual bind still has the last word.
-func ctExtraPort(mode string) (int, error) {
+type ctExtraPorts struct {
+	mu       sync.Mutex
+	reserved map[int]bool
+}
+
+func (a *ctExtraPorts) take(mode string) (int, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.reserved == nil {
+		a.reserved = make(map[int]bool)
+	}
 	span := 1
 	if mode == "stripe" {
 		span = 400
@@ -137,14 +149,14 @@ func ctExtraPort(mode string) (int, error) {
 	}
 	for attempt := 0; attempt < 30; attempt++ {
 		p := ctPickPort(map[int]bool{}, true)
-		if span == 1 && p != 0 {
-			return p, nil
-		}
 		if p == 0 || p+span > ephemeralDefaultLow {
 			continue
 		}
 		listeners := make([]net.Listener, 0, span)
 		for i := 0; i < span; i++ {
+			if a.reserved[p+i] {
+				break
+			}
 			l, err := net.Listen("tcp", fmt.Sprintf(":%d", p+i))
 			if err != nil {
 				break
@@ -155,6 +167,12 @@ func ctExtraPort(mode string) (int, error) {
 			l.Close()
 		}
 		if len(listeners) == span {
+			for port := p; port < p+span; port++ {
+				a.reserved[port] = true
+			}
+			if mode == "icmp" || mode == "reverse-mux" {
+				a.reserved[p-1], a.reserved[p+1] = true, true
+			}
 			return p, nil
 		}
 	}
@@ -163,6 +181,7 @@ func ctExtraPort(mode string) (int, error) {
 
 type ctExtraWorker struct {
 	parallel  bool
+	ports     *ctExtraPorts
 	instances map[string]*ctExtraInstance
 }
 
@@ -212,7 +231,7 @@ func (w *ctExtraWorker) perform(ctx context.Context, link ConnTestLink, job ctEx
 				return 0, err
 			}
 		}
-		return ctExtraPort(job.Mode)
+		return w.ports.take(job.Mode)
 	case "remove":
 		return 0, w.close(job.Name)
 	case "mux":
@@ -306,10 +325,14 @@ func ctStartExtraWorker(ctx context.Context, link ConnTestLink, out io.Writer) f
 	if err != nil {
 		return nil
 	}
-	parallel := link.ParallelExtra
+	workers := 1
 	var readiness any = true
-	if parallel {
+	if link.ParallelExtra {
 		readiness = ctExtraParallel
+		if link.ParallelSetup {
+			workers = ctExtraSetupWorkers
+			readiness = ctExtraParallelSetup
+		}
 	}
 	hello, err := ctExtraSeal(key, "ready", readiness)
 	if err != nil {
@@ -322,31 +345,37 @@ func ctStartExtraWorker(ctx context.Context, link ConnTestLink, out io.Writer) f
 		return nil
 	}
 	ctx, cancel := context.WithCancel(ctx)
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		ctExtraWork(ctx, link, parallel, out)
-	}()
-	return func() { cancel(); <-done }
+	var workersDone sync.WaitGroup
+	ports := &ctExtraPorts{}
+	var cleanupLog sync.Mutex
+	reportCleanup := func(err error) {
+		cleanupLog.Lock()
+		defer cleanupLog.Unlock()
+		fmt.Fprintln(out, "Temporary transport cleanup:", ctExtraError(err))
+	}
+	for worker := range workers {
+		workersDone.Go(func() { ctExtraWork(ctx, link, worker, ports, reportCleanup) })
+	}
+	return func() { cancel(); workersDone.Wait() }
 }
 
-func ctExtraWork(ctx context.Context, link ConnTestLink, parallel bool, out io.Writer) {
+func ctExtraWork(ctx context.Context, link ConnTestLink, worker int, ports *ctExtraPorts, reportCleanup func(error)) {
 	key, err := ctExtraCipher(link.pairKey)
 	if err != nil {
 		return
 	}
-	w := &ctExtraWorker{parallel: parallel, instances: make(map[string]*ctExtraInstance)}
+	w := &ctExtraWorker{parallel: link.ParallelExtra, ports: ports, instances: make(map[string]*ctExtraInstance)}
 	defer func() {
 		for name := range w.instances {
 			if err := w.close(name); err != nil {
-				fmt.Fprintln(out, "Temporary transport cleanup:", ctExtraError(err))
+				reportCleanup(err)
 			}
 		}
 	}()
 	var sequence uint64
 	var reply string
 	for ctx.Err() == nil {
-		job, err := ctExtraReadJob(ctx, link, key)
+		job, err := ctExtraReadJob(ctx, link, key, worker)
 		if err != nil || job.ID == 0 || job.ID < sequence {
 			ctSleep(ctx, 300*time.Millisecond)
 			continue
@@ -386,7 +415,7 @@ func (s *ConnTestIran) setupExtra(ctx context.Context, c *connTestCase, mode str
 		}
 	}
 	job := ctExtraJob{Action: "port", Name: c.name, Mode: mode}
-	r, err := ctrl.exchange(ctx, job)
+	r, err := ctrl.exchange(ctx, c.extraWorker, job)
 	if err != nil {
 		return err
 	}
@@ -408,7 +437,7 @@ func (s *ConnTestIran) setupExtra(ctx context.Context, c *connTestCase, mode str
 		}
 		job.Action, job.Token = "join", result.Token
 		c.peerStarted = true
-		_, err = ctrl.exchange(ctx, job)
+		_, err = ctrl.exchange(ctx, c.extraWorker, job)
 		return err
 	}
 	c.localStarted = true
@@ -426,7 +455,7 @@ func (s *ConnTestIran) setupExtra(ctx context.Context, c *connTestCase, mode str
 	}
 	job.Action, job.Token = "join", token
 	c.peerStarted = true
-	if _, err = ctrl.exchange(ctx, job); err != nil {
+	if _, err = ctrl.exchange(ctx, c.extraWorker, job); err != nil {
 		return err
 	}
 	c.peerIP = fields[6]
@@ -451,7 +480,7 @@ func (s *ConnTestIran) setupExtra(ctx context.Context, c *connTestCase, mode str
 		return err
 	}
 	job.Action, job.Token = "mux", token
-	_, err = ctrl.exchange(ctx, job)
+	_, err = ctrl.exchange(ctx, c.extraWorker, job)
 	return err
 }
 
@@ -461,7 +490,7 @@ func (s *ConnTestIran) removeExtra(c *connTestCase) error {
 	if c.peerStarted {
 		ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
 		defer cancel()
-		_, peerErr = s.coord.extra.exchange(ctx, ctExtraJob{Action: "remove", Name: c.name, Mode: mode})
+		_, peerErr = s.coord.extra.exchange(ctx, c.extraWorker, ctExtraJob{Action: "remove", Name: c.name, Mode: mode})
 		c.peerStarted = peerErr != nil
 	}
 	if c.localStarted {
@@ -490,6 +519,34 @@ func (s *ConnTestIran) prepareExtra(ctx context.Context, c *connTestCase, report
 		return row, false
 	}
 	return row, true
+}
+
+func (s *ConnTestIran) prepareExtraCases(ctx context.Context, workers int, report func(int, ConnTestResult)) []bool {
+	ready := make([]bool, len(s.cases))
+	queue := make(chan int, len(s.cases))
+	for i, c := range s.cases {
+		if c.extra && c.skip == "" {
+			queue <- i
+		}
+	}
+	close(queue)
+	var setups sync.WaitGroup
+	for worker := range workers {
+		setups.Go(func() {
+			for i := range queue {
+				c := s.cases[i]
+				c.extraWorker = worker
+				row, ok := s.prepareExtra(ctx, c, func(row ConnTestResult) { report(i, row) })
+				ready[i] = ok
+				if ok {
+					row.Phase, row.Detail = ctPhaseStabilityReady, "temporary tunnel ready; waiting for stability checks"
+					report(i, row)
+				}
+			}
+		})
+	}
+	setups.Wait()
+	return ready
 }
 
 func (s *ConnTestIran) extraStability(ctx context.Context, c *connTestCase, report func(ConnTestResult)) ConnTestResult {

@@ -18,6 +18,8 @@ import (
 const ctPairKeySize = 32
 const ctExtraChunk = 700
 const ctExtraParallel = "parallel-v1"
+const ctExtraParallelSetup = "parallel-setup-v1"
+const ctExtraSetupWorkers = 4
 
 type ctExtraJob struct {
 	ID     uint64 `json:"i"`
@@ -70,16 +72,22 @@ func ctExtraOpen(aead cipher.AEAD, label, value string, out any) error {
 	return json.Unmarshal(raw, out)
 }
 
-// A single job is outstanding. Both ends keep it until its encrypted reply is
-// acknowledged, so a lost TCP/UDP response cannot start a helper a second time.
+// Each worker has one outstanding job. Its encrypted reply is keyed by job
+// ID, so a retry cannot rerun the job or acknowledge a different worker.
 type ctExtraControl struct {
 	mu       sync.Mutex
 	key      cipher.AEAD
 	ready    bool
 	parallel bool
-	id       uint64
-	body     string
-	reply    chan ctExtraReply
+	workers  int
+	sequence uint64
+	jobs     [ctExtraSetupWorkers]ctExtraPending
+}
+
+type ctExtraPending struct {
+	id    uint64
+	body  string
+	reply chan ctExtraReply
 }
 
 func (c *ctExtraControl) answer(command, value string) string {
@@ -88,9 +96,16 @@ func (c *ctExtraControl) answer(command, value string) string {
 	switch command {
 	case "extra-ready":
 		var capability string
-		if ctExtraOpen(c.key, "ready", value, &capability) == nil && capability == ctExtraParallel {
-			c.ready, c.parallel = true, true
-			return "ok"
+		if ctExtraOpen(c.key, "ready", value, &capability) == nil {
+			switch capability {
+			case ctExtraParallelSetup:
+				c.workers = ctExtraSetupWorkers
+				c.ready, c.parallel = true, true
+				return "ok"
+			case ctExtraParallel:
+				c.ready, c.parallel = true, true
+				return "ok"
+			}
 		}
 		var ready bool
 		if ctExtraOpen(c.key, "ready", value, &ready) == nil && ready {
@@ -98,27 +113,38 @@ func (c *ctExtraControl) answer(command, value string) string {
 			return "ok"
 		}
 	case "extra-job":
+		worker := 0
+		if lane, offset, ok := strings.Cut(value, ":"); ok {
+			index, err := strconv.Atoi(lane)
+			if err != nil || index < 0 || index >= c.workers || index >= len(c.jobs) {
+				return ""
+			}
+			worker, value = index, offset
+		}
 		offset, err := strconv.Atoi(value)
 		if err != nil || offset < 0 {
 			return ""
 		}
-		if c.body == "" || offset >= len(c.body) {
+		job := c.jobs[worker]
+		if job.body == "" || offset >= len(job.body) {
 			return "wait"
 		}
-		end := min(offset+ctExtraChunk, len(c.body))
-		return fmt.Sprintf("job %d:%d:%s", c.id, len(c.body), c.body[offset:end])
+		end := min(offset+ctExtraChunk, len(job.body))
+		return fmt.Sprintf("job %d:%d:%s", job.id, len(job.body), job.body[offset:end])
 	case "extra-reply":
 		var r ctExtraReply
-		if ctExtraOpen(c.key, "reply", value, &r) != nil || r.ID != c.id {
+		if ctExtraOpen(c.key, "reply", value, &r) != nil || r.ID == 0 {
 			return ""
 		}
-		if c.reply != nil {
-			select {
-			case c.reply <- r:
-			default:
+		for _, job := range c.jobs {
+			if job.id == r.ID {
+				select {
+				case job.reply <- r:
+				default:
+				}
+				return "ok"
 			}
 		}
-		return "ok"
 	}
 	return ""
 }
@@ -132,23 +158,36 @@ func (c *ctExtraControl) parallelReady() bool {
 	return c.parallel
 }
 
-func (c *ctExtraControl) exchange(ctx context.Context, job ctExtraJob) (ctExtraReply, error) {
+func (c *ctExtraControl) setupWorkers() int {
+	if c == nil {
+		return 1
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return max(1, c.workers)
+}
+
+func (c *ctExtraControl) exchange(ctx context.Context, worker int, job ctExtraJob) (ctExtraReply, error) {
 	ctx, cancel := context.WithTimeout(ctx, 75*time.Second)
 	defer cancel()
 	c.mu.Lock()
-	c.id++
-	job.ID = c.id
+	if worker < 0 || worker >= max(1, c.workers) || worker >= len(c.jobs) || c.jobs[worker].reply != nil {
+		c.mu.Unlock()
+		return ctExtraReply{}, errors.New("temporary transport worker is unavailable")
+	}
+	c.sequence++
+	job.ID = c.sequence
 	body, err := ctExtraSeal(c.key, "job", job)
 	if err != nil {
 		c.mu.Unlock()
 		return ctExtraReply{}, err
 	}
 	replies := make(chan ctExtraReply, 1)
-	c.body, c.reply = body, replies
+	c.jobs[worker] = ctExtraPending{id: job.ID, body: body, reply: replies}
 	c.mu.Unlock()
 	defer func() {
 		c.mu.Lock()
-		c.body, c.reply = "", nil
+		c.jobs[worker] = ctExtraPending{}
 		c.mu.Unlock()
 	}()
 	select {
@@ -162,12 +201,16 @@ func (c *ctExtraControl) exchange(ctx context.Context, job ctExtraJob) (ctExtraR
 	}
 }
 
-func ctExtraReadJob(ctx context.Context, link ConnTestLink, key cipher.AEAD) (ctExtraJob, error) {
+func ctExtraReadJob(ctx context.Context, link ConnTestLink, key cipher.AEAD, worker int) (ctExtraJob, error) {
 	var job ctExtraJob
 	var encoded strings.Builder
 	var sequence string
 	for total := 1; encoded.Len() < total; {
-		r, err := ctAskContext(ctx, link.Host, link.Coord, fmt.Sprintf("extra-job %s %d", link.Tok, encoded.Len()))
+		offset := strconv.Itoa(encoded.Len())
+		if worker > 0 {
+			offset = strconv.Itoa(worker) + ":" + offset
+		}
+		r, err := ctAskContext(ctx, link.Host, link.Coord, "extra-job "+link.Tok+" "+offset)
 		if err != nil {
 			return job, err
 		}

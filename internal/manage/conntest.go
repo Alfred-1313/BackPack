@@ -155,6 +155,7 @@ type ConnTestLink struct {
 	// An older peer keeps the port picked on Iran, as before.
 	DirectPorts   bool `json:"dp,omitempty"`
 	ParallelExtra bool `json:"xp,omitempty"`
+	ParallelSetup bool `json:"xs,omitempty"`
 	// The spoofing check: the forged source, and the UDP port each side's
 	// receiver counts probes on. Empty SpoofSrc is no check.
 	SpoofSrc string `json:"ss,omitempty"`
@@ -407,6 +408,7 @@ func ctNeedsV2Note(kind, tr string) string {
 // connTestCase is one tunnel under test, as the Iran side holds it.
 type connTestCase struct {
 	extra                     bool
+	extraWorker               int
 	localStarted, peerStarted bool
 	kind, tr                  string
 	name                      string
@@ -689,7 +691,7 @@ func StartConnTestIran(o ConnTestOptions) (*ConnTestIran, string, error) {
 				return fail(err)
 			}
 			s.link.pairKey = base64.RawURLEncoding.EncodeToString(key[:])
-			s.link.ParallelExtra = true
+			s.link.ParallelExtra, s.link.ParallelSetup = true, true
 			aead, err := ctExtraCipher(s.link.pairKey)
 			if err != nil {
 				return fail(err)
@@ -1138,6 +1140,11 @@ func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResul
 		}
 	}
 
+	parallelExtra := s.link.ParallelExtra && s.coord.extra.parallelReady()
+	setupWorkers := 1
+	if parallelExtra && s.link.ParallelSetup {
+		setupWorkers = s.coord.extra.setupWorkers()
+	}
 	results := make([]ConnTestResult, len(s.cases))
 	var mu sync.Mutex
 	reportRow := func(i int, r ConnTestResult) {
@@ -1156,6 +1163,8 @@ func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResul
 			results[i].Status, results[i].Detail = ctSkipped, c.skip
 		} else if c.extra {
 			results[i].Phase, results[i].Detail = ctPhaseTransportQueued, "waiting for temporary tunnel setup"
+		} else if setupWorkers > 1 && c.kind != "spoof" {
+			results[i].Phase, results[i].Detail = ctPhaseStabilityReady, "waiting for temporary tunnels to be ready"
 		}
 	}
 	// The kharej sees the same rows, a question at a time.
@@ -1170,9 +1179,8 @@ func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResul
 		}
 	}
 
-	// Older peers keep only one helper pair. Updated peers keep each pair by
-	// name so the stability probes can overlap and all speed tests run later.
-	parallelExtra := s.link.ParallelExtra && s.coord.extra.parallelReady()
+	// Older peers keep only one helper pair. Updated peers retain the
+	// temporary tunnels for the common stability phase and subsequent speed passes.
 	nativeDone := make(chan struct{})
 	nextExtra := 0
 	runNextExtra := func() bool {
@@ -1195,28 +1203,35 @@ func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResul
 		return false
 	}
 	var wg sync.WaitGroup
+	// The spoofing peer sends as soon as it joins, so receive that probe
+	// during preparation. All ordinary tunnel probes share the same start.
 	for i, c := range s.cases {
-		if c.skip != "" || c.extra {
+		if c.kind == "spoof" && c.skip == "" {
+			wg.Go(func() { s.spoofProbe(ctx, c, kharej, func(r ConnTestResult) { reportRow(i, r) }) })
+		}
+	}
+	var ready []bool
+	if setupWorkers > 1 {
+		ready = s.prepareExtraCases(ctx, setupWorkers, reportRow)
+	}
+	for i, c := range s.cases {
+		if c.skip != "" || c.kind == "spoof" {
 			continue
 		}
-		wg.Add(1)
-		go func(i int, c *connTestCase) {
-			defer wg.Done()
-			report := func(r ConnTestResult) {
-				reportRow(i, r)
-			}
-			if c.kind == "spoof" {
-				s.spoofProbe(ctx, c, kharej, report)
-				return
-			}
-			ctProbe(ctx, c, s.link.L3, report)
-		}(i, c)
+		report := func(r ConnTestResult) { reportRow(i, r) }
+		if !c.extra {
+			wg.Go(func() { ctProbe(ctx, c, s.link.L3, report) })
+		} else if ready != nil && ready[i] {
+			wg.Go(func() { s.extraStability(ctx, c, report) })
+		}
 	}
 	go func() {
 		wg.Wait()
 		close(nativeDone)
 	}()
-	if parallelExtra {
+	if setupWorkers > 1 {
+		nextExtra = len(s.cases)
+	} else if parallelExtra {
 		var probes sync.WaitGroup
 		// The control channel has one outstanding setup request. As soon as
 		// the pair is ready its echoes run alongside the other probes.

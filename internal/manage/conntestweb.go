@@ -68,13 +68,13 @@ func ConnTestTimeLeft(rows []ConnTestResult) time.Duration {
 	for _, row := range rows {
 		if row.Transport != ctGostDirect && !strings.HasPrefix(row.Transport, ctOmniPrefix) {
 			native = append(native, row.Phase)
-			nativeProbing = nativeProbing || (row.Status == ctTesting && row.Phase == "")
+			nativeProbing = nativeProbing || (row.Status == ctTesting && (row.Phase == "" || row.Phase == ctPhaseStabilityReady))
 			continue
 		}
 		switch row.Phase {
 		case ctPhaseTransportQueued:
 			helpers += ctExtraTime()
-		case ctPhaseTransportSetup, ctPhaseTransportConnect:
+		case ctPhaseStabilityReady, ctPhaseTransportSetup, ctPhaseTransportConnect:
 			helpers += ctExtraTime()
 			active = true
 		case "speed":

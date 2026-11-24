@@ -109,6 +109,8 @@ func ctStatusLabel(r ConnTestResult) string {
 		return "AWAIT PASS2"
 	case ctPhaseTransportQueued:
 		return "AWAIT SETUP"
+	case ctPhaseStabilityReady:
+		return "READY"
 	case ctPhaseInitialEcho:
 		return "FIRST ECHO"
 	case ctPhaseEchoVerified:

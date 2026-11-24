@@ -106,7 +106,7 @@ function startPane(v) {
   return `<div class="ct-l-in fade">
     <span class="ct-kick">New test</span>
     <div class="tl-lede"><b>Every transport, tried for real between this server and one kharej.</b>
-      <span>Each stability test sends 60 echoes. Transports start checking as soon as both ends are ready.
+      <span>Temporary tunnels are prepared first. Then transports check stability together before speed testing.
         Download and upload are measured with four connections and again with sixteen, one tunnel at a time;
         the max is the best second the tunnel carried. The test tunnels run on free ports and are
         removed when it ends — nothing is left behind on either server.</span></div>
@@ -243,7 +243,7 @@ const tone = st => ({ ok: 'ok', unstable: 'wr', down: 'er', skipped: 'sk', stopp
 const rowPhase = {
   speed: 'Speed test', 'speed-second': 'Speed retest', 'speed-queued': 'Awaiting speed',
   'speed-again': 'Awaiting speed retest', 'transport-queued': 'Awaiting setup', 'transport-initial': 'First echo',
-  'transport-verified': 'First echo OK', 'transport-retry': 'Retry pending', 'transport-setup': 'Setting up',
+  'stability-ready': 'Ready', 'transport-verified': 'First echo OK', 'transport-retry': 'Retry pending', 'transport-setup': 'Setting up',
   'transport-connect': 'Connecting', 'transport-echo': 'Checking echoes', 'transport-cleanup': 'Cleaning up',
 };
 
