@@ -270,7 +270,7 @@ ${field(t, idx)}
 
   <div class="lines">
     <span class="ip">${esc(ip || '—')}</span><span class="sep"></span>
-    <span class="pt">${/^(ip6)?gre$/i.test(t.carrier || '') ? 'GRE' : `port ${esc(port || t.tunnelPort || '—')}`}</span>
+    <span class="pt">${t.carrier === 'gretap' ? 'GRETAP' : /^(ip6)?gre$/i.test(t.carrier || '') ? 'GRE' : `port ${esc(port || t.tunnelPort || '—')}`}</span>
   </div>
 </div>
 

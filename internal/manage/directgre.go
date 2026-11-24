@@ -87,7 +87,7 @@ func setupGRE(side directSide) {
 		}
 		cfg.GREKey = key
 	}
-	if other := greTunnelJoining(cfg.Addr, cfg.GREKey); other != "" {
+	if other := greTunnelJoining(cfg.Carrier, cfg.Addr, cfg.GREKey); other != "" {
 		tui.Error("Tunnel " + other + " on this server already joins " + cfg.Addr +
 			" with GRE key " + fmt.Sprint(cfg.GREKey) + " — the kernel allows one per key. Use another key.")
 		tui.PressEnter()
@@ -171,7 +171,7 @@ func askGREAdvanced(cfg *l3Spec, iran bool) bool {
 	local := strings.TrimSpace(tui.PromptDefault("This Server's Own Address For GRE (Blank = Automatic)", cfg.GRELocal))
 	if local != "" {
 		ip := net.ParseIP(strings.Trim(local, "[]"))
-		if ip == nil || l3.GRECarrierFor(ip) != cfg.Carrier {
+		if !l3.GREEndpointMatches(cfg.Carrier, ip) {
 			tui.Error("Not an " + greUnderlayLabel(cfg.Carrier) + " address of this server.")
 			tui.PressEnter()
 			return false
@@ -238,12 +238,18 @@ func greCarrierForHost(host, want string) (string, error) {
 	host = strings.Trim(strings.TrimSpace(host), "[]")
 	if ip := net.ParseIP(host); ip != nil {
 		got := l3.GRECarrierFor(ip)
-		if want != "" && want != got {
+		if want != "" && !l3.GREEndpointMatches(want, ip) {
+			if want == l3.CarrierGRETAP {
+				return "", fmt.Errorf("GRETAP requires an IPv4 endpoint; %s is IPv6", ip)
+			}
 			return "", fmt.Errorf("%s is an %s address, so the tunnel has to be %s", ip,
 				greUnderlayLabel(got), greUnderlayLabel(got))
 		}
 		if ip.IsUnspecified() || ip.IsLoopback() {
 			return "", fmt.Errorf("%s cannot be the other server's address", ip)
+		}
+		if want != "" {
+			return want, nil
 		}
 		return got, nil
 	}
@@ -260,7 +266,7 @@ func greCarrierForHost(host, want string) (string, error) {
 		}
 	}
 	switch want {
-	case l3.CarrierGRE:
+	case l3.CarrierGRE, l3.CarrierGRETAP:
 		if !have4 {
 			return "", fmt.Errorf("%s has no IPv4 address", host)
 		}
@@ -275,6 +281,15 @@ func greCarrierForHost(host, want string) (string, error) {
 		return l3.CarrierGRE, nil
 	}
 	return l3.CarrierIP6GRE, nil
+}
+
+// The GRE panel option follows the peer's address family. GRETAP and the
+// explicit ip6gre option select a fixed link type.
+func greFormCarrier(host, carrier string) (string, error) {
+	if carrier == l3.CarrierGRE {
+		carrier = ""
+	}
+	return greCarrierForHost(host, carrier)
 }
 
 // lookupHost resolves a name; a variable so a test need not depend on DNS.
@@ -314,21 +329,21 @@ func freeGREKeyIn(existing []config.L3Config, intn func(int) int) uint32 {
 
 // greTunnelJoining names the GRE tunnel on this server that already joins addr
 // with key, or "". The kernel refuses a second; the setup says so first.
-func greTunnelJoining(addr string, key uint32) string {
+func greTunnelJoining(carrier, addr string, key uint32) string {
 	tunnels := map[string]config.L3Config{}
 	for _, t := range List() {
 		if cfg, err := LoadTunnelConfig(t.Name); err == nil && cfg.L3.Enabled() {
 			tunnels[t.Name] = cfg.L3
 		}
 	}
-	return greJoiningIn(tunnels, addr, key)
+	return greJoiningIn(tunnels, carrier, addr, key)
 }
 
 // greJoiningIn is greTunnelJoining against a given set of tunnels, by name.
-func greJoiningIn(tunnels map[string]config.L3Config, addr string, key uint32) string {
+func greJoiningIn(tunnels map[string]config.L3Config, carrier, addr string, key uint32) string {
 	addr = strings.Trim(strings.TrimSpace(addr), "[]")
 	for name, l := range tunnels {
-		if !l3.KernelCarrier(l.Carrier) {
+		if !strings.EqualFold(strings.TrimSpace(l.Carrier), carrier) {
 			continue
 		}
 		if sameGREEndpoint(l.Addr, addr) && l.GREKey == key {
@@ -348,7 +363,7 @@ func greLinkHost(cfg l3Spec) string {
 	}
 	if ips, err := lookupHost(cfg.Addr); err == nil {
 		for _, remote := range ips {
-			if l3.GRECarrierFor(remote) != cfg.Carrier {
+			if !l3.GREEndpointMatches(cfg.Carrier, remote) {
 				continue
 			}
 			if local, err := l3.GRELocalToward(remote); err == nil && greSourceSeenAs(local, remote) {
@@ -427,20 +442,18 @@ func (n NewDirectTunnel) greSpecFor(side directSide, carrier, existing string) (
 		return l3Spec{}, fmt.Errorf("a GRE tunnel's kharej side needs the Iran server's real address: " +
 			"a GRE link names both servers")
 	}
-	// "gre" is the screens' one entry, whose family follows the address;
-	// "ip6gre" — from a setup link, or a file — asks for IPv6 by name.
-	want := ""
-	if carrier == l3.CarrierIP6GRE {
-		want = carrier
-	}
-	carrier, err := greCarrierForHost(host, want)
+	carrier, err := greFormCarrier(host, carrier)
 	if err != nil {
 		return l3Spec{}, err
 	}
 
 	name := strings.TrimSpace(n.Name)
 	if name == "" {
-		name = freeName("gre-" + side.String())
+		prefix := "gre"
+		if carrier == l3.CarrierGRETAP {
+			prefix = carrier
+		}
+		name = freeName(prefix + "-" + side.String())
 	}
 	if !validName(name) {
 		return l3Spec{}, fmt.Errorf("tunnel name %q may use only letters, digits, dots and dashes", name)
@@ -450,22 +463,22 @@ func (n NewDirectTunnel) greSpecFor(side directSide, carrier, existing string) (
 	}
 
 	key := n.GREKey
-	if key == 0 {
+	if key == 0 && carrier != l3.CarrierGRETAP {
 		if side == sideKharej {
 			return l3Spec{}, fmt.Errorf("the GRE key is required on the kharej side, and must be the Iran " +
 				"server's: it is in its setup link, and under Edit there")
 		}
 		key = freeGREKey()
 	}
-	if other := greTunnelJoining(host, key); other != "" && other != existing {
-		return l3Spec{}, fmt.Errorf("tunnel %s on this server already joins %s with GRE key %d, and the "+
-			"kernel allows one per key — give this one another key", other, host, key)
+	if other := greTunnelJoining(carrier, host, key); other != "" && other != existing {
+		return l3Spec{}, fmt.Errorf("tunnel %s already joins %s using %s with key %d; choose another key on both ends",
+			other, host, carrierLabel(carrier), key)
 	}
 
 	local := ""
 	if raw := strings.Trim(strings.TrimSpace(n.GRELocal), "[]"); raw != "" {
 		ip := net.ParseIP(raw)
-		if ip == nil || l3.GRECarrierFor(ip) != carrier {
+		if !l3.GREEndpointMatches(carrier, ip) {
 			return l3Spec{}, fmt.Errorf("%q is not an %s address of this server", n.GRELocal, greUnderlayLabel(carrier))
 		}
 		local = ip.String()
@@ -476,6 +489,9 @@ func (n NewDirectTunnel) greSpecFor(side directSide, carrier, existing string) (
 	}
 
 	localIP, peerIP := strings.TrimSpace(n.LocalIP), strings.TrimSpace(n.PeerIP)
+	if carrier == l3.CarrierGRETAP && (localIP == "") != (peerIP == "") {
+		return l3Spec{}, fmt.Errorf("enter both GRETAP tunnel addresses, or leave both empty to allocate a private subnet")
+	}
 	if localIP == "" || peerIP == "" {
 		localIP, peerIP = freeL3Subnet(side)
 	}
@@ -503,7 +519,7 @@ func (n NewDirectTunnel) greSpecFor(side directSide, carrier, existing string) (
 	findL3Preset(strings.ToLower(strings.TrimSpace(n.Preset))).apply(&spec)
 	if side == sideIran {
 		spec.Ports = parsePorts(n.Ports)
-		if len(spec.Ports) == 0 {
+		if len(spec.Ports) == 0 && carrier != l3.CarrierGRETAP {
 			return l3Spec{}, fmt.Errorf("at least one forwarded port is required on the Iran side")
 		}
 		if err := validatePortSpecs(spec.Ports); err != nil {
@@ -530,7 +546,7 @@ func greShareHost(given string, cfg l3Spec) string {
 		if ip == nil {
 			return given
 		}
-		if l3.GRECarrierFor(ip) == cfg.Carrier && greSourceSeenAs(ip, net.ParseIP(strings.Trim(cfg.Addr, "[]"))) {
+		if l3.GREEndpointMatches(cfg.Carrier, ip) && greSourceSeenAs(ip, net.ParseIP(strings.Trim(cfg.Addr, "[]"))) {
 			return ip.String()
 		}
 	}

@@ -23,6 +23,20 @@ const line = (icon, text, label) => {
 
 export function setupLinkHTML(info) {
   const kharej = info.for === 'kharej';
+  if (info.gretapPeer) {
+    const peer = info.gretapPeer;
+    const fields = [
+      [kharej ? 'Iran IPv4' : 'Kharej IPv4', peer.serverAddr],
+      ['This end', peer.localIp],
+      ['The other end', peer.peerIp],
+      ['GRE key', String(peer.greKey || 0)],
+    ];
+    return `<div class="sl">
+      <div class="sl-h"><b>On the ${kharej ? 'Kharej' : 'Iran'} panel</b><small>${esc(info.where)}</small></div>
+      ${fields.map(([label, value]) => `<div class="sl-h"><b>${esc(label)}</b></div>
+        ${value ? line(LINK, value, label) : '<div class="tl-note">Enter this server’s reachable IPv4 address.</div>'}`).join('')}
+    </div>`;
+  }
   return `<div class="sl">
     <div class="sl-steps">
       <span class="sl-side here"><b>This server</b><small>${info.kind === 'direct' ? 'direct' : 'reverse'} · built</small></span>

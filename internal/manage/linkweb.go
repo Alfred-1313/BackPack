@@ -38,6 +38,8 @@ type SetupLinkInfo struct {
 	// GRE is a kernel GRE tunnel's link, which carries a GRE key and no
 	// token, so the screen's warning names what it does hold.
 	GRE bool `json:"gre,omitempty"`
+	// GRETAP is configured from the other server's Add tunnel form.
+	GRETAPPeer *PeerForm `json:"gretapPeer,omitempty"`
 }
 
 // SetupLinkFor builds a tunnel's setup link. host overrides the address the
@@ -66,6 +68,14 @@ func SetupLinkFor(name, host string) (SetupLinkInfo, error) {
 	gre := l3.KernelCarrier(l.Tr) && l.Kind == "direct"
 	if gre {
 		info.Host, info.NeedsAddress, info.GRE = l.Host, l.Host == "", true
+	}
+	if l.Kind == "direct" && l.Tr == l3.CarrierGRETAP {
+		peer := MirrorForPeer(l)
+		if _, prefix, ok := strings.Cut(l.LocalIP, "/"); ok && peer.LocalIP != "" && !strings.Contains(peer.LocalIP, "/") {
+			peer.LocalIP += "/" + prefix
+		}
+		info.GRETAPPeer, info.Where = &peer, "Add a tunnel → Direct → GRETAP"
+		return info, nil
 	}
 	if info.For == "kharej" {
 		info.Apply = "sudo backpack link apply '" + raw + "'"

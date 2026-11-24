@@ -118,7 +118,8 @@ func TestTheAddFormSaysDirectAndDropsEmptyGroups(t *testing.T) {
 	src := string(js)
 	for _, want := range []string{
 		`querySelector('#dirnote')`,
-		`'Direct — this server dials out`,
+		`'Direct: Iran connects to Kharej`,
+		`['gre', 'ip6gre', 'gretap'].includes(chosen.carrier)`,
 		`rows.every(r => r.hidden) ? 'none' : ''`,
 	} {
 		if !strings.Contains(src, want) {

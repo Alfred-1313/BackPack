@@ -280,7 +280,8 @@ func askNewL3Carrier(t Tunnel, l config.L3Config) (l3Spec, bool) {
 	}
 	// GRE is a link with no port and no token, naming both servers' real
 	// addresses; nothing in this tunnel's file says what those would be.
-	if l3.KernelCarrier(carrier) != l3.KernelCarrier(l.Carrier) {
+	if l3.KernelCarrier(carrier) != l3.KernelCarrier(l.Carrier) ||
+		(l3.KernelCarrier(carrier) && carrierFamily(carrier) != carrierFamily(l.Carrier)) {
 		tui.Error("A GRE Tunnel Is Set Up Anew, Not Changed Into: Setup Iran → Direct → GRE, Then Delete This One.")
 		tui.PressEnter()
 		return l3Spec{}, false

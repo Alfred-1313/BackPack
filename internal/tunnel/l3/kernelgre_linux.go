@@ -4,6 +4,7 @@ package l3
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math/rand"
 	"net"
@@ -248,7 +249,7 @@ func openGRELink(s greLinkSpec, mtu, mssClamp, txQueueLen int, localIP, peerIP s
 	// to do.
 	_ = exec.Command("modprobe", greModule(s.Carrier)).Run()
 
-	if err := removeStaleGRE(s.Name); err != nil {
+	if err := removeStaleGRE(s.Name, s.Carrier); err != nil {
 		return nil, err
 	}
 	if out, err := exec.Command("ip", greLinkAddArgs(s)...).CombinedOutput(); err != nil {
@@ -300,21 +301,37 @@ func (l *greLink) Close() {
 
 // removeStaleGRE deletes a GRE link under this tunnel's name, and refuses to
 // touch anything else that has it.
-func removeStaleGRE(name string) error {
+func removeStaleGRE(name, carrier string) error {
 	raw, err := os.ReadFile("/sys/class/net/" + name + "/type")
 	if err != nil {
 		return nil // nothing there
 	}
 	kind, _ := strconv.Atoi(strings.TrimSpace(string(raw)))
-	if kind != arphrdIPGRE && kind != arphrdIP6GRE {
-		return fmt.Errorf("l3: an interface named %s already exists and is not a GRE link — another "+
-			"tunnel or program holds that name; give this tunnel another iface", name)
+	matching := kind == arphrdIPGRE || kind == arphrdIP6GRE
+	if carrier == CarrierGRETAP {
+		out, err := exec.Command("ip", "-j", "-d", "link", "show", "dev", name).Output()
+		matching = err == nil && ipLinkKind(out) == CarrierGRETAP
+	}
+	if !matching {
+		return fmt.Errorf("l3: interface %s already exists with a different type; give this %s tunnel another iface", name, carrier)
 	}
 	if out, err := exec.Command("ip", greLinkDelArgs(name)...).CombinedOutput(); err != nil {
 		return fmt.Errorf("l3: removing the %s an earlier run left behind: %w: %s",
 			name, err, strings.TrimSpace(string(out)))
 	}
 	return nil
+}
+
+func ipLinkKind(raw []byte) string {
+	var links []struct {
+		Info struct {
+			Kind string `json:"info_kind"`
+		} `json:"linkinfo"`
+	}
+	if json.Unmarshal(raw, &links) != nil || len(links) != 1 {
+		return ""
+	}
+	return links[0].Info.Kind
 }
 
 // runIPSteps runs ip(8) commands in order, naming the one that failed.
@@ -597,7 +614,7 @@ func CleanupGRE(iface, carrier, addr string) {
 	if iface == "" {
 		iface = defaultIfaceName
 	}
-	_ = removeStaleGRE(iface)
+	_ = removeStaleGRE(iface, carrier)
 	if remote := net.ParseIP(strings.Trim(addr, "[]")); remote != nil {
 		tool := "iptables"
 		if carrier == CarrierIP6GRE {

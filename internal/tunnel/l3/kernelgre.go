@@ -57,13 +57,15 @@ const (
 	CarrierGRE = "gre"
 	// CarrierIP6GRE is a kernel GRE link over IPv6 endpoints.
 	CarrierIP6GRE = "ip6gre"
+	// CarrierGRETAP is a kernel Ethernet-over-GRE link over IPv4 endpoints.
+	CarrierGRETAP = "gretap"
 )
 
 // KernelCarrier reports whether a carrier name is one of the kernel GRE links,
 // which the engine runs without a TUN device, a session or a carrier socket.
 func KernelCarrier(name string) bool {
 	switch strings.ToLower(strings.TrimSpace(name)) {
-	case CarrierGRE, CarrierIP6GRE:
+	case CarrierGRE, CarrierIP6GRE, CarrierGRETAP:
 		return true
 	}
 	return false
@@ -78,19 +80,34 @@ func GRECarrierFor(ip net.IP) string {
 	return CarrierGRE
 }
 
+// GREEndpointMatches reports whether the address has the carrier's underlay family.
+func GREEndpointMatches(carrier string, ip net.IP) bool {
+	if ip == nil {
+		return false
+	}
+	if carrier == CarrierGRETAP {
+		return ip.To4() != nil
+	}
+	return carrier == GRECarrierFor(ip)
+}
+
 // GREOverhead is what the kernel adds to every packet on a GRE link: the outer
 // IP header and the GRE header, which grows by four bytes when a key is set.
 //
 //	gre     20 + 4 = 24, 28 with a key
 //	ip6gre  40 + 4 = 44, 48 with a key
+//	gretap  20 + 4 + 14 (Ethernet) = 38, 42 with a key
 //
 // ip6gre's figure assumes the encapsulation limit option is off, which is how
 // greLinkAddArgs creates the link; with the kernel's default it would be eight
 // bytes more, spent on a hop limit for nested tunnels this one never has.
 func GREOverhead(carrier string, key uint32) int {
 	outer := 20
-	if strings.EqualFold(strings.TrimSpace(carrier), CarrierIP6GRE) {
+	switch strings.ToLower(strings.TrimSpace(carrier)) {
+	case CarrierIP6GRE:
 		outer = 40
+	case CarrierGRETAP:
+		outer += 14
 	}
 	gre := 4
 	if key != 0 {
@@ -178,10 +195,8 @@ func explainGREAddFailure(s greLinkSpec, out string, err error) error {
 		if s.Key != 0 {
 			key = fmt.Sprintf("key %d", s.Key)
 		}
-		return fmt.Errorf("l3: another GRE link already joins %s and %s with %s, and the kernel "+
-			"allows one per pair and key. Each GRE tunnel between the same two servers needs a key "+
-			"of its own — Backpack picks one for every tunnel it sets up; see `ip -d link show type %s`",
-			s.Local, s.Remote, key, s.Carrier)
+		return fmt.Errorf("l3: another %s link already joins %s and %s with %s. Give this tunnel a key of its own on both ends; "+
+			"see `ip -d link show type %s`", s.Carrier, s.Local, s.Remote, key, s.Carrier)
 	case strings.Contains(lower, "operation not permitted"):
 		return fmt.Errorf("l3: %s: %s (a GRE tunnel needs root or CAP_NET_ADMIN)", cmd, strings.TrimSpace(out))
 	}
@@ -230,9 +245,11 @@ func (c *Config) validateGREEndpoints() error {
 
 // greFamilyFits refuses an endpoint of the wrong family for the carrier.
 func greFamilyFits(carrier, field string, ip net.IP) error {
-	want := GRECarrierFor(ip)
-	if want == carrier {
+	if GREEndpointMatches(carrier, ip) {
 		return nil
+	}
+	if carrier == CarrierGRETAP {
+		return fmt.Errorf("l3: %s %s must be IPv4 for GRETAP", field, ip)
 	}
 	if carrier == CarrierGRE {
 		return fmt.Errorf("l3: %s %s is IPv6, and carrier %q is GRE over IPv4 — use carrier = %q",

@@ -55,7 +55,7 @@ var shareWords = []string{
 	"reverse", "direct", "iran", "kharej",
 	"tcp", "tcpmux", "stealth", "pck", "ws", "wss", "wsmux", "wssmux", "kcp", "quic", "udp",
 	"xdi", "sni", "spoof", "gre", "balance", "turbo", "aggressive", "throughput",
-	"ip6gre",
+	"ip6gre", "gretap",
 }
 
 // How a string value is written.

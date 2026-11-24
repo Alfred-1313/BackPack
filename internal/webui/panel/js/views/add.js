@@ -447,7 +447,9 @@ export function addView(ctx) {
            under "Reverse — the kharej server dials in to Iran". */
         const note = root.querySelector('#dirnote');
         if (note) note.textContent = direct
-          ? 'Direct: Iran connects to Kharej. Peer-to-peer carriers exchange packets in both directions.'
+          ? chosen.carrier === 'gretap'
+            ? 'Direct: GRETAP carries Ethernet frames between two IPv4 endpoints.'
+            : 'Direct: Iran connects to Kharej. Peer-to-peer carriers exchange packets in both directions.'
           : 'Reverse — the kharej dials in to Iran. Try this first.';
         if (direct) suggestDirect(chosen.side);
 
@@ -461,6 +463,9 @@ export function addView(ctx) {
            this is. Nothing evaluated them before, so a row marked for one
            carrier was shown on every direct tunnel, on both sides — including
            the one telling the operator it was required. */
+        const matchesCarrier = carrier => carrier === 'gre'
+          ? ['gre', 'ip6gre', 'gretap'].includes(chosen.carrier)
+          : chosen.carrier === carrier;
         root.querySelectorAll('[data-when]').forEach(n => {
           const when = n.dataset.when;
           if (when === 'server' || when === 'client' || when === 'tls') return;
@@ -469,8 +474,8 @@ export function addView(ctx) {
              has no use for — a tunnel port, a token, error correction. */
           const ok = when.split('-').every(part => {
             if (part === 'server' || part === 'client') return chosen.side === part;
-            if (part.startsWith('!')) return chosen.carrier !== part.slice(1);
-            return chosen.carrier === part;
+            if (part.startsWith('!')) return !matchesCarrier(part.slice(1));
+            return matchesCarrier(part);
           });
           row.hidden = !ok;
         });
@@ -740,6 +745,8 @@ export function addView(ctx) {
             grid.after(box);
           }
           const direct = !!grid.closest('[data-mode="dir"], .step3direct');
+          box.hidden = direct && chosen.carrier === 'gretap';
+          if (box.hidden) return;
           const p = chosen.preset || 'turbo';
           let cells;
           if (direct && chosen.carrier === 'pck') {

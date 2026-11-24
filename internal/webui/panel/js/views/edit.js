@@ -457,11 +457,12 @@ function directMarkup(set) {
   if (set.pck) return pckMarkup(set);
   const ports = !!set.holdsPorts;
   const gre = !!set.kernel;
+  const kernelName = set.carrier === 'gretap' ? 'GRETAP' : 'GRE';
   return `<div class="pane" data-tab="Direct">` +
     `<div class="f"><label>Carrier</label><div class="sel" data-name="carrier">${esc(set.carrier || '')}` +
     `<span class="sp"></span><svg class="x" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></div>` +
     (set.unrunnable ? `<div class="hint warn">${esc(set.unrunnable)}</div>` : '') +
-    (gre ? `<div class="hint warn">GRE is not encrypted — encrypt inside it. GRE key ${esc(String(set.greKey || 0))}, ` +
+    (gre ? `<div class="hint warn">${kernelName} is not encrypted. GRE key ${esc(String(set.greKey || 0))}, ` +
       `the same on both servers.</div>`
       : `<div class="hint">Both ends must match — change the other server too.</div>`) + `</div>` +
     (ports ? field('ports', 'Forwarded ports', 'Comma separated. Blank leaves a plain TUN tunnel.') +

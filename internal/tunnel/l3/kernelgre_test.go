@@ -97,6 +97,11 @@ func TestGRELinkArguments(t *testing.T) {
 	if got := strings.Join(greLinkAddArgs(v4), " "); strings.Contains(got, "key") {
 		t.Errorf("a keyless link names a key: %s", got)
 	}
+	v4.Carrier = CarrierGRETAP
+	want = "link add bp2 type gretap local 198.51.100.1 remote 203.0.113.9 ttl 255"
+	if got := strings.Join(greLinkAddArgs(v4), " "); got != want {
+		t.Errorf("gretap:\n got %s\nwant %s", got, want)
+	}
 
 	v6 := greLinkSpec{Name: "bp3", Carrier: CarrierIP6GRE,
 		Local: net.ParseIP("2001:db8::1"), Remote: net.ParseIP("2001:db8::2"), Key: 4294967295}
@@ -122,6 +127,7 @@ func TestGREOverheadAndMTU(t *testing.T) {
 		over    int
 	}{
 		{CarrierGRE, 0, 24}, {CarrierGRE, 9, 28}, {CarrierIP6GRE, 0, 44}, {CarrierIP6GRE, 9, 48},
+		{CarrierGRETAP, 0, 38}, {CarrierGRETAP, 9, 42},
 	} {
 		if got := GREOverhead(tc.carrier, tc.key); got != tc.over {
 			t.Errorf("%s key %d: overhead %d, want %d", tc.carrier, tc.key, got, tc.over)
@@ -304,7 +310,7 @@ func TestRemovedCarrierErrorListsOnlyWhatAnEditCanReach(t *testing.T) {
 	if strings.Contains(msg, "gre,") || strings.Contains(msg, "ip6gre") {
 		t.Errorf("the refusal offers a GRE link an edit cannot make: %s", msg)
 	}
-	for _, c := range []string{CarrierGRE, CarrierIP6GRE} {
+	for _, c := range []string{CarrierGRE, CarrierIP6GRE, CarrierGRETAP} {
 		if !slices.Contains(Carriers(), c) || !KnownCarrier(c) || !KernelCarrier(c) {
 			t.Errorf("%s is not a known kernel carrier", c)
 		}

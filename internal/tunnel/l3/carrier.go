@@ -64,7 +64,7 @@ const (
 // kernel GRE links are last: they are not datagram carriers, but a config names
 // them in the same key — see kernelgre.go.
 func Carriers() []string {
-	return append(DatagramCarriers(), CarrierGRE, CarrierIP6GRE)
+	return append(DatagramCarriers(), CarrierGRE, CarrierIP6GRE, CarrierGRETAP)
 }
 
 // DatagramCarriers is Carriers without the kernel GRE links: the carriers a
@@ -131,7 +131,7 @@ func KnownCarrier(name string) bool { return knownCarrier(name) }
 // refused before anything is created rather than after.
 func knownCarrier(name string) bool {
 	switch name {
-	case CarrierPck, CarrierXdi, CarrierSpoof, CarrierSNI, CarrierGRE, CarrierIP6GRE:
+	case CarrierPck, CarrierXdi, CarrierSpoof, CarrierSNI, CarrierGRE, CarrierIP6GRE, CarrierGRETAP:
 		return true
 	}
 	_, ok := testCarriers[name]
@@ -174,7 +174,7 @@ func openBareCarrier(ctx context.Context, cfg Config) (DatagramCarrier, net.Addr
 		return openSpoof(cfg)
 	case CarrierSNI:
 		return openSNI(cfg)
-	case CarrierGRE, CarrierIP6GRE:
+	case CarrierGRE, CarrierIP6GRE, CarrierGRETAP:
 		// Run takes the kernel path before it would get here; a caller that
 		// does not is asking a link type for a socket it does not have.
 		return nil, nil, fmt.Errorf("l3: carrier %q is a kernel GRE link, not a datagram carrier", name)

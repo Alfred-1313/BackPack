@@ -247,7 +247,7 @@ func TestGREAllocationAcrossSeveralTunnels(t *testing.T) {
 			}
 			seen[what+v] = true
 		}
-		if other := greJoiningIn(byName, kharej, key); other != "" {
+		if other := greJoiningIn(byName, l3.CarrierGRE, kharej, key); other != "" {
 			t.Fatalf("tunnel %d's fresh key %d already joins %s (%s)", i, key, kharej, other)
 		}
 		l := config.L3Config{Mode: "dial", Carrier: "gre", Addr: kharej, GREKey: key,
@@ -258,10 +258,10 @@ func TestGREAllocationAcrossSeveralTunnels(t *testing.T) {
 	if existing[0].GREKey == existing[1].GREKey {
 		t.Fatal("two tunnels to the same kharej share a key")
 	}
-	if got := greJoiningIn(byName, "203.0.113.9", existing[1].GREKey); got == "" {
+	if got := greJoiningIn(byName, l3.CarrierGRE, "203.0.113.9", existing[1].GREKey); got == "" {
 		t.Error("a second link to the same kharej with a key in use was not caught")
 	}
-	if got := greJoiningIn(byName, "203.0.113.9", 999); got != "" {
+	if got := greJoiningIn(byName, l3.CarrierGRE, "203.0.113.9", 999); got != "" {
 		t.Errorf("an unused key read as taken by %s", got)
 	}
 	// Datagram tunnels share the interface and subnet pools, not the keys.

@@ -177,7 +177,7 @@ func carrierNames() []string {
 // offeredCarrier reports whether a carrier is one the screens offer. ip6gre is
 // offered under GRE's entry.
 func offeredCarrier(name string) bool {
-	if name == l3.CarrierIP6GRE {
+	if name == l3.CarrierIP6GRE || name == l3.CarrierGRETAP {
 		return true
 	}
 	for _, c := range DirectCarriers() {
@@ -197,7 +197,10 @@ func PanelDirectCarriers() []map[string]string {
 			out = append(out, c)
 		}
 	}
-	return out
+	return append(out, map[string]string{
+		"value": l3.CarrierGRETAP, "label": "GRETAP", "needsRoot": "1", "kernel": "1",
+		"desc": "Ethernet over GRE between IPv4 endpoints · IP protocol 47 · unencrypted",
+	})
 }
 
 // pckSuits says in a line what each preset is for, on PCK. Aggressive is not
@@ -806,6 +809,8 @@ func directSettingsFrom(name string, l config.L3Config) DirectSettings {
 // protect.
 func carrierFamily(carrier string) string {
 	switch {
+	case carrier == l3.CarrierGRETAP:
+		return l3.CarrierGRETAP
 	case l3.KernelCarrier(carrier):
 		return "kernel"
 	case carrier == l3.CarrierPck:

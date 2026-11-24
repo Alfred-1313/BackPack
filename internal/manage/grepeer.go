@@ -47,13 +47,18 @@ func applyGREPeer(n NewDirectTunnel, allowFreeName bool) (LinkApplied, error) {
 		return out, err
 	}
 
-	existing := greTunnelJoining(n.PeerAddr, n.GREKey)
+	carrier, err := greFormCarrier(n.PeerAddr, strings.ToLower(strings.TrimSpace(n.Carrier)))
+	if err != nil {
+		return out, err
+	}
+	n.Carrier = carrier
+	existing := greTunnelJoining(carrier, n.PeerAddr, n.GREKey)
 	if n.Name != "" && fileExists(app.ConfigPath(n.Name)) {
 		cfg, err := LoadTunnelConfig(n.Name)
 		if err != nil {
 			return out, err
 		}
-		if l3.KernelCarrier(cfg.L3.Carrier) && cfg.L3.Mode == "listen" && sameGREEndpoint(cfg.L3.Addr, n.PeerAddr) {
+		if cfg.L3.Carrier == carrier && cfg.L3.Mode == "listen" && sameGREEndpoint(cfg.L3.Addr, n.PeerAddr) {
 			if existing != "" && existing != n.Name {
 				return out, fmt.Errorf("GRE key already belongs to %q", existing)
 			}
@@ -66,7 +71,11 @@ func applyGREPeer(n NewDirectTunnel, allowFreeName bool) (LinkApplied, error) {
 	}
 	if existing == "" {
 		if n.Name == "" {
-			n.Name = freeName("gre-kharej")
+			prefix := "gre"
+			if carrier == l3.CarrierGRETAP {
+				prefix = carrier
+			}
+			n.Name = freeName(prefix + "-kharej")
 		}
 		svc, active, err := createDirectTunnel(n)
 		return LinkApplied{Name: n.Name, Service: svc, Kind: "direct", Transport: n.Carrier, Active: active}, err
@@ -82,7 +91,7 @@ func applyGREPeer(n NewDirectTunnel, allowFreeName bool) (LinkApplied, error) {
 		return out, err
 	}
 	old := cfg.L3
-	if old.Mode != "listen" || !l3.KernelCarrier(old.Carrier) || !sameGREEndpoint(old.Addr, n.PeerAddr) {
+	if old.Mode != "listen" || old.Carrier != carrier || !sameGREEndpoint(old.Addr, n.PeerAddr) {
 		return out, fmt.Errorf("existing tunnel %q is not the matching GRE listener", existing)
 	}
 	if n.Name != "" && n.Name != existing && (n.LocalIP != "" && hostOf(n.LocalIP) != hostOf(old.LocalIP) || n.PeerIP != "" && hostOf(n.PeerIP) != hostOf(old.PeerIP)) {
