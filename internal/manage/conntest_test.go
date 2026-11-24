@@ -166,6 +166,43 @@ func TestTheCoordinatorAnswersOnlyWithTheToken(t *testing.T) {
 	}
 }
 
+func TestConnTestSpoofWaitsForTheStageAndAuthenticatedReadiness(t *testing.T) {
+	c, err := startCTCoordinator(ctPickPort(map[int]bool{}, true), "secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.close()
+	from := "192.0.2.1"
+	if got := c.answer("hello secret staged-spoof", from); got != "ok" || !c.stagedSpoof {
+		t.Fatalf("staged peer could not join: %q", got)
+	}
+	for _, command := range []string{"spoof-stage", "spoof-ready"} {
+		if got := c.answer(command+" secret", from); got != "wait" {
+			t.Fatalf("%s before the stage: %q", command, got)
+		}
+	}
+	c.mu.Lock()
+	c.spoofOpen = true
+	c.mu.Unlock()
+	if got := c.answer("spoof-ready wrong-token", from); got != "" {
+		t.Fatalf("unauthenticated readiness: %q", got)
+	}
+	select {
+	case <-c.spoofReady:
+		t.Fatal("receiver was marked ready without an authenticated acknowledgement")
+	default:
+	}
+	if got := c.answer("spoof-stage secret", from); got != "start" {
+		t.Fatalf("stage start: %q", got)
+	}
+	if got := c.answer("spoof-ready secret", from); got != "ok" {
+		t.Fatalf("receiver readiness: %q", got)
+	}
+	if !c.awaitSpoofReceiver(context.Background()) {
+		t.Fatal("the authenticated receiver acknowledgement did not unlock the stage")
+	}
+}
+
 // The whole test, both sides, over loopback with the real engine: every
 // reverse transport has to come up and pass, and the kharej has to receive
 // the same verdict the Iran side printed.

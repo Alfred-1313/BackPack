@@ -136,6 +136,7 @@ type ReceiverConfig struct {
 	Port     uint16          // UDP port to listen on
 	Attempts int             // probes the sender emits per IP (the loss denominator)
 	Window   time.Duration   // how long to capture
+	Ready    func()          // called once the receive socket is listening
 }
 
 // RunReceiver captures probes for the window and returns a per-source tally,
@@ -164,6 +165,9 @@ func RunReceiver(cfg ReceiverConfig) ([]Result, error) {
 	seen := make(map[string]map[uint32]struct{}) // src IP -> set of seqs
 	deadline := time.Now().Add(cfg.Window)
 	_ = conn.SetReadDeadline(deadline)
+	if cfg.Ready != nil {
+		cfg.Ready()
+	}
 
 	buf := make([]byte, 2048)
 	for time.Now().Before(deadline) {

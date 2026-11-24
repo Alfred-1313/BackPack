@@ -521,24 +521,30 @@ func (s *ConnTestIran) prepareExtra(ctx context.Context, c *connTestCase, report
 	return row, true
 }
 
-func (s *ConnTestIran) probeParallelExtras(ctx context.Context, workers int, report func(int, ConnTestResult)) {
-	queue := make(chan int, len(s.cases))
-	for i, c := range s.cases {
-		if c.extra && c.skip == "" {
-			queue <- i
-		}
+func (s *ConnTestIran) probeStageExtras(ctx context.Context, indices []int, workers int, retain bool, report func(int, ConnTestResult)) {
+	queue := make(chan int, len(indices))
+	for _, i := range indices {
+		queue <- i
 	}
 	close(queue)
 	var setups, probes sync.WaitGroup
-	for worker := range workers {
+	for worker := range min(workers, len(indices)) {
 		setups.Go(func() {
 			for i := range queue {
 				c := s.cases[i]
 				c.extraWorker = worker
 				update := func(row ConnTestResult) { report(i, row) }
-				if _, ok := s.prepareExtra(ctx, c, update); ok {
-					probes.Go(func() { s.extraStability(ctx, c, update) })
+				row, ok := s.prepareExtra(ctx, c, update)
+				if retain {
+					if ok {
+						probes.Go(func() { s.extraStability(ctx, c, update) })
+					}
+					continue
 				}
+				if ok {
+					row = s.extraStability(ctx, c, update)
+				}
+				s.cleanupExtra(c, row, update)
 			}
 		})
 	}
@@ -585,38 +591,20 @@ func (s *ConnTestIran) cleanupExtraCases(workers int, rows []ConnTestResult, rep
 	cleanup.Wait()
 }
 
-// An older peer has just one helper slot, so finish that pair before the next join.
-func (s *ConnTestIran) probeExtra(ctx context.Context, c *connTestCase, nativeDone <-chan struct{}, report func(ConnTestResult)) {
-	row, ok := s.prepareExtra(ctx, c, report)
-	defer func() { s.cleanupExtra(c, row, report) }()
-	if !ok {
-		return
+// Older peers retain one helper at a time. Rebuild a passing pair for the
+// speed stage, once none of the stability checks can compete for bandwidth.
+func (s *ConnTestIran) speedLegacyExtra(ctx context.Context, c *connTestCase) (ctSpeedResult, error) {
+	if c.localStarted || c.peerStarted {
+		return ctSpeedResult{}, errors.New("the previous temporary tunnel was not fully removed")
 	}
-	row = s.extraStability(ctx, c, report)
-	if row.Phase != "speed-queued" {
-		return
+	c.name = ctExtraName()
+	if err := s.setupExtra(ctx, c, strings.TrimPrefix(c.tr, ctOmniPrefix)); err != nil {
+		return ctSpeedResult{}, err
 	}
-	select {
-	case <-ctx.Done():
-	case <-nativeDone:
-	}
-	if ctx.Err() != nil {
-		row.Status, row.Phase, row.Detail = ctStopped, "", "stopped before speed test"
-		report(row)
-		return
-	}
-	row.Phase, row.Detail = "speed", "measuring download and upload"
-	report(row)
 	dial := func() (net.Conn, error) { return ctDial(ctx, c, s.link.L3) }
 	speed, err := ctSpeed(ctx, dial)
-	if ctx.Err() != nil {
-		row.Status, row.Phase, row.Detail = ctStopped, "", "stopped during speed test"
-	} else if err != nil {
-		row.Status, row.Phase, row.Detail = ctUnstable, "", "speed test failed ("+ctShortErr(err)+")"
-	} else {
-		row.Phase, row.Detail = ctPhaseSecond, "second download and upload pass"
-		report(row)
-		ctPutSpeed(&row, ctSpeedAgain(ctx, dial, speed))
+	if err == nil {
+		speed = ctSpeedAgain(ctx, dial, speed)
 	}
-	report(row)
+	return speed, err
 }

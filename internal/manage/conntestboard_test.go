@@ -56,7 +56,7 @@ func TestTheVerdictIsGroupedAndListsWhatWorks(t *testing.T) {
 		{Kind: "direct", Transport: "pck", Status: ctOK, OK: 60, Tried: 60, Total: 60, RTTms: 69, Mbps: 29.9},
 		{Kind: "direct", Transport: "quic", Status: ctDown, Total: 60},
 	})
-	order := []string{"Direct   PCK", "Direct   UDP", "Reverse  TCP", "Reverse  KCP FEC", "Direct   QUIC", "Works Steadily:",
+	order := []string{"REVERSE", "Reverse  TCP", "Reverse  KCP FEC", "DIRECT", "Direct   PCK", "Direct   UDP", "Direct   QUIC", "Works Steadily:",
 		"🟢 Direct PCK                 69ms    29.9 Mbps", "🟢 Direct UDP                 73ms    28.0 Mbps"}
 	at := 0
 	for _, want := range order {
@@ -89,12 +89,12 @@ func TestTheLiveTableRewritesOnlyWhatChanged(t *testing.T) {
 	var out bytes.Buffer
 	b := &ctBoard{out: &out, title: "1.2.3.4", tty: true}
 	b.set(0, ConnTestResult{Kind: "reverse", Transport: "tcp", Status: ctTesting, Total: 60})
-	b.set(1, ConnTestResult{Kind: "direct", Transport: "pck", Status: ctTesting, Total: 60})
+	b.set(1, ConnTestResult{Kind: "direct", Transport: "pck", Status: ctTesting, Phase: ctPhaseStageQueued, Total: 60})
 	b.draw()
 	if !strings.Contains(out.String(), "CONNECTION TEST — 1.2.3.4") {
 		t.Fatalf("first draw: %q", out.String())
 	}
-	if !strings.Contains(out.String(), "Finished 0/2  ·  Active 2  ·  Queued 0") {
+	if !strings.Contains(out.String(), "DIRECT  ·  Waiting") {
 		t.Fatalf("summary missing: %q", out.String())
 	}
 	out.Reset()
@@ -102,10 +102,28 @@ func TestTheLiveTableRewritesOnlyWhatChanged(t *testing.T) {
 	if out.Len() != 0 {
 		t.Errorf("nothing changed, yet %q was written", out.String())
 	}
-	b.set(1, ConnTestResult{Kind: "direct", Transport: "pck", Status: ctTesting, Tried: 1, OK: 1, Total: 60})
+	b.set(0, ConnTestResult{Kind: "reverse", Transport: "tcp", Status: ctTesting, Tried: 1, OK: 1, Total: 60})
 	b.draw()
 	if n := strings.Count(out.String(), "\033[2K"); n != 1 || !strings.Contains(out.String(), "1/60") {
 		t.Errorf("one row changed; %d lines rewritten: %q", n, out.String())
+	}
+}
+
+func TestConnTestBoardShowsTheActiveStageAndEarlierResults(t *testing.T) {
+	b := &ctBoard{}
+	b.setAll([]ConnTestResult{
+		{Kind: "spoof", Transport: ctSpoofToIran, Status: ctTesting, Phase: ctPhaseStageQueued},
+		{Kind: "direct", Transport: "gre", Status: ctTesting, Total: 60, Tried: 22, OK: 22},
+		{Kind: "reverse", Transport: "tcp", Status: ctTesting, Phase: "speed-queued", Total: 60, Tried: 60, OK: 60},
+		{Kind: "reverse", Transport: "reality", Status: ctSkipped},
+	})
+	board := strings.Join(b.lines(), "\n")
+	reverse := strings.Index(board, "REVERSE  ·  Finished  ·  1 OK / 1 Skipped")
+	direct := strings.Index(board, "DIRECT  ·  Testing")
+	spoof := strings.Index(board, "SPOOF  ·  Waiting")
+	if reverse < 0 || direct <= reverse || spoof <= direct || !strings.Contains(board, "22/60") ||
+		strings.Contains(board, "REALITY") || strings.Contains(board, "SPEED") {
+		t.Fatalf("wrong stage layout:\n%s", board)
 	}
 }
 
@@ -179,6 +197,7 @@ func TestLiveRowDistinguishesSetupAndSpeedQueues(t *testing.T) {
 		count                   int
 		label, echoes, progress string
 	}{
+		{ctPhaseStageQueued, 0, "Waiting", "—", "—"},
 		{ctPhaseTransportQueued, 0, "Queued", "—", "—"},
 		{ctPhaseTransportSetup, 0, "Setting up", "—", "—"},
 		{ctPhaseTransportCleanup, 0, "Cleaning up", "—", "—"},

@@ -162,6 +162,8 @@ type ConnTestLink struct {
 	SpoofK   int    `json:"sk,omitempty"` // the kharej's receiver
 	SpoofI   int    `json:"si,omitempty"` // the Iran server's receiver
 	SpoofN   int    `json:"sn,omitempty"` // probes each way
+	// Older peers read only SpoofSrc and start immediately after joining.
+	StagedSpoofSource string `json:"sss,omitempty"`
 	// Cases are the setup links of the tunnels under test, exactly as the
 	// wizard would print them, so the kharej builds each one by the path a
 	// real tunnel takes.
@@ -283,6 +285,7 @@ func ctCaseToken(secret, kind, tr string) string {
 // tokens the kharej derives for itself.
 func ctConfig(l ConnTestLink) string {
 	l.V, l.Kind = 1, connTestKind
+	l.StagedSpoofSource, l.SpoofSrc = l.SpoofSrc, ""
 	l.Cases = append([]ShareLink(nil), l.Cases...)
 	for i := range l.Cases {
 		l.Cases[i].Tok = ""
@@ -386,6 +389,10 @@ const (
 	ctSkipped  = "skipped"
 	ctStopped  = "stopped"
 )
+
+const ctPhaseStageQueued = "stage-queued"
+
+var ctTestStages = [...]string{"reverse", "direct", "spoof"}
 
 // ctNeedsV2Note is what a direct PCK or GRE row that never came up adds: both
 // are new in v2.0.0 (PCK's wire changed then, GRE did not exist), and a kharej
@@ -660,7 +667,7 @@ func StartConnTestIran(o ConnTestOptions) (*ConnTestIran, string, error) {
 	// receiver on one server counts the probes that arrive from the forged
 	// source, the other server sends them. Once each way.
 	if spoofSrc != "" {
-		if ctFamily(host) != "IPv6" {
+		if s.root && ctFamily(host) != "IPv6" {
 			s.link.SpoofSrc, s.link.SpoofN = spoofSrc, connTestSoak
 		}
 		s.link.SpoofK = ctPickPort(used, false)
@@ -1094,26 +1101,7 @@ func (s *ConnTestIran) Joined() <-chan struct{} { return s.coord.joined }
 // Kharej is the address the kharej checked in from.
 func (s *ConnTestIran) Kharej() string { return s.coord.peerAddr() }
 
-// Run tests every tunnel once the kharej has joined, and publishes the
-// verdict for the kharej to fetch. progress is told about each tunnel as it
-// comes up or fails; it may be nil.
-//
-// Every tunnel is reported once at the start, skipped ones included, and each
-// running one again after every echo, so a screen can show the test as it
-// goes. progress is called from several goroutines at once.
-func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResult)) []ConnTestResult {
-	kharej := s.Kharej()
-	s.coord.mu.Lock()
-	for _, c := range s.cases {
-		c.httpsProbe = s.coord.httpsProbes[c.tr]
-		if c.skip == "" && s.coord.skipped[c.tr] {
-			c.skip = "managed helper could not start on kharej; see its local diagnostic"
-		}
-		if c.skip == "" && s.coord.skipped[c.kind+"/"+c.tr] {
-			c.skip = "test could not start on Kharej; see its local diagnostic"
-		}
-	}
-	s.coord.mu.Unlock()
+func (s *ConnTestIran) startDirectTestEngines(ctx context.Context, kharej string) {
 	for _, c := range s.cases {
 		if ctx.Err() != nil {
 			break
@@ -1142,7 +1130,27 @@ func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResul
 			c.skip = "could not start here: " + err.Error()
 		}
 	}
+}
 
+// Run tests each stage once the kharej has joined and publishes the verdict.
+// progress receives every initial row and may be called concurrently as the
+// checks in a stage complete. It may be nil.
+func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResult)) []ConnTestResult {
+	kharej := s.Kharej()
+	s.coord.mu.Lock()
+	for _, c := range s.cases {
+		c.httpsProbe = s.coord.httpsProbes[c.tr]
+		if c.kind == "spoof" && c.skip == "" && !s.coord.stagedSpoof {
+			c.skip = "update Kharej to run the staged spoofing check"
+		}
+		if c.skip == "" && s.coord.skipped[c.tr] {
+			c.skip = "managed helper could not start on kharej; see its local diagnostic"
+		}
+		if c.skip == "" && s.coord.skipped[c.kind+"/"+c.tr] {
+			c.skip = "test could not start on Kharej; see its local diagnostic"
+		}
+	}
+	s.coord.mu.Unlock()
 	parallelExtra := s.link.ParallelExtra && s.coord.extra.parallelReady()
 	setupWorkers := 1
 	if parallelExtra && s.link.ParallelSetup {
@@ -1164,8 +1172,8 @@ func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResul
 		results[i] = ctHTTPSResult(results[i], c)
 		if c.skip != "" {
 			results[i].Status, results[i].Detail = ctSkipped, c.skip
-		} else if c.extra {
-			results[i].Phase, results[i].Detail = ctPhaseTransportQueued, "waiting for temporary tunnel setup"
+		} else {
+			results[i].Phase, results[i].Detail = ctPhaseStageQueued, "waiting for the "+ctKind(c.kind)+" stage"
 		}
 	}
 	// The kharej sees the same rows, a question at a time.
@@ -1180,59 +1188,7 @@ func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResul
 		}
 	}
 
-	// Older peers keep only one helper pair. Updated peers can retain prepared
-	// tunnels for the speed passes while subsequent tunnels are built.
-	nativeDone := make(chan struct{})
-	nextExtra := 0
-	runNextExtra := func() bool {
-		for nextExtra < len(s.cases) {
-			i := nextExtra
-			nextExtra++
-			c := s.cases[i]
-			if !c.extra || c.skip != "" {
-				continue
-			}
-			if ctx.Err() != nil {
-				row := results[i]
-				row.Status, row.Detail, row.Phase = ctStopped, "test stopped", ""
-				reportRow(i, row)
-				continue
-			}
-			s.probeExtra(ctx, c, nativeDone, func(row ConnTestResult) { reportRow(i, row) })
-			return true
-		}
-		return false
-	}
-	var wg sync.WaitGroup
-	for i, c := range s.cases {
-		if c.skip != "" || c.extra {
-			continue
-		}
-		report := func(r ConnTestResult) { reportRow(i, r) }
-		if c.kind == "spoof" {
-			wg.Go(func() { s.spoofProbe(ctx, c, kharej, report) })
-		} else {
-			wg.Go(func() { ctProbe(ctx, c, s.link.L3, report) })
-		}
-	}
-	go func() {
-		wg.Wait()
-		close(nativeDone)
-	}()
-	if parallelExtra {
-		s.probeParallelExtras(ctx, setupWorkers, reportRow)
-		nextExtra = len(s.cases)
-	} else {
-	earlyHelpers:
-		for runNextExtra() {
-			select {
-			case <-nativeDone:
-				break earlyHelpers
-			default:
-			}
-		}
-	}
-	<-nativeDone
+	s.runStabilityStages(ctx, kharej, setupWorkers, parallelExtra, results, reportRow)
 	if parallelExtra && ctx.Err() == nil {
 		s.cleanupExtraCases(setupWorkers, results, reportRow, false)
 	}
@@ -1263,18 +1219,29 @@ func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResul
 		}
 		r.Phase, r.Detail = "speed", "measuring download and upload"
 		reportRow(i, r)
-		speed, err := ctSpeed(ctx, func() (net.Conn, error) { return ctDial(ctx, c, s.link.L3) })
+		legacyHelper := c.extra && !parallelExtra
+		var speed ctSpeedResult
+		var err error
+		if legacyHelper {
+			speed, err = s.speedLegacyExtra(ctx, c)
+		} else {
+			speed, err = ctSpeed(ctx, func() (net.Conn, error) { return ctDial(ctx, c, s.link.L3) })
+		}
 		r.Phase, r.Detail = "", ""
 		if ctx.Err() != nil {
 			r.Status, r.Detail = ctStopped, "stopped during speed test"
 		} else if err != nil {
 			r.Status, r.Detail = ctUnstable, "speed test failed ("+ctShortErr(err)+")"
 		} else {
-			speeds[i] = speed
 			ctPutSpeed(&r, speed)
+			if !legacyHelper {
+				speeds[i] = speed
+			}
 		}
 		reportRow(i, r)
-		runNextExtra()
+		if legacyHelper {
+			s.cleanupExtra(c, r, func(row ConnTestResult) { reportRow(i, row) })
+		}
 	}
 	// A second pass in the opposite order, each tunnel keeping its better
 	// figures. One pass does not give every tunnel the same path: the first
@@ -1302,18 +1269,11 @@ func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResul
 			reportRow(i, r)
 			ctPutSpeed(&r, ctSpeedAgain(ctx, func() (net.Conn, error) { return ctDial(ctx, c, s.link.L3) }, first))
 			reportRow(i, r)
-			runNextExtra()
 		}
 	}
 
-	// Every native measurement has its verdict. Release their memory while
-	// any remaining helper pairs take their turns.
 	s.closeTestEngines()
-	for runNextExtra() {
-	}
-	if parallelExtra {
-		s.cleanupExtraCases(setupWorkers, results, reportRow, true)
-	}
+	s.cleanupExtraCases(setupWorkers, results, reportRow, true)
 
 	// The kharej's path-MTU measurement, which it has usually sent long before.
 	pmtu := 0
@@ -1329,6 +1289,61 @@ func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResul
 	}
 	s.coord.publish(results, s.best)
 	return results
+}
+
+func (s *ConnTestIran) runStabilityStages(ctx context.Context, kharej string, workers int, retainHelpers bool, rows []ConnTestResult, report func(int, ConnTestResult)) {
+	for _, kind := range ctTestStages {
+		if kind == "direct" {
+			s.startDirectTestEngines(ctx, kharej)
+		}
+		var native, helpers []int
+		for i, c := range s.cases {
+			if c.kind != kind || rows[i].Status == ctSkipped {
+				continue
+			}
+			r := rows[i]
+			if ctx.Err() != nil {
+				r.Status, r.Phase, r.Detail = ctStopped, "", "stopped before the "+ctKind(kind)+" stage"
+			} else if c.skip != "" {
+				r.Status, r.Phase, r.Detail = ctSkipped, "", c.skip
+			} else if c.extra {
+				r.Phase, r.Detail = ctPhaseTransportQueued, "waiting for temporary tunnel setup"
+				helpers = append(helpers, i)
+			} else {
+				r.Phase, r.Detail = "", ""
+				native = append(native, i)
+				if kind == "spoof" {
+					r.Phase, r.Detail = ctPhaseTransportSetup, "waiting for the Kharej receiver"
+				}
+			}
+			report(i, r)
+		}
+		if kind == "spoof" && len(native) > 0 && !s.coord.awaitSpoofReceiver(ctx) {
+			for _, i := range native {
+				r := rows[i]
+				r.Status, r.Phase, r.Detail = ctSkipped, "", "Kharej did not confirm its spoof receiver was ready"
+				if ctx.Err() != nil {
+					r.Status, r.Detail = ctStopped, "stopped before the spoofing checks began"
+				}
+				report(i, r)
+			}
+			continue
+		}
+		var running sync.WaitGroup
+		for _, i := range native {
+			c := s.cases[i]
+			running.Go(func() {
+				update := func(r ConnTestResult) { report(i, r) }
+				if kind == "spoof" {
+					s.spoofProbe(ctx, c, kharej, update)
+				} else {
+					ctProbe(ctx, c, s.link.L3, update)
+				}
+			})
+		}
+		s.probeStageExtras(ctx, helpers, workers, retainHelpers, report)
+		running.Wait()
+	}
 }
 
 // A row's phases in the second speed pass: measured once and waiting for it,
@@ -1468,13 +1483,56 @@ func ctArrivedFrom(results []spooftest.Result, ip net.IP) int {
 // ctKharejSpoof is the kharej's half of the spoofing check: it counts the Iran
 // server's probes and reports the count, and sends its own.
 func ctKharejSpoof(ctx context.Context, link ConnTestLink, root bool) {
+	staged := link.StagedSpoofSource != ""
+	if staged {
+		for {
+			reply, _ := ctAskContext(ctx, link.Host, link.Coord, "spoof-stage "+link.Tok)
+			if reply == "start" {
+				break
+			}
+			if reply == "stopped" || ctx.Err() != nil {
+				return
+			}
+			ctSleep(ctx, 2*time.Second)
+		}
+		link.SpoofSrc = link.StagedSpoofSource
+	}
 	n := link.SpoofN
 	forged := net.ParseIP(link.SpoofSrc)
+	send := func() {
+		ctSleep(ctx, 2*time.Second)
+		_ = spooftest.RunSender(spooftest.SenderConfig{
+			Context: ctx,
+			Token:   link.Tok, TargetIP: net.ParseIP(ctIPv4Context(ctx, link.Host)), DstPort: uint16(link.SpoofI),
+			Attempts: n, Delay: time.Second, IPs: []net.IP{forged},
+		})
+	}
+	onListening := func() {
+		if !staged {
+			return
+		}
+		go func() {
+			for range 4 {
+				reply, _ := ctAskContext(ctx, link.Host, link.Coord, "spoof-ready "+link.Tok)
+				if reply == "ok" {
+					if root {
+						send()
+					}
+					return
+				}
+				if reply == "stopped" || ctx.Err() != nil {
+					return
+				}
+				ctSleep(ctx, time.Second)
+			}
+		}()
+	}
 	go func() {
 		res, err := spooftest.RunReceiver(spooftest.ReceiverConfig{
 			Context: ctx,
 			Token:   link.Tok, Port: uint16(link.SpoofK), Attempts: n,
 			Window: time.Duration(n)*time.Second + 20*time.Second,
+			Ready:  onListening,
 		})
 		got := 0
 		if err == nil {
@@ -1487,15 +1545,8 @@ func ctKharejSpoof(ctx context.Context, link ConnTestLink, root bool) {
 			ctSleep(ctx, 2*time.Second)
 		}
 	}()
-	if root {
-		go func() {
-			ctSleep(ctx, 2*time.Second)
-			_ = spooftest.RunSender(spooftest.SenderConfig{
-				Context: ctx,
-				Token:   link.Tok, TargetIP: net.ParseIP(ctIPv4Context(ctx, link.Host)), DstPort: uint16(link.SpoofI),
-				Attempts: n, Delay: time.Second, IPs: []net.IP{forged},
-			})
-		}()
+	if root && !staged {
+		go send()
 	}
 }
 
@@ -1939,6 +1990,10 @@ type ctCoordinator struct {
 	// spoofArrived is the kharej's count of the Iran server's forged probes.
 	spoofArrived chan int
 	spoofOnce    sync.Once
+	stagedSpoof  bool
+	spoofOpen    bool
+	spoofReady   chan struct{}
+	spoofListen  sync.Once
 	// pmtu is the path MTU the kharej measured.
 	pmtu     chan int
 	pmtuOnce sync.Once
@@ -1950,7 +2005,7 @@ type ctCoordinator struct {
 
 func startCTCoordinator(port int, tok string) (*ctCoordinator, error) {
 	c := &ctCoordinator{tok: tok, joined: make(chan struct{}), fetched: make(chan struct{}), slots: make(chan struct{}, 128),
-		spoofArrived: make(chan int, 1), pmtu: make(chan int, 1)}
+		spoofArrived: make(chan int, 1), spoofReady: make(chan struct{}), pmtu: make(chan int, 1)}
 	var err error
 	if c.tcp, err = net.Listen("tcp", fmt.Sprintf(":%d", port)); err != nil {
 		return nil, err
@@ -2133,6 +2188,16 @@ func (c *ctCoordinator) answer(line, from string) string {
 		c.spoofOnce.Do(func() { c.spoofArrived <- n })
 		return "ok"
 	}
+	if f[0] == "hello" && (len(f) == 2 || len(f) == 3 && f[2] == "staged-spoof") {
+		c.mu.Lock()
+		if c.peer == "" {
+			c.peer = strings.TrimPrefix(from, "::ffff:")
+			c.stagedSpoof = len(f) == 3
+		}
+		c.mu.Unlock()
+		c.joinOne.Do(func() { close(c.joined) })
+		return "ok"
+	}
 	if len(f) != 2 {
 		return ""
 	}
@@ -2145,13 +2210,17 @@ func (c *ctCoordinator) answer(line, from string) string {
 			return ""
 		}
 		return "config " + cfg
-	case "hello":
+	case "spoof-stage", "spoof-ready":
 		c.mu.Lock()
-		if c.peer == "" {
-			c.peer = strings.TrimPrefix(from, "::ffff:")
-		}
+		open := c.spoofOpen && c.stagedSpoof
 		c.mu.Unlock()
-		c.joinOne.Do(func() { close(c.joined) })
+		if !open {
+			return "wait"
+		}
+		if f[0] == "spoof-stage" {
+			return "start"
+		}
+		c.spoofListen.Do(func() { close(c.spoofReady) })
 		return "ok"
 	case "result":
 		c.mu.Lock()
@@ -2167,6 +2236,23 @@ func (c *ctCoordinator) answer(line, from string) string {
 		return "done " + v
 	}
 	return ""
+}
+
+func (c *ctCoordinator) awaitSpoofReceiver(ctx context.Context) bool {
+	c.mu.Lock()
+	c.spoofOpen = true
+	c.mu.Unlock()
+	wait, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	select {
+	case <-c.spoofReady:
+		return ctx.Err() == nil
+	case <-wait.Done():
+		c.mu.Lock()
+		c.spoofOpen = false
+		c.mu.Unlock()
+		return false
+	}
 }
 
 func (c *ctCoordinator) peerAddr() string {
@@ -2468,8 +2554,12 @@ func runConnTestKharejLink(ctx context.Context, link ConnTestLink, out io.Writer
 		}
 	}
 	// Checking in: every few seconds until the Iran side hears it.
+	hello := "hello " + link.Tok
+	if link.StagedSpoofSource != "" {
+		hello += " staged-spoof"
+	}
 	for {
-		reply, err := ctAskContext(ctx, link.Host, link.Coord, "hello "+link.Tok)
+		reply, err := ctAskContext(ctx, link.Host, link.Coord, hello)
 		if err == nil && reply == "stopped" {
 			return nil, ConnTestBest{}, errConnTestStopped
 		}
@@ -2481,7 +2571,7 @@ func runConnTestKharejLink(ctx context.Context, link ConnTestLink, out io.Writer
 		}
 		ctSleep(ctx, 3*time.Second)
 	}
-	if link.SpoofSrc != "" {
+	if link.SpoofSrc != "" || link.StagedSpoofSource != "" {
 		if why := ctStrictRPFilter(); why != "" {
 			local["spoof/"+ctSpoofToKharej] = why
 			fmt.Fprintf(out, "  IP spoofing: %s\n", why)
@@ -2489,7 +2579,7 @@ func runConnTestKharejLink(ctx context.Context, link ConnTestLink, out io.Writer
 		if !root {
 			local["spoof/"+ctSpoofToIran] = "sending forged probes needs root here"
 		}
-		ctKharejSpoof(ctx, link, root)
+		go ctKharejSpoof(ctx, link, root)
 	}
 	go ctKharejPMTU(ctx, link)
 	fmt.Fprintln(out, "Iran is measuring payload delivery and stability before measuring speeds.")

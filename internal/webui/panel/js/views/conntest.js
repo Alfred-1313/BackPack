@@ -107,7 +107,7 @@ function startPane(v) {
   return `<div class="ct-l-in fade">
     <span class="ct-kick">New test</span>
     <div class="tl-lede"><b>Every transport, tried for real between this server and one kharej.</b>
-      <span>Each transport checks stability as soon as its test tunnel is ready. Speed testing follows the stability checks.
+      <span>Stability checks run in order: Reverse, Direct, then Spoof. Each transport starts as soon as it is ready within its stage. Speed testing follows the stability checks.
         Download and upload are measured with four connections and again with sixteen, one tunnel at a time;
         the max is the best second the tunnel carried. The test tunnels run on free ports and are
         removed when it ends — nothing is left behind on either server.</span></div>
@@ -256,6 +256,7 @@ function endPane(v) {
 /* ---- right: the transports ----------------------------------------------- */
 const tone = st => ({ ok: 'ok', unstable: 'wr', down: 'er', skipped: 'sk', stopped: 'sk' }[st] || 'run');
 const rowPhase = {
+  'stage-queued': 'Awaiting stage',
   speed: 'Speed test', 'speed-second': 'Speed retest', 'speed-queued': 'Awaiting speed',
   'speed-again': 'Awaiting speed retest', 'transport-queued': 'Awaiting setup', 'transport-initial': 'First echo',
   'stability-ready': 'Ready', 'transport-verified': 'First echo OK', 'transport-retry': 'Retry pending', 'transport-setup': 'Setting up',
@@ -284,7 +285,7 @@ const rate = (avg, peak) => `<b>${mbps(Math.max(avg, peak || 0))}</b> Mb/s${peak
 function fillRow(n, r) {
   const total = r.total || 60;
   const done = (r.status === 'testing' ? r.tried : r.ok) ?? 0;
-  const waiting = ['transport-queued', 'transport-initial', 'transport-verified', 'transport-retry'].includes(r.phase);
+  const waiting = ['stage-queued', 'transport-queued', 'transport-initial', 'transport-verified', 'transport-retry'].includes(r.phase);
   const share = Math.max(0, Math.min(1, done / total));
   n.className = `ct-row ${waiting ? "queued" : tone(r.status)}${r.uploadMbps ? ' has-speed' : ''}`;
   const nb = n.querySelector('.nm b');

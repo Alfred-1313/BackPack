@@ -108,7 +108,7 @@ func ctHasEchoCount(r ConnTestResult) bool {
 		return true
 	}
 	switch r.Phase {
-	case ctPhaseTransportQueued, ctPhaseStabilityReady, ctPhaseTransportSetup, ctPhaseTransportConnect,
+	case ctPhaseStageQueued, ctPhaseTransportQueued, ctPhaseStabilityReady, ctPhaseTransportSetup, ctPhaseTransportConnect,
 		ctPhaseInitialEcho, ctPhaseEchoVerified, ctPhaseEchoRetry, ctPhaseTransportCleanup:
 		return false
 	}
@@ -117,6 +117,8 @@ func ctHasEchoCount(r ConnTestResult) bool {
 
 func ctStatusLabel(r ConnTestResult) string {
 	switch r.Phase {
+	case ctPhaseStageQueued:
+		return "Waiting"
 	case "speed":
 		return "Speed test"
 	case ctPhaseSecond:
@@ -152,21 +154,26 @@ func ctStatusLabel(r ConnTestResult) string {
 
 func ctRule() string { return strings.Repeat("─", 63) }
 
-// ConnTestTable is the verdict as text: the grouped table and the tunnels
-// that carried everything.
+// ConnTestTable is the verdict as text, with each stage's results together.
 func ConnTestTable(results []ConnTestResult) string {
 	var b strings.Builder
-	b.WriteString(ctTableHeader("STABILITY") + "\n")
-	groups := ctGroups(results)
-	for _, group := range groups {
-		b.WriteString("\n")
-		for _, r := range group {
-			b.WriteString(ctRow(r) + "\n")
+	for _, kind := range ctTestStages {
+		rows := ctStageRows(results, kind)
+		if len(rows) == 0 {
+			continue
 		}
+		fmt.Fprintln(&b, strings.ToUpper(kind))
+		fmt.Fprintln(&b, ctTableHeader("STABILITY"))
+		for _, group := range ctGroups(rows) {
+			for _, r := range group {
+				fmt.Fprintln(&b, ctRow(r))
+			}
+		}
+		fmt.Fprintln(&b)
 	}
-	b.WriteString("\n" + ctRule() + "\n\nWorks Steadily:\n\n")
+	b.WriteString(ctRule() + "\n\nWorks Steadily:\n\n")
 	steady := 0
-	for _, group := range groups {
+	for _, group := range ctGroups(results) {
 		for _, r := range group {
 			if r.Status != ctOK {
 				continue
@@ -210,6 +217,42 @@ func ConnTestTable(results []ConnTestResult) string {
 	}
 	ctHTTPSNotes(&b, results)
 	return b.String()
+}
+
+func ctStageRows(rows []ConnTestResult, kind string) []ConnTestResult {
+	var stage []ConnTestResult
+	for _, r := range rows {
+		if r.Kind == kind && r.Transport != "" {
+			stage = append(stage, r)
+		}
+	}
+	return stage
+}
+
+func ctSpeedPhase(phase string) bool {
+	switch phase {
+	case "speed-queued", "speed", ctPhaseAgain, ctPhaseSecond:
+		return true
+	}
+	return false
+}
+
+func ctStageSummary(rows []ConnTestResult) string {
+	counts := make(map[string]int)
+	for _, r := range rows {
+		status := r.Status
+		if ctSpeedPhase(r.Phase) {
+			status = ctOK
+		}
+		counts[status]++
+	}
+	var parts []string
+	for _, status := range []string{ctOK, ctUnstable, ctDown, ctSkipped, ctStopped} {
+		if n := counts[status]; n > 0 {
+			parts = append(parts, fmt.Sprintf("%d %s", n, ctStatusLabel(ConnTestResult{Status: status})))
+		}
+	}
+	return strings.Join(parts, " / ")
 }
 
 func ctHTTPSNotes(out io.Writer, results []ConnTestResult) {
@@ -325,34 +368,65 @@ func (b *ctBoard) loop() {
 	}
 }
 
-// lines is the live region. The transport rows stay in their original order.
+// lines keeps the current stability stage open. Completed stages collapse
+// into a summary and later stages stay in the Waiting state.
 func (b *ctBoard) lines() []string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if len(b.rows) == 0 {
 		return nil
 	}
-	out := []string{"CONNECTION TEST — " + b.title, "", ctRule(), ctTableHeader("PROGRESS")}
-	var finished, active, queued int
-	for _, r := range b.rows {
-		if r.Transport == "" {
+	out := []string{"CONNECTION TEST — " + b.title, ctRule()}
+	var stabilityPending bool
+	var speed, cleanup []ConnTestResult
+	speedQueued := 0
+	for _, kind := range ctTestStages {
+		rows := ctStageRows(b.rows, kind)
+		if len(rows) == 0 {
 			continue
 		}
-		switch r.Phase {
-		case ctPhaseTransportQueued, ctPhaseStabilityReady, "speed-queued", ctPhaseAgain:
-			queued++
-		case "":
-			if r.Status != ctTesting {
-				finished++
-			} else {
-				active++
+		var testing, waiting bool
+		for _, r := range rows {
+			switch r.Phase {
+			case ctPhaseStageQueued:
+				waiting = true
+			case "speed-queued", ctPhaseAgain:
+				speedQueued++
+			case "speed", ctPhaseSecond:
+				speed = append(speed, r)
+			case ctPhaseTransportCleanup:
+				cleanup = append(cleanup, r)
+				testing = testing || r.Status == ctTesting
+			default:
+				testing = testing || r.Status == ctTesting
 			}
-		default:
-			active++
 		}
-		out = append(out, ctRow(r))
+		title := strings.ToUpper(kind)
+		switch {
+		case testing:
+			out = append(out, title+"  ·  Testing", ctTableHeader("PROGRESS"))
+			for _, r := range rows {
+				out = append(out, ctRow(r))
+			}
+		case waiting:
+			out = append(out, title+"  ·  Waiting")
+		default:
+			out = append(out, title+"  ·  Finished  ·  "+ctStageSummary(rows))
+		}
+		stabilityPending = stabilityPending || testing || waiting
 	}
-	out[1] = fmt.Sprintf("Finished %d/%d  ·  Active %d  ·  Queued %d", finished, finished+active+queued, active, queued)
+	if !stabilityPending && (speedQueued > 0 || len(speed) > 0) {
+		out = append(out, fmt.Sprintf("SPEED  ·  %d queued", speedQueued))
+		for _, r := range speed {
+			out = append(out, ctRow(r))
+		}
+	}
+	if !stabilityPending && len(cleanup) > 0 {
+		out = append(out, "CLEANUP")
+		for _, r := range cleanup {
+			out = append(out, ctRow(r))
+		}
+	}
 	return append(out, ctRule())
 }
 
