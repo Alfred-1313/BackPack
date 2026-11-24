@@ -135,6 +135,10 @@ func WriteUnit(name string) error {
 // comparing against the same thing WriteUnit would produce rather than a copy
 // of it that will drift.
 func UnitFor(name string) string {
+	var restartPolicy string
+	if cfg, err := LoadTunnelConfig(name); err == nil && cfg.Dagger.Present() {
+		restartPolicy = "RestartPreventExitStatus=78\n"
+	}
 	return fmt.Sprintf(`[Unit]
 Description=Backpack Tunnel (%s)
 After=network.target
@@ -144,11 +148,11 @@ Type=simple
 ExecStart=%s -c %s
 Restart=always
 RestartSec=3
-LimitNOFILE=1048576
+%sLimitNOFILE=1048576
 
 [Install]
 WantedBy=multi-user.target
-`, name, app.BinPath, app.ConfigPath(name))
+`, name, app.BinPath, app.ConfigPath(name), restartPolicy)
 }
 
 // removeUnit deletes a tunnel unit file if present.

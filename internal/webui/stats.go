@@ -244,7 +244,9 @@ func tunnelInfo(t manage.Tunnel, h manage.Health, peersByPort map[string][]peerC
 	// own config, or has to detect whoever connected to it. A reverse
 	// server listens and a reverse client dials; a direct tunnel has
 	// the same split, with Iran on the dialling side. See DialsOut.
-	if !manage.DialsOut(t) {
+	if t.IsDagger() {
+		info.State = h.State
+	} else if !manage.DialsOut(t) {
 		observeInbound(&info, t, h, peersByPort, snap, snapErr)
 	} else {
 		observeOutbound(&info, t, h, pair, paired, run)
@@ -259,7 +261,7 @@ func tunnelInfo(t manage.Tunnel, h manage.Health, peersByPort map[string][]peerC
 		info.Uptime = ""
 	}
 	// The traffic limit, on the end that can have one. See internal/quota.
-	info.QuotaSettable = manage.HoldsPorts(t)
+	info.QuotaSettable = !t.IsDagger() && manage.HoldsPorts(t)
 	if q, err := quota.Load(app.ConfigDir, t.Name); err == nil && q.Limit > 0 {
 		info.QuotaLimit = q.Limit
 		info.QuotaHit = q.Reached(info.TotalBytes)

@@ -84,6 +84,8 @@ func tunnelHealthWith(t core.Tunnel, pairs [][2]string) Health {
 		h.State, h.Detail = "stopped", "no systemd unit — the tunnel is not installed"
 	case !h.Active:
 		h.State, h.Detail = "stopped", "service is not running"
+	case t.IsDagger():
+		h.State, h.Detail = "unknown", "DaggerConnect service is active; see its log for peer status"
 	default:
 		if !tunnelspec.IsDirectKind(t) {
 			h.Connected = tunnelHealthy(t, pairs)

@@ -38,6 +38,7 @@ var engineDirs = []string{
 	"../server",
 	"../client",
 	"../tunnel",
+	"../daggerconnect",
 	"../utils",
 	"../web",
 	"../socks",

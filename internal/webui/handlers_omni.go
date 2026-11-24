@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/backpack/backpack/internal/daggerconnect"
+	"github.com/backpack/backpack/internal/manage"
 	"github.com/backpack/backpack/internal/omni"
 )
 
@@ -53,4 +55,26 @@ func (s *server) handleOmni(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, map[string]string{"output": out.String()})
+}
+
+func (s *server) handleDagger(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, daggerconnect.Options())
+	case http.MethodPost:
+		var form manage.DaggerForm
+		if err := decodeJSON(w, r, &form); err != nil {
+			http.Error(w, "invalid DaggerConnect form", http.StatusBadRequest)
+			return
+		}
+		out, err := manage.CreateDagger(r.Context(), form)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, out)
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
 }

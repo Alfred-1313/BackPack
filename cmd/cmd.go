@@ -11,6 +11,7 @@ import (
 
 	"github.com/backpack/backpack/config"
 	"github.com/backpack/backpack/internal/client"
+	"github.com/backpack/backpack/internal/daggerconnect"
 
 	"github.com/backpack/backpack/internal/server"
 	"github.com/backpack/backpack/internal/utils"
@@ -101,6 +102,17 @@ func Run(configPath string, ctx context.Context) {
 	applyDefaults(cfg)
 	if err := validateConfig(cfg); err != nil {
 		logger.Fatalf("%v", err)
+	}
+
+	if cfg.Dagger.Present() {
+		if err := daggerconnect.Run(ctx, tunnelNameFromPath(configPath), cfg.Dagger); err != nil {
+			logger.Errorf("DaggerConnect stopped: %v", err)
+			if failure, ok := err.(interface{ ExitCode() int }); ok && failure.ExitCode() == 78 {
+				os.Exit(78)
+			}
+			os.Exit(1)
+		}
+		return
 	}
 
 	// The kernel tuning is process-wide and does not depend on anything in the

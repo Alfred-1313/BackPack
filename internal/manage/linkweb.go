@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/backpack/backpack/internal/app"
 	"github.com/backpack/backpack/internal/tunnel/l3"
 )
 
@@ -46,6 +47,14 @@ type SetupLinkInfo struct {
 // SetupLinkFor builds a tunnel's setup link. host overrides the address the
 // link names; empty uses this server's public address, as the menu does.
 func SetupLinkFor(name, host string) (SetupLinkInfo, error) {
+	if cfg, err := LoadTunnelConfig(name); err == nil && cfg.Dagger.Present() {
+		if cfg.Dagger.Role != "server" {
+			return SetupLinkInfo{}, fmt.Errorf("open Setup link on Iran to get the DaggerConnect join command")
+		}
+		token := daggerPeerToken(name, cfg.Dagger)
+		return SetupLinkInfo{Name: name, For: "kharej", Kind: "reverse", Apply: DaggerJoinCommand(token),
+			Install: "printf '%s\\n' '" + token + "' | " + app.SourceInstallCommand("dagger", "join"), Where: "Kharej terminal"}, nil
+	}
 	host = strings.Trim(strings.TrimSpace(host), "[]")
 	if dial := LinkDial(name); dial != "" {
 		host = dial

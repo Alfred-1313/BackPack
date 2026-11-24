@@ -644,6 +644,8 @@ type Config struct {
 	// without an [l3] table leaves this zero, L3.Enabled() reads false, and
 	// the reverse tunnel runs exactly as it always has. See config/l3.go.
 	L3 L3Config `toml:"l3"`
+	// Dagger selects the separately installed DaggerConnect engine.
+	Dagger DaggerConfig `toml:"dagger"`
 	// Direct is the [direct] stream tunnel, removed in v2.0.0. It is read only
 	// so that such a file is recognised and refused by name rather than read
 	// as empty; see config/legacydirect.go.

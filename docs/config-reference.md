@@ -17,9 +17,31 @@ them both ends have to agree on. This says what exists.
 | Key | Type | Description |
 |---|---|---|
 | `client` | `ClientConfig` | Client is the reverse tunnel's kharej end: it dials the server and delivers each connection to the service behind it. |
+| `dagger` | `DaggerConfig` | Dagger selects the separately installed DaggerConnect engine. |
 | `direct` | `LegacyDirectConfig` | Direct is the [direct] stream tunnel, removed in v2.0.0. It is read only so that such a file is recognised and refused by name rather than read as empty; see config/legacydirect.go. |
 | `l3` | `L3Config` | L3 is a direct layer-3 tunnel, and is present only in a configuration that asks for one. It shares nothing with Server and Client: a file without an [l3] table leaves this zero, L3.Enabled() reads false, and the reverse tunnel runs exactly as it always has. See config/l3.go. |
 | `server` | `ServerConfig` | Server is the reverse tunnel's Iran end: it listens for the client and exposes the forwarded ports. Present only in a configuration that asks for one; the three engines are mutually exclusive. |
+
+## DaggerConfig
+
+| Key | Type | Description |
+|---|---|---|
+| `cert_file` | `string` | CertFile is the HTTPS listener's certificate file. |
+| `flavor` | `string` | Flavor selects the DaggerConnect transport or Quantum Gaming profile. |
+| `http_host` | `string` | HTTPHost is the host name sent by the HTTP or HTTPS transport. |
+| `http_path` | `string` | HTTPPath is the path sent by the HTTP or HTTPS transport. |
+| `iran_ip` | `string` | IranIP is the Iran endpoint's public IPv4. |
+| `iran_ipv6` | `string` | IranIPv6 is the Iran endpoint's IPv6 for DC6. |
+| `iran_tunnel_ip` | `string` | IranTunnelIP is the Iran endpoint's IPv4 inside the TUN transport. |
+| `key_file` | `string` | KeyFile is the HTTPS listener's private key file. |
+| `kharej_ip` | `string` | KharejIP is the other endpoint's IPv4 for the TUN carrier. |
+| `kharej_tunnel_ip` | `string` | KharejTunnelIP is the Kharej endpoint's IPv4 inside the TUN transport. |
+| `license` | `string` | License is the DaggerConnect PSK issued for the two endpoints. |
+| `port` | `uint16` | Port is the DaggerConnect tunnel port. |
+| `ports` | `string` | Ports are comma-separated mappings, optionally prefixed by tcp: or udp:. |
+| `role` | `string` | Role is server on Iran and client on Kharej. |
+| `tun_port` | `uint16` | TUNPort is the service port for the TCP and UDP TUN profiles. |
+| `tun_profile` | `string` | TUNProfile is the encapsulation of the TUN transport. |
 
 ## KCP tuning
 

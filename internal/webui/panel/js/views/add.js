@@ -27,7 +27,10 @@ export function addView(ctx) {
       let opts = { families: [], presets: [] };
       try { opts = await api.tunnelOptions(); } catch (e) { oops(e); }
 
-      const omniChoices = await api.omniOptions().catch(e => { oops(e); return []; });
+      const [omniChoices, daggerChoices] = await Promise.all([
+        api.omniOptions().catch(e => { oops(e); return []; }),
+        api.daggerOptions().catch(() => []),
+      ]);
       let mountExtras;
       /* families */
       /* The family list, the variants and the presets are all painted from
@@ -1109,7 +1112,11 @@ export function addView(ctx) {
         applyShape();
       }
       stageSingle();
-      mountExtras = bindExtraTransports(root, omniChoices);
+      mountExtras = bindExtraTransports(root, [
+        ...omniChoices,
+        ...daggerChoices.map(item => ({ ...item, value: 'dagger-' + item.value,
+          direction: 'reverse', daggerTransport: item.value })),
+      ]);
       reveal();
 
       /* The token, made here.

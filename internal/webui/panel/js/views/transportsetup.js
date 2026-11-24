@@ -1,4 +1,5 @@
 import * as api from '../api.js';
+import { showDaggerSetup } from './daggersetup.js';
 import { copyText, flashCopied, esc } from '../lib/dom.js';
 
 export function bindExtraTransports(root, options) {
@@ -28,6 +29,10 @@ export function bindExtraTransports(root, options) {
     step.classList.add('extra-active');
     root.classList.add('extra-active');
     panel.replaceChildren();
+    if (item.daggerTransport) {
+      showDaggerSetup(panel, item.daggerTransport);
+      return;
+    }
     const value = item.value;
     const gost = value === 'gost-direct';
     const title = item.label;

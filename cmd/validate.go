@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/backpack/backpack/config"
+	"github.com/backpack/backpack/internal/daggerconnect"
 	"github.com/backpack/backpack/internal/tunnel/l3"
 )
 
@@ -12,6 +13,13 @@ import (
 // built from it — the checks the engines themselves make before opening
 // anything, run early so a reload can refuse a file instead of dying on it.
 func checkEngine(cfg *config.Config) error {
+	if cfg.Dagger.Present() {
+		if cfg.Server.BindAddr != "" || cfg.Client.RemoteAddr != "" || cfg.L3.Enabled() || cfg.Direct.Present() {
+			return errors.New("[dagger] must be the only tunnel in the file")
+		}
+		_, err := daggerconnect.Build("check", cfg.Dagger)
+		return err
+	}
 	switch {
 	case cfg.L3.Enabled():
 		tunnelCfg, err := l3ConfigOf(cfg)

@@ -58,8 +58,8 @@ export function setupLinkHTML(info) {
       <details class="ct-more"><summary><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>The kharej has no Backpack yet</summary>
         <p>Installs Backpack and sets this tunnel up in one go.</p>
         ${line(TERM, info.install, 'the install command')}</details>
-      <div class="sl-h"><b>Or paste the link</b><small>${esc(info.where)}</small></div>
-      ${line(LINK, info.link, 'the link')}`
+      ${info.link ? `<div class="sl-h"><b>Or paste the link</b><small>${esc(info.where)}</small></div>
+        ${line(LINK, info.link, 'the link')}` : ''}`
     : `<div class="sl-h"><b>On the Iran server</b><small>${esc(info.where)}</small></div>
       ${line(LINK, info.link, 'the link')}`}
     ${info.needsAddress ? (info.gre

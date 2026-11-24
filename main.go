@@ -35,6 +35,32 @@ var logger = utils.NewLogger("info")
 //   - Menu mode:    `backpack`  (no arguments)
 //     Opens the interactive management CLI on the VPS.
 func main() {
+	if len(os.Args) == 3 && os.Args[1] == "dagger" && os.Args[2] == "join" {
+		if os.Geteuid() != 0 {
+			fmt.Fprintln(os.Stderr, "run the DaggerConnect join command with sudo")
+			os.Exit(1)
+		}
+		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		input := bufio.NewScanner(os.Stdin)
+		input.Buffer(make([]byte, 4096), 16<<10)
+		if !input.Scan() {
+			cancel()
+			fmt.Fprintln(os.Stderr, "read the DaggerConnect setup token from standard input")
+			os.Exit(1)
+		}
+		service, active, err := manage.JoinDagger(ctx, input.Text())
+		cancel()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		fmt.Println("Created", service)
+		if !active {
+			fmt.Fprintln(os.Stderr, "check the DaggerConnect service log for startup status")
+			os.Exit(1)
+		}
+		return
+	}
 	if len(os.Args) > 1 && os.Args[1] == "transport-test" {
 		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer cancel()

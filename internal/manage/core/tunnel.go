@@ -1,9 +1,11 @@
 package core
 
 import (
+	"net"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/BurntSushi/toml"
@@ -33,6 +35,9 @@ type Tunnel struct {
 	Unrunnable string
 }
 
+// IsDagger identifies a tunnel whose peer health is owned by DaggerConnect.
+func (t Tunnel) IsDagger() bool { return strings.HasPrefix(t.Transport, "dagger/") }
+
 // List scans the config directory and returns all tunnels, sorted by name.
 func List() []Tunnel {
 	var tunnels []Tunnel
@@ -59,6 +64,20 @@ func List() []Tunnel {
 func tunnelOf(name string, cfg config.Config) (Tunnel, bool) {
 	t := Tunnel{Name: name, Service: app.ServiceName(name)}
 	switch {
+	case cfg.Dagger.Present():
+		t.Role = cfg.Dagger.Role
+		t.Transport = "dagger/" + cfg.Dagger.Flavor
+		port := strconv.Itoa(int(cfg.Dagger.Port))
+		host := cfg.Dagger.IranIP
+		if cfg.Dagger.Flavor == "dc6" {
+			host = cfg.Dagger.IranIPv6
+		} else if t.Role == "server" {
+			host = "0.0.0.0"
+		}
+		t.Addr = net.JoinHostPort(host, port)
+		if t.Role == "server" && cfg.Dagger.Ports != "" {
+			t.Ports = strings.FieldsFunc(cfg.Dagger.Ports, func(r rune) bool { return r == ',' || r == '\n' })
+		}
 	case cfg.Server.BindAddr != "":
 		t.Role = "server"
 		t.Transport = string(cfg.Server.Transport)

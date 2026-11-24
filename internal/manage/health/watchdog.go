@@ -93,6 +93,9 @@ func RunWatchdog(ctx context.Context) {
 		case <-ticker.C:
 			pairs := establishedPairs()
 			for _, t := range core.List() {
+				if t.IsDagger() {
+					continue // the official engine owns reconnects
+				}
 				if quotaHeld(t.Name) {
 					fails[t.Name] = 0
 					seenHealthy[t.Name] = false
