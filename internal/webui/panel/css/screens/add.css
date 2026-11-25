@@ -467,9 +467,3 @@ body[data-accent]:not([data-accent="signal"]) .dlg.add .rp2.on .rp-load i.on{bac
 .dlg.add .rp-sets-g span{display:block;font-size:12px;font-weight:640;letter-spacing:0;color:var(--dim)}
 .dlg.add .rp-sets-g b{display:block;font-size:14px;font-weight:600;margin-top:3px;font-variant-numeric:tabular-nums}
 @media (prefers-reduced-motion:reduce){ .dlg.add .rp-sets-g > div{animation:none} }
-
-.step.extra-active :is(.step3rev,.step3direct) > :not(.transport-choices,.extra-transport){display:none!important}
-.dlg.extra-active #nextb,.dlg.extra-active #note4{visibility:hidden}
-.extra-transport{margin:14px 0}
-.extra-transport label{display:grid;gap:4px;margin:10px 0}.extra-transport input,.extra-transport select{padding:8px;color:var(--tx);background:var(--field);border:1px solid var(--ln2);border-radius:8px}
-.extra-transport pre{white-space:pre-wrap;overflow-wrap:anywhere}

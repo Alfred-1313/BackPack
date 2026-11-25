@@ -1,4 +1,3 @@
-import { bindExtraTransports } from './transportsetup.js';
 import { transportOption } from '../lib/transports.js';
 /* Add a tunnel: pick the side, then the transport family, then the transport,
  * then the settings that side actually has.
@@ -10,7 +9,7 @@ import { transportOption } from '../lib/transports.js';
  * CLI: 1 Setup Iran, 2 Setup Kharej.
  */
 
-import { $$, el, esc, dialogSubtitle } from '../lib/dom.js';
+import { $$, el, esc, dialogSubtitle, copyText, flashCopied } from '../lib/dom.js';
 import { isUp } from '../lib/tstate.js';
 import { NUMERIC } from '../lib/numeric.js';
 import * as api from '../api.js';
@@ -19,6 +18,9 @@ import * as store from '../store.js';
 import { openScreen } from '../ui/screen.js';
 import { oops, toast } from '../ui/toast.js';
 import { go } from '../router.js';
+
+const forwardPortsHint = 'Users connect to these ports here. A bare port goes to the same port on the kharej; '
+  + '443=8080 sends 443 to its 8080. Separate several with commas.';
 
 export function addView(ctx) {
   openScreen('add', {
@@ -32,15 +34,21 @@ export function addView(ctx) {
         api.omniOptions().catch(e => { oops(e); return []; }),
         api.backhaulOptions().catch(e => { oops(e); return []; }),
       ]);
+      const omniEntries = direction => omniChoices.filter(item => item.direction === direction).map(item => {
+        const value = 'omni-' + item.value;
+        return [value, { ...item, value, mode: item.value }];
+      });
       const managedReverse = new Map([
         ...backhaulChoices.map(item => ['native-' + item.value, {
           ...item, native: true, port: true, value: 'native-' + item.value, mode: item.value,
         }]),
-        ...omniChoices.filter(item => item.direction === 'reverse').map(item => ['omni-' + item.value, {
-          ...item, value: 'omni-' + item.value, mode: item.value,
-        }]),
+        ...omniEntries('reverse'),
       ]);
-      let mountExtras;
+      const managedDirect = new Map([
+        ...omniEntries('direct'),
+        ['gost-direct', { value: 'gost-direct', mode: 'gost-direct', label: 'GOST Direct (Relay + TLS)',
+          port: true, secret: true, forward: true }],
+      ]);
       /* families */
       /* The family list, the variants and the presets are all painted from
          /api/tunnel/options below, once the shape is known. */
@@ -53,6 +61,7 @@ export function addView(ctx) {
       const chosen = { side: 'server', direction: 'reverse', transport: null,
                        carrier: 'pck', preset: null };
       const reverseSetup = () => chosen.direction === 'reverse' && managedReverse.get(chosen.transport);
+      const directSetup = () => chosen.direction === 'direct' && managedDirect.get(chosen.carrier);
       const pairedDirect = () => chosen.side === 'server' && chosen.direction === 'direct' &&
         ['gretap', 'l2tpv3', 'easytier'].includes(chosen.carrier);
       const randomGreKey = root.querySelector('#randomGreKey');
@@ -63,6 +72,27 @@ export function addView(ctx) {
           el('input', { name: 'iranHost', type: 'text', autocomplete: 'off', placeholder: 'Automatically detected' }),
         ]));
       root.querySelector('#atok').closest('.f3').after(nativeAddress);
+
+      const directArea = root.querySelector('.step3direct');
+      const directChoices = directArea.querySelector('.trgrid').closest('.grp3');
+      const directFields = directArea.querySelector('[name="name"]').closest('.grp3');
+      const directPeer = directFields.querySelector('[data-when="server"] [name="peerAddr"]');
+      const directPort = directFields.querySelector('[name="tunnelPort"]');
+      const directToken = directFields.querySelector('[data-when="server-!gre"] [name="token"]');
+      const directForward = directFields.querySelector('[name="ports"]');
+      const tokenWrap = el('div', { class: 'withb' });
+      const copyToken = el('button', { type: 'button', class: 'mini3', text: 'Copy' });
+      directToken.before(tokenWrap);
+      tokenWrap.append(directToken, copyToken);
+      copyToken.addEventListener('click', async () => {
+        if (directToken.value) flashCopied(copyToken, await copyText(directToken.value.trim()));
+      });
+      const forwardUDP = el('div', { class: 'tg3 full', hidden: true },
+        el('div', { class: 'tx' }, el('b', { text: 'Forward UDP as well as TCP' })),
+        el('div', { class: 'sw3', 'data-name': 'routedAcceptUdp', 'aria-label': 'Forward UDP as well as TCP' }, el('i')));
+      directForward.closest('.f3').after(forwardUDP);
+      const directPortValues = { native: '', routed: '' };
+      let directPortMode = 'native';
 
       /* The preset the form is already showing counts as chosen.
        *
@@ -208,10 +238,9 @@ export function addView(ctx) {
          engine, and the lists its fine-tune menus offer. */
       let directOpts = null;
       async function paintCarriers() {
-        const grid = root.querySelector('.step3direct .trgrid');
-        if (!grid) return;
-        let carriers = [];
-        try { directOpts = await api.directOptions(); carriers = directOpts.carriers || []; } catch (e) { return; }
+        const grid = directChoices.querySelector('.trgrid');
+        try { directOpts = await api.directOptions(); } catch (e) { return; }
+        const carriers = [...(directOpts.carriers || []), ...managedDirect.values()];
         if (!carriers.length) return;
         grid.innerHTML = carriers.map((c, i) => {
           const needsRoot = c.needsRoot ? '<span class="root2">needs root</span>' : '';
@@ -219,7 +248,6 @@ export function addView(ctx) {
             data-fn="setCar" data-args="'${esc(c.value)}'" title="${esc(c.desc || '')}">
             <span class="tn2">${transportOption(c.value, c.label)}${needsRoot}</span></button>`;
         }).join('');
-        mountExtras?.();
         chosen.carrier = carriers[0].value;
         applyShape();
         showPresetDefaults();
@@ -238,7 +266,6 @@ export function addView(ctx) {
           return `<button class="tr${item.value === chosen.transport ? ' on' : ''}" data-fn="setTr" data-args="'${esc(item.value)}'">
             <span class="tn2">${transportOption(item.value, item.label)}${root2}</span></button>`;
         }).join('');
-        mountExtras?.();
         applyFields();
         applyPresets();
       }
@@ -440,10 +467,8 @@ export function addView(ctx) {
         }
         /* A free tunnel port too, but only on the direct form (the row marked !gre; the reverse
            form has a tunnel port of its own, which this is not the answer to). */
-        if (suggestion.tunnelPort) {
-          for (const f of root.querySelectorAll('[data-when="!gre"] [name="tunnelPort"]')) {
-            if (!f.value) f.value = suggestion.tunnelPort;
-          }
+        if (suggestion.tunnelPort && directPortMode === 'native' && !directPort.value) {
+          directPort.value = suggestion.tunnelPort;
         }
       }
 
@@ -462,6 +487,7 @@ export function addView(ctx) {
 
       function applyShape() {
         const direct = chosen.direction === 'direct';
+        const routed = directSetup();
         show('.step3rev', !direct);
         show('.step3direct', direct);
         /* The line above the carriers was the markup's, written for Reverse,
@@ -485,7 +511,6 @@ export function addView(ctx) {
           ? 'Leave blank or enter 0 for no key. If you choose a key, the Setup command carries it to Kharej.'
           : 'Use the same key on both ends. GRE picks one on Iran if the field is blank.';
         randomGreKey.hidden = !direct || chosen.side !== 'server' || !['gre', 'ip6gre', 'gretap'].includes(chosen.carrier);
-        if (direct) suggestDirect(chosen.side);
 
         /* "server" is the Iran side, "client" the kharej side — the words the
            create endpoints use. */
@@ -513,10 +538,34 @@ export function addView(ctx) {
           });
           row.hidden = !ok;
         });
-        const peerHint = root.querySelector('[data-when="server"] [name="peerAddr"]')?.closest('.f3')?.querySelector('.hint');
-        if (peerHint) peerHint.textContent = pairedDirect()
+        directPeer.placeholder = routed ? 'Automatically detected' : '203.0.113.9';
+        directPeer.closest('.f3').querySelector('.hint').textContent = routed || pairedDirect()
           ? 'Leave blank to detect the address from the Setup connection.'
           : 'The server this side dials out to.';
+        const portMode = routed ? 'routed' : 'native';
+        if (portMode !== directPortMode) {
+          directPortValues[directPortMode] = directPort.value;
+          directPort.value = directPortValues[portMode];
+          directPortMode = portMode;
+        }
+        const gost = routed?.mode === 'gost-direct';
+        directPort.placeholder = gost ? '1–65535' : routed ? 'Automatic' : 'e.g. 9000';
+        directPort.closest('.f3').querySelector('.hint').textContent = routed
+          ? (gost ? 'Enter the port GOST listens on in Kharej.' : 'Leave blank to allocate a tunnel port automatically.')
+          : 'Kharej binds it; Iran reaches it. On PCK nothing else may use this port on the kharej.';
+        if (routed) {
+          directPort.closest('.f3').hidden = !routed.port;
+          directToken.closest('.f3').hidden = !routed.secret;
+          directForward.closest('.f3').hidden = !routed.forward;
+        }
+        const forwardRow = directForward.closest('.f3');
+        forwardRow.querySelector('label').textContent = gost ? 'Forwarded TCP port' : 'Forwarded ports';
+        forwardRow.querySelector('.hint').textContent = gost
+          ? 'Enter one TCP forward. For example, 443=8443 sends Iran port 443 to Kharej port 8443.'
+          : forwardPortsHint;
+        directForward.placeholder = gost ? '443=8443' : routed ? '443, 2053=8443' : '2087';
+        forwardUDP.hidden = !routed?.udp;
+        if (direct && !routed) suggestDirect(chosen.side);
         if (pairedDirect()) {
           root.querySelectorAll('[name="greLocal"], [name="localIp"], [name="peerIp"]').forEach(input => {
             input.closest('.f3').hidden = true;
@@ -535,7 +584,9 @@ export function addView(ctx) {
         const setup = reverseSetup();
         root.querySelectorAll('[data-mode]').forEach(g => {
           const wrong = g.dataset.mode !== (direct ? 'dir' : 'rev');
-          g.hidden = wrong || (!!setup && (!g.closest('.step3rev') || g.classList.contains('dr2b')));
+          g.hidden = wrong ||
+            (!!setup && (!g.closest('.step3rev') || g.classList.contains('dr2b'))) ||
+            (!!routed && g !== directChoices && g !== directFields);
           // A drawer left open in the other mode would spring back open with
           // its own settings when the operator switched away and back.
           if (g.hidden) g.classList.remove('open');
@@ -912,15 +963,19 @@ export function addView(ctx) {
           try {
             const r = await api.tunnelSuggest();
             if (!r.port) return;
-            const have = inp.value.split(',').map(x => x.trim()).filter(Boolean);
-            if (!have.includes(String(r.port))) have.push(String(r.port));
-            inp.value = have.join(', ');
+            if (inp === directForward && directSetup()?.mode === 'gost-direct') {
+              const target = inp.value.split('=', 2)[1]?.trim();
+              inp.value = target ? r.port + '=' + target : String(r.port);
+            } else {
+              const have = inp.value.split(',').map(x => x.trim()).filter(Boolean);
+              if (!have.includes(String(r.port))) have.push(String(r.port));
+              inp.value = have.join(', ');
+            }
             inp.dispatchEvent(new Event('input', { bubbles: true }));
           } catch (e) { oops(e); }
         });
         const hint = wrap.parentElement?.querySelector('.hint');
-        if (hint) hint.textContent = 'Users connect to these ports here. A bare port goes to the same port on the kharej; '
-          + '443=8080 sends 443 to its 8080. Separate several with commas.';
+        if (hint) hint.textContent = forwardPortsHint;
       });
 
       [...root.querySelectorAll('button')]
@@ -1173,7 +1228,6 @@ export function addView(ctx) {
         applyShape();
       }
       stageSingle();
-      mountExtras = bindExtraTransports(root, omniChoices.filter(item => item.direction === 'direct'));
       reveal();
       randomGreKey.addEventListener('click', async () => {
         const carrier = chosen.carrier;
@@ -1274,9 +1328,11 @@ export function addView(ctx) {
           });
           return { r, name: payload.name };
         }
-        if (setup) {
+        const routed = setup || directSetup();
+        if (routed) {
           const r = await api.routedPeerSetup({
-            name: payload.name, transport: setup.mode, ports: payload.ports || '', secret: payload.token || '',
+            name: payload.name, transport: routed.mode, ports: payload.ports || '', secret: payload.token || '',
+            peerAddr: payload.peerAddr || '', port: payload.tunnelPort || '', acceptUdp: !!payload.routedAcceptUdp,
           });
           return { r, name: payload.name };
         }
