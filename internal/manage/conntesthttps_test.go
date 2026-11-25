@@ -105,7 +105,7 @@ func TestHTTPSProbeCoordinatorAuthenticatesBoundsAndFreezesReports(t *testing.T)
 			t.Fatalf("invalid report accepted: %s", request)
 		}
 	}
-	for _, report := range []string{"xhttp:tls-ok", "naive:tls-failed", "reality:tcp-ok"} {
+	for _, report := range []string{"xhttp:tls-ok", "naive:tls-failed", "anytls:tls-ok", "reality:tcp-ok"} {
 		if c.answer("https-probe secret "+report, "127.0.0.1") != "ok" {
 			t.Fatalf("valid report rejected: %s", report)
 		}

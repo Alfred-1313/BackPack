@@ -85,7 +85,7 @@ func ctValidHTTPSProbe(tr, probe string) bool {
 	case "tcp-ok":
 		return tr == "reality"
 	case "tls-ok", "tls-failed":
-		return tr == "naive" || tr == "xhttp" || tr == "gost"
+		return tr == "naive" || tr == "anytls" || tr == "xhttp" || tr == "gost"
 	}
 	return false
 }
@@ -97,9 +97,9 @@ func ctHTTPSProbeLabel(probe string) string {
 	case "tcp-ok":
 		return "public TCP reachable; REALITY authentication requires tunnel traffic"
 	case "tls-failed":
-		return "TCP reachable; certificate/TLS/HTTP2 probe failed"
+		return "TCP reachable; TLS verification or protocol negotiation failed"
 	case "tls-ok":
-		return "TCP + verified TLS/HTTP2 passed; this is not a tunnel traffic check"
+		return "TCP and verified TLS passed; tunnel traffic is measured separately"
 	}
 	return "not reported by peer"
 }
