@@ -93,7 +93,7 @@ func RunWatchdog(ctx context.Context) {
 		case <-ticker.C:
 			pairs := establishedPairs()
 			for _, t := range core.List() {
-				if t.IsDagger() {
+				if t.UsesExternalHelper() {
 					continue // the official engine owns reconnects
 				}
 				if quotaHeld(t.Name) {

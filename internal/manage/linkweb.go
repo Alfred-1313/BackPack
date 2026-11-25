@@ -47,7 +47,20 @@ type SetupLinkInfo struct {
 // SetupLinkFor builds a tunnel's setup link. host overrides the address the
 // link names; empty uses this server's public address, as the menu does.
 func SetupLinkFor(name, host string) (SetupLinkInfo, error) {
-	if cfg, err := LoadTunnelConfig(name); err == nil && cfg.Dagger.Present() {
+	cfg, cfgErr := LoadTunnelConfig(name)
+	if cfgErr == nil && cfg.Backhaul.Present() {
+		if cfg.Backhaul.Role != "server" {
+			return SetupLinkInfo{}, fmt.Errorf("open Setup link on Iran to get the Backhaul join command")
+		}
+		kind := "reverse"
+		if cfg.Backhaul.Mode == "tun-ipx" {
+			kind = "direct"
+		}
+		apply := backhaulJoinCommand(backhaulPeerToken(name, cfg.Backhaul))
+		return SetupLinkInfo{Name: name, For: "kharej", Kind: kind, Apply: apply,
+			Install: app.SourceInstallCommand() + " && " + apply, Where: "Kharej terminal"}, nil
+	}
+	if cfgErr == nil && cfg.Dagger.Present() {
 		if cfg.Dagger.Role != "server" {
 			return SetupLinkInfo{}, fmt.Errorf("open Setup link on Iran to get the DaggerConnect join command")
 		}

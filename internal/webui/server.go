@@ -422,6 +422,7 @@ func (s *server) routes() *http.ServeMux {
 	mux.HandleFunc("/api/conntest/transport", s.requireAdmin(s.handleTransportProbe))
 	mux.HandleFunc("/api/omni", s.requireAdmin(s.handleOmni))
 	mux.HandleFunc("/api/dagger", s.requireAdmin(s.handleDagger))
+	mux.HandleFunc("/api/backhaul", s.requireAdmin(s.handleBackhaul))
 	mux.HandleFunc("/api/direct/options", s.requireAuth(s.handleDirectOptions))
 	mux.HandleFunc("/api/direct/defaults", s.requireAuth(s.handleDirectDefaults))
 	mux.HandleFunc("/api/direct/create", s.requireAuth(s.handleDirectCreate))

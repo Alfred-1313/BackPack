@@ -289,7 +289,7 @@ ${field(t, idx)}
 <div class="foot">
   <span class="tot"><i>↓</i>${esc(bytes(t.inBytes || 0))}<i>↑</i>${esc(bytes(t.outBytes || 0))}</span>
   <span class="sp2"></span>
-  ${String(t.transport).startsWith('dagger/') ? '' : `<button class="btn" data-act="edit" title="Edit">${BTN.edit}</button>`}
+  ${/^(dagger|backhaul)\//.test(t.transport) ? '' : `<button class="btn" data-act="edit" title="Edit">${BTN.edit}</button>`}
   <button class="btn" data-act="logs"   title="Logs">${BTN.logs}</button>
   <button class="btn" data-act="detail" title="Metrics">${BTN.chart}</button>
   <button class="btn" data-act="more"   title="Start, stop, restart, delete">${BTN.more}</button>

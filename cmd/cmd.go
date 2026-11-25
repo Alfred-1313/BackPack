@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"github.com/backpack/backpack/internal/metrics"
 
 	"github.com/backpack/backpack/config"
+	"github.com/backpack/backpack/internal/backhaulpremium"
 	"github.com/backpack/backpack/internal/client"
 	"github.com/backpack/backpack/internal/daggerconnect"
 
@@ -102,6 +104,17 @@ func Run(configPath string, ctx context.Context) {
 	applyDefaults(cfg)
 	if err := validateConfig(cfg); err != nil {
 		logger.Fatalf("%v", err)
+	}
+
+	if cfg.Backhaul.Present() {
+		if err := backhaulpremium.Run(ctx, tunnelNameFromPath(configPath), cfg.Backhaul); err != nil {
+			logger.Errorf("Backhaul stopped: %v", err)
+			if errors.Is(err, backhaulpremium.ErrLicenseRejected) {
+				os.Exit(78)
+			}
+			os.Exit(1)
+		}
+		return
 	}
 
 	if cfg.Dagger.Present() {

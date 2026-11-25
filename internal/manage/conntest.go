@@ -416,7 +416,7 @@ func ctNeedsV2Note(kind, tr string) string {
 type connTestCase struct {
 	extra                     bool
 	extraWorker               int
-	dagger                    *ctDaggerProcess
+	helper                    *ctHelperProcess
 	localStarted, peerStarted bool
 	kind, tr                  string
 	name                      string
@@ -444,7 +444,7 @@ type ConnTestIran struct {
 	realityLog    string
 	daggerLicense string
 	daggerIPv4    string
-	daggerPorts   map[int]bool
+	helperPorts   map[int]bool
 }
 
 // ConnTestOptions are what the Iran operator answers.
@@ -691,7 +691,7 @@ func StartConnTestIran(o ConnTestOptions) (*ConnTestIran, string, error) {
 	}
 
 	if o.ExtraTransports {
-		s.daggerLicense, s.daggerIPv4, s.daggerPorts = strings.TrimSpace(o.DaggerLicense), o.DaggerIPv4, used
+		s.daggerLicense, s.daggerIPv4, s.helperPorts = strings.TrimSpace(o.DaggerLicense), o.DaggerIPv4, used
 		useExtraChannel := false
 		for _, c := range ctExtraCases() {
 			if !s.root {
@@ -699,7 +699,10 @@ func StartConnTestIran(o ConnTestOptions) (*ConnTestIran, string, error) {
 			} else if _, ok := strings.CutPrefix(c.tr, ctDaggerPrefix); ok {
 				c.skip = s.daggerSkip(c.tr)
 			} else if ctFamily(host) != "IPv4" {
-				c.skip = "this transport setup requires an IPv4 path"
+				mode, _ := ctBackhaulMode(c.tr)
+				if !strings.HasPrefix(c.tr, ctBackhaulPrefix) || mode == "tun-ipx" {
+					c.skip = "this transport setup requires an IPv4 path"
+				}
 			}
 			useExtraChannel = useExtraChannel || c.skip == ""
 			s.cases = append(s.cases, c)
@@ -1236,11 +1239,11 @@ func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResul
 		}
 		r.Phase, r.Detail = "speed", "measuring download and upload"
 		reportRow(i, r)
-		legacyHelper := c.extra && !parallelExtra
+		rebuildHelper := c.extra && (!parallelExtra || c.exclusiveBackhaulIPX())
 		var speed ctSpeedResult
 		var err error
-		if legacyHelper {
-			speed, err = s.speedLegacyExtra(ctx, c)
+		if rebuildHelper {
+			speed, err = s.speedRebuiltExtra(ctx, c)
 		} else {
 			speed, err = ctSpeed(ctx, func() (net.Conn, error) { return ctDial(ctx, c, s.link.L3) })
 		}
@@ -1251,12 +1254,12 @@ func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResul
 			r.Status, r.Detail = ctUnstable, "speed test failed ("+ctShortErr(err)+")"
 		} else {
 			ctPutSpeed(&r, speed)
-			if !legacyHelper {
+			if !rebuildHelper {
 				speeds[i] = speed
 			}
 		}
 		reportRow(i, r)
-		if legacyHelper {
+		if rebuildHelper {
 			s.cleanupExtra(c, r, func(row ConnTestResult) { reportRow(i, row) })
 		}
 	}
@@ -1313,7 +1316,7 @@ func (s *ConnTestIran) runStabilityStages(ctx context.Context, kharej string, wo
 		if kind == "direct" {
 			s.startDirectTestEngines(ctx, kharej)
 		}
-		var native, helpers []int
+		var native, helpers, exclusive []int
 		for i, c := range s.cases {
 			if c.kind != kind || rows[i].Status == ctSkipped {
 				continue
@@ -1325,7 +1328,11 @@ func (s *ConnTestIran) runStabilityStages(ctx context.Context, kharej string, wo
 				r.Status, r.Phase, r.Detail = ctSkipped, "", c.skip
 			} else if c.extra {
 				r.Phase, r.Detail = ctPhaseTransportQueued, "waiting for temporary tunnel setup"
-				helpers = append(helpers, i)
+				if c.exclusiveBackhaulIPX() {
+					exclusive = append(exclusive, i)
+				} else {
+					helpers = append(helpers, i)
+				}
 			} else {
 				r.Phase, r.Detail = "", ""
 				native = append(native, i)
@@ -1360,6 +1367,9 @@ func (s *ConnTestIran) runStabilityStages(ctx context.Context, kharej string, wo
 		}
 		s.probeStageExtras(ctx, helpers, workers, retainHelpers, report)
 		running.Wait()
+		// Each raw IPX core allocates packet queues and owns a host interface.
+		// Reuse one worker and tear it down before opening the next profile.
+		s.probeStageExtras(ctx, exclusive, 1, false, report)
 	}
 }
 
@@ -1633,8 +1643,8 @@ func ctProbe(ctx context.Context, c *connTestCase, l3Echo int, report func(ConnT
 			say("")
 			return r
 		}
-		if c.dagger != nil {
-			if exited, detail := c.dagger.startupFailure(); exited {
+		if c.helper != nil {
+			if exited, detail := c.helper.startupFailure(); exited {
 				r.Status, r.Detail = ctSkipped, detail
 				say("")
 				return r
@@ -1752,7 +1762,8 @@ func ctDial(ctx context.Context, c *connTestCase, l3Echo int) (net.Conn, error) 
 		proto = "udp"
 	}
 	d := &net.Dialer{Timeout: 3 * time.Second}
-	if c.kind == "direct" && c.tr != l3.CarrierPck && !(c.extra && c.entry > 0) {
+	routedHelper := c.extra && c.peerIP != "" && c.entry == 0
+	if routedHelper || (c.kind == "direct" && c.tr != l3.CarrierPck && !(c.extra && c.entry > 0)) {
 		addr = net.JoinHostPort(c.peerIP, strconv.Itoa(l3Echo))
 		// Through a TUN the test's own TCP is what crosses the path, so it
 		// asks for the congestion control every tunnel socket gets. On the

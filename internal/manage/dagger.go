@@ -99,6 +99,12 @@ func installDagger(ctx context.Context, name string, c config.DaggerConfig) (str
 			}
 		}
 	}
+	return installHelperTunnel(ctx, name, struct {
+		Dagger config.DaggerConfig `toml:"dagger"`
+	}{Dagger: c}, daggerconnect.Ensure)
+}
+
+func installHelperTunnel(ctx context.Context, name string, cfg any, ensure func(context.Context) error) (string, bool, error) {
 	service := app.ServiceName(name)
 	unit := filepath.Join(app.ServiceDir, service)
 	if _, err := os.Lstat(unit); !os.IsNotExist(err) {
@@ -107,16 +113,14 @@ func installDagger(ctx context.Context, name string, c config.DaggerConfig) (str
 	if _, err := os.Lstat(app.ConfigPath(name)); !os.IsNotExist(err) {
 		return "", false, fmt.Errorf("a tunnel named %q already exists", name)
 	}
-	if err := daggerconnect.Ensure(ctx); err != nil {
+	if err := ensure(ctx); err != nil {
 		return "", false, err
 	}
 	if err := os.MkdirAll(app.ConfigDir, 0755); err != nil {
 		return "", false, err
 	}
 	var body bytes.Buffer
-	if err := toml.NewEncoder(&body).Encode(struct {
-		Dagger config.DaggerConfig `toml:"dagger"`
-	}{Dagger: c}); err != nil {
+	if err := toml.NewEncoder(&body).Encode(cfg); err != nil {
 		return "", false, err
 	}
 	file, err := os.OpenFile(app.ConfigPath(name), os.O_WRONLY|os.O_CREATE|os.O_EXCL, app.TunnelConfigMode)

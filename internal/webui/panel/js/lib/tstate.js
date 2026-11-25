@@ -38,7 +38,7 @@ export const stateLabel = t => (limitReached(t) ? 'Limit reached' : serviceDown(
   online: 'Online',
   offline: 'Offline',
   stopped: 'Stopped',
-}[t && t.state] || (t?.transport?.startsWith('dagger/') && t.state === 'unknown' ? 'Service active' : 'Unknown')));
+}[t && t.state] || (/^(dagger|backhaul)\//.test(t?.transport) && t.state === 'unknown' ? 'Service active' : 'Unknown')));
 
 /* Three shades, because there are three things to say: it works, it is up but
  * unanswered, it is not up at all. A tunnel whose far service is missing takes

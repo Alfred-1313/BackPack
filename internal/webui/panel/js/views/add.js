@@ -28,9 +28,10 @@ export function addView(ctx) {
       let opts = { families: [], presets: [] };
       try { opts = await api.tunnelOptions(); } catch (e) { oops(e); }
 
-      const [omniChoices, daggerChoices] = await Promise.all([
+      const [omniChoices, daggerChoices, backhaulChoices] = await Promise.all([
         api.omniOptions().catch(e => { oops(e); return []; }),
         api.daggerOptions().catch(() => []),
+        api.backhaulOptions().catch(e => { oops(e); return []; }),
       ]);
       let mountExtras;
       /* families */
@@ -1115,6 +1116,8 @@ export function addView(ctx) {
         ...omniChoices,
         ...daggerChoices.map(item => ({ direction: 'reverse', ...item, value: 'dagger-' + item.value,
           daggerTransport: item.value })),
+        ...backhaulChoices.map(item => ({ ...item, value: 'backhaul-' + item.value,
+          backhaulTransport: item.value })),
       ]);
       reveal();
 

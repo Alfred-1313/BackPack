@@ -646,6 +646,8 @@ type Config struct {
 	L3 L3Config `toml:"l3"`
 	// Dagger selects the separately installed DaggerConnect engine.
 	Dagger DaggerConfig `toml:"dagger"`
+	// Backhaul selects the official Backhaul Premium engine.
+	Backhaul BackhaulConfig `toml:"backhaul"`
 	// Direct is the [direct] stream tunnel, removed in v2.0.0. It is read only
 	// so that such a file is recognised and refused by name rather than read
 	// as empty; see config/legacydirect.go.

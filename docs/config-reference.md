@@ -12,10 +12,27 @@ go run ./tools/configref > docs/config-reference.md
 The prose pages under `docs/` explain what to *use* these for and which of
 them both ends have to agree on. This says what exists.
 
+## BackhaulConfig
+
+| Key | Type | Description |
+|---|---|---|
+| `health_port` | `uint16` | HealthPort is the Backhaul TUN health-check port shared by the endpoints. |
+| `ipx_profile` | `string` | IPXProfile selects the IPX outer protocol. |
+| `iran_host` | `string` | IranHost is the listener's address, or its local IPv4 address for IPX. |
+| `iran_tunnel` | `string` | IranTunnel is the IPv4/CIDR address inside the tunnel on Iran. |
+| `kharej_ip` | `string` | KharejIP is the Kharej IPv4 endpoint for IPX. |
+| `kharej_tunnel` | `string` | KharejTunnel is the IPv4/CIDR address inside the tunnel on Kharej. |
+| `mode` | `string` | Mode selects XTcpMux, XWsMux, TUN over TCP or TUN over IPX. |
+| `port` | `uint16` | Port is the Iran listener port for TCP-based modes. |
+| `ports` | `[]string` | Ports holds optional TCP forwarding rules on Iran. |
+| `role` | `string` | Role selects the Iran server or the Kharej client. |
+| `token` | `string` | Token is the shared tunnel secret. IPX uses a base64-encoded 32-byte key. |
+
 ## Config
 
 | Key | Type | Description |
 |---|---|---|
+| `backhaul` | `BackhaulConfig` | Backhaul selects the official Backhaul Premium engine. |
 | `client` | `ClientConfig` | Client is the reverse tunnel's kharej end: it dials the server and delivers each connection to the service behind it. |
 | `dagger` | `DaggerConfig` | Dagger selects the separately installed DaggerConnect engine. |
 | `direct` | `LegacyDirectConfig` | Direct is the [direct] stream tunnel, removed in v2.0.0. It is read only so that such a file is recognised and refused by name rather than read as empty; see config/legacydirect.go. |

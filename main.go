@@ -35,9 +35,13 @@ var logger = utils.NewLogger("info")
 //   - Menu mode:    `backpack`  (no arguments)
 //     Opens the interactive management CLI on the VPS.
 func main() {
-	if len(os.Args) == 3 && os.Args[1] == "dagger" && os.Args[2] == "join" {
+	if len(os.Args) == 3 && os.Args[2] == "join" && (os.Args[1] == "dagger" || os.Args[1] == "backhaul") {
+		join, label := manage.JoinDagger, "DaggerConnect"
+		if os.Args[1] == "backhaul" {
+			join, label = manage.JoinBackhaul, "Backhaul"
+		}
 		if os.Geteuid() != 0 {
-			fmt.Fprintln(os.Stderr, "run the DaggerConnect join command with sudo")
+			fmt.Fprintf(os.Stderr, "run the %s join command with sudo\n", label)
 			os.Exit(1)
 		}
 		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -45,10 +49,10 @@ func main() {
 		input.Buffer(make([]byte, 4096), 16<<10)
 		if !input.Scan() {
 			cancel()
-			fmt.Fprintln(os.Stderr, "read the DaggerConnect setup token from standard input")
+			fmt.Fprintf(os.Stderr, "read the %s setup token from standard input\n", label)
 			os.Exit(1)
 		}
-		service, active, err := manage.JoinDagger(ctx, input.Text())
+		service, active, err := join(ctx, input.Text())
 		cancel()
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -56,7 +60,7 @@ func main() {
 		}
 		fmt.Println("Created", service)
 		if !active {
-			fmt.Fprintln(os.Stderr, "check the DaggerConnect service log for startup status")
+			fmt.Fprintf(os.Stderr, "check the %s service log for startup status\n", label)
 			os.Exit(1)
 		}
 		return

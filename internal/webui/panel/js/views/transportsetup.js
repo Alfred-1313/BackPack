@@ -1,5 +1,6 @@
 import * as api from '../api.js';
 import { showDaggerSetup } from './daggersetup.js';
+import { showBackhaulSetup } from './backhaulsetup.js';
 import { copyText, flashCopied, esc } from '../lib/dom.js';
 import { transportOption } from '../lib/transports.js';
 
@@ -32,6 +33,10 @@ export function bindExtraTransports(root, options) {
     panel.replaceChildren();
     if (item.daggerTransport) {
       showDaggerSetup(panel, item.daggerTransport);
+      return;
+    }
+    if (item.backhaulTransport) {
+      showBackhaulSetup(panel, item.backhaulTransport, item.label);
       return;
     }
     const value = item.value;
@@ -100,7 +105,7 @@ export function bindExtraTransports(root, options) {
         card.className = direction === 'reverse' ? 'tr' : 'dc';
         card.dataset.extra = item.value;
         card.title = item.desc || '';
-        const id = item.daggerTransport || item.value === 'gost-direct' ? item.value : 'omni-' + item.value;
+        const id = item.daggerTransport || item.backhaulTransport || item.value === 'gost-direct' ? item.value : 'omni-' + item.value;
         card.innerHTML = '<span class="tn2">' + transportOption(id, item.label, item.value) + '</span>';
         card.onclick = () => select(item, card);
         grid.append(card);

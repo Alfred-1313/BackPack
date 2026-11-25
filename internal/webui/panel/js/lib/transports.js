@@ -9,6 +9,7 @@ const sources = new Map([
 ]);
 
 export function transportDisplay(id, label) {
+  if (id?.startsWith('backhaul-')) return { name: label, source: 'Backhaul' };
   if (id?.startsWith('dagger-')) {
     return { name: label.replace(/^((?:Reverse|Direct) )?Dagger /, '$1'), source: 'Dagger' };
   }

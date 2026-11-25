@@ -38,6 +38,11 @@ type Tunnel struct {
 // IsDagger identifies a tunnel whose peer health is owned by DaggerConnect.
 func (t Tunnel) IsDagger() bool { return strings.HasPrefix(t.Transport, "dagger/") }
 
+// UsesExternalHelper is true when the data plane has its own health and counters.
+func (t Tunnel) UsesExternalHelper() bool {
+	return t.IsDagger() || strings.HasPrefix(t.Transport, "backhaul/")
+}
+
 // List scans the config directory and returns all tunnels, sorted by name.
 func List() []Tunnel {
 	var tunnels []Tunnel
@@ -64,6 +69,16 @@ func List() []Tunnel {
 func tunnelOf(name string, cfg config.Config) (Tunnel, bool) {
 	t := Tunnel{Name: name, Service: app.ServiceName(name)}
 	switch {
+	case cfg.Backhaul.Present():
+		c := cfg.Backhaul
+		t.Role, t.Transport, t.Ports = c.Role, "backhaul/"+c.Mode, c.Ports
+		t.Addr = net.JoinHostPort(c.IranHost, strconv.Itoa(int(c.Port)))
+		if c.Mode == "tun-ipx" {
+			t.Addr = c.KharejIP
+			if t.Role == "client" {
+				t.Addr = c.IranHost
+			}
+		}
 	case cfg.Dagger.Present():
 		t.Role = cfg.Dagger.Role
 		t.Transport = "dagger/" + cfg.Dagger.Flavor

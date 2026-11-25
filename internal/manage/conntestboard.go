@@ -43,6 +43,9 @@ func ctName(tr string) string {
 	if mode, ok := strings.CutPrefix(tr, ctOmniPrefix); ok {
 		return omni.Label(mode)
 	}
+	if strings.HasPrefix(tr, ctBackhaulPrefix) {
+		return ctBackhaulLabel(tr)
+	}
 	if label := ctDaggerLabel(tr); label != "" {
 		return label
 	}

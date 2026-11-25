@@ -47,7 +47,8 @@ func ctExtraCases() []*connTestCase {
 		cases = append(cases, &connTestCase{kind: mode["direction"], tr: ctOmniPrefix + mode["value"], extra: true})
 	}
 	cases = append(cases, &connTestCase{kind: "direct", tr: ctGostDirect, extra: true})
-	return append(cases, ctDaggerCases()...)
+	cases = append(cases, ctDaggerCases()...)
+	return append(cases, ctBackhaulCases()...)
 }
 
 func ctExtraName() string {
@@ -189,7 +190,7 @@ type ctExtraWorker struct {
 type ctExtraInstance struct {
 	mode, name string
 	echo       *ctEchoes
-	dagger     *ctDaggerProcess
+	helper     *ctHelperProcess
 }
 
 func (w *ctExtraWorker) close(name string) error {
@@ -209,9 +210,9 @@ func (w *ctExtraInstance) close() error {
 		w.echo.close()
 		w.echo = nil
 	}
-	if w.dagger != nil {
-		w.dagger.close()
-		w.dagger, w.name, w.mode = nil, "", ""
+	if w.helper != nil {
+		w.helper.close()
+		w.helper, w.name, w.mode = nil, "", ""
 	}
 	if w.name == "" {
 		return nil
@@ -273,6 +274,9 @@ func (w *ctExtraWorker) perform(ctx context.Context, link ConnTestLink, job ctEx
 }
 
 func (w *ctExtraInstance) join(ctx context.Context, link ConnTestLink, job ctExtraJob) error {
+	if strings.HasPrefix(job.Mode, ctBackhaulPrefix) {
+		return w.joinBackhaul(ctx, link, job)
+	}
 	if _, ok := strings.CutPrefix(job.Mode, ctDaggerPrefix); ok {
 		return w.joinDagger(ctx, link, job)
 	}
@@ -414,6 +418,9 @@ func (s *ConnTestIran) setupExtra(ctx context.Context, c *connTestCase, mode str
 	if !ready {
 		return errors.New("Kharej did not enable the transport-test control channel; update both servers")
 	}
+	if strings.HasPrefix(mode, ctBackhaulPrefix) {
+		return s.setupBackhaul(ctx, c, mode)
+	}
 	if _, ok := strings.CutPrefix(mode, ctDaggerPrefix); ok {
 		return s.setupDagger(ctx, c, mode)
 	}
@@ -506,9 +513,9 @@ func (s *ConnTestIran) removeExtra(c *connTestCase) error {
 		c.peerStarted = peerErr != nil
 	}
 	if c.localStarted {
-		if c.dagger != nil {
-			c.dagger.close()
-			c.dagger = nil
+		if c.helper != nil {
+			c.helper.close()
+			c.helper = nil
 		} else {
 			localErr = ctExtraRemove(mode, c.name)
 		}
@@ -608,9 +615,9 @@ func (s *ConnTestIran) cleanupExtraCases(workers int, rows []ConnTestResult, rep
 	cleanup.Wait()
 }
 
-// Older peers retain one helper at a time. Rebuild a passing pair for the
-// speed stage, once none of the stability checks can compete for bandwidth.
-func (s *ConnTestIran) speedLegacyExtra(ctx context.Context, c *connTestCase) (ctSpeedResult, error) {
+// Rebuild a helper that was cleaned up after stability. Run both speed
+// passes before returning its slot.
+func (s *ConnTestIran) speedRebuiltExtra(ctx context.Context, c *connTestCase) (ctSpeedResult, error) {
 	if c.localStarted || c.peerStarted {
 		return ctSpeedResult{}, errors.New("the previous temporary tunnel was not fully removed")
 	}

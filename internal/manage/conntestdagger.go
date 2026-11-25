@@ -75,24 +75,24 @@ func (s *ConnTestIran) daggerSkip(mode string) string {
 	return ""
 }
 
-type ctDaggerProcess struct {
-	dir, license string
-	engine       *ctEngine
+type ctHelperProcess struct {
+	dir, label, secret string
+	engine             *ctEngine
 }
 
-func (p *ctDaggerProcess) startupFailure() (bool, string) {
+func (p *ctHelperProcess) startupFailure() (bool, string) {
 	exited, detail := p.engine.exited()
 	if !exited {
 		return false, ""
 	}
 	if detail == "" {
-		return true, "DaggerConnect exited before carrying traffic"
+		return true, p.label + " exited before carrying traffic"
 	}
-	detail = strings.ReplaceAll(detail, p.license, "[private]")
-	return true, "DaggerConnect exited: " + ctExtraError(errors.New(detail))
+	detail = strings.ReplaceAll(detail, p.secret, "[private]")
+	return true, p.label + " exited: " + ctExtraError(errors.New(detail))
 }
 
-func (p *ctDaggerProcess) close() {
+func (p *ctHelperProcess) close() {
 	if p.engine != nil {
 		ctStopAll([]*ctEngine{p.engine})
 		// The launcher can start the licensed core as a child. Reap its
@@ -110,7 +110,7 @@ type ctDaggerJob struct {
 // All launches in this tester share the same verified helper installation.
 var ctDaggerEnsure sync.Mutex
 
-func (p *ctDaggerProcess) start(ctx context.Context, name string, job ctDaggerJob) error {
+func (p *ctHelperProcess) start(ctx context.Context, name string, job ctDaggerJob) error {
 	c := job.Config
 	if _, err := daggerconnect.Build(name, c); err != nil {
 		return err
@@ -124,7 +124,7 @@ func (p *ctDaggerProcess) start(ctx context.Context, name string, job ctDaggerJo
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	p.license = c.License
+	p.label, p.secret = "DaggerConnect", c.License
 	var env []string
 	if job.CA != "" {
 		roots := x509.NewCertPool()
@@ -190,9 +190,9 @@ func (s *ConnTestIran) setupDagger(ctx context.Context, c *connTestCase, mode st
 		cfg.IranIP, cfg.IranIPv6 = s.daggerIPv4, s.link.Host
 	}
 	s.mu.Lock()
-	outer := ctPickPort(s.daggerPorts, true)
+	outer := ctPickPort(s.helperPorts, true)
 	if c.kind == "reverse" {
-		c.entry = ctPickPort(s.daggerPorts, false)
+		c.entry = ctPickPort(s.helperPorts, false)
 	}
 	s.mu.Unlock()
 	if outer == 0 || (c.kind == "reverse" && c.entry == 0) {
@@ -216,8 +216,8 @@ func (s *ConnTestIran) setupDagger(ctx context.Context, c *connTestCase, mode st
 	if err != nil {
 		return err
 	}
-	p := &ctDaggerProcess{dir: dir}
-	c.dagger, c.localStarted = p, true
+	p := &ctHelperProcess{dir: dir}
+	c.helper, c.localStarted = p, true
 	peer := ctDaggerJob{Config: cfg}
 	peer.Config.Role, peer.Config.Ports, peer.Config.LoopbackOnly = "client", "", false
 	if flavor == "https" {
@@ -265,8 +265,8 @@ func (w *ctExtraInstance) joinDagger(ctx context.Context, link ConnTestLink, job
 	if err != nil {
 		return err
 	}
-	w.name, w.mode, w.dagger = job.Name, job.Mode, &ctDaggerProcess{dir: dir}
-	if err := w.dagger.start(ctx, job.Name, peer); err != nil {
+	w.name, w.mode, w.helper = job.Name, job.Mode, &ctHelperProcess{dir: dir}
+	if err := w.helper.start(ctx, job.Name, peer); err != nil {
 		return err
 	}
 	if c.Flavor != "tun" {
@@ -274,7 +274,7 @@ func (w *ctExtraInstance) joinDagger(ctx context.Context, link ConnTestLink, job
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if exited, detail := w.dagger.startupFailure(); exited {
+		if exited, detail := w.helper.startupFailure(); exited {
 			return errors.New(detail)
 		}
 		return nil
@@ -292,7 +292,7 @@ func (w *ctExtraInstance) joinDagger(ctx context.Context, link ConnTestLink, job
 			go ctServeTCPEcho(listener, w.echo)
 			return nil
 		}
-		if exited, detail := w.dagger.startupFailure(); exited {
+		if exited, detail := w.helper.startupFailure(); exited {
 			return errors.New(detail)
 		}
 		ctSleep(echoCtx, 250*time.Millisecond)
