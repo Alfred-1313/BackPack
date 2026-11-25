@@ -1,4 +1,5 @@
 import { bindExtraTransports } from './transportsetup.js';
+import { transportOption } from '../lib/transports.js';
 /* Add a tunnel: pick the side, then the transport family, then the transport,
  * then the settings that side actually has.
  *
@@ -197,8 +198,7 @@ export function addView(ctx) {
           const needsRoot = c.needsRoot ? '<span class="root2">needs root</span>' : '';
           return `<button class="dc${i === 0 ? ' on' : ''}" data-car="${esc(c.value)}"
             data-fn="setCar" data-args="'${esc(c.value)}'" title="${esc(c.desc || '')}">
-            <span class="tn2"><b>${esc(c.label)}</b>
-            <span class="key2">${esc(c.value)}</span>${needsRoot}</span></button>`;
+            <span class="tn2">${transportOption(c.value, c.label)}${needsRoot}</span></button>`;
         }).join('');
         mountExtras?.();
         chosen.carrier = carriers[0].value;
@@ -216,8 +216,7 @@ export function addView(ctx) {
         list.innerHTML = entries.map(item => {
           const root2 = /needs root/i.test(item.desc || '') ? '<span class="root2">needs root</span>' : '';
           return `<button class="tr${item.value === chosen.transport ? ' on' : ''}" data-fn="setTr" data-args="'${esc(item.value)}'">
-            <span class="tn2"><b>${esc(item.label)}</b>
-            <span class="key2">${esc(item.value)}</span>${root2}</span></button>`;
+            <span class="tn2">${transportOption(item.value, item.label)}${root2}</span></button>`;
         }).join('');
         mountExtras?.();
         applyFields();

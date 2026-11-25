@@ -1,6 +1,7 @@
 import * as api from '../api.js';
 import { showDaggerSetup } from './daggersetup.js';
 import { copyText, flashCopied, esc } from '../lib/dom.js';
+import { transportOption } from '../lib/transports.js';
 
 export function bindExtraTransports(root, options) {
   const step = root.querySelector('.step3rev').closest('.step');
@@ -99,7 +100,8 @@ export function bindExtraTransports(root, options) {
         card.className = direction === 'reverse' ? 'tr' : 'dc';
         card.dataset.extra = item.value;
         card.title = item.desc || '';
-        card.innerHTML = '<span class="tn2"><b>'+esc(item.label)+'</b><span class="key2">'+esc(item.value)+'</span></span>';
+        const id = item.daggerTransport || item.value === 'gost-direct' ? item.value : 'omni-' + item.value;
+        card.innerHTML = '<span class="tn2">' + transportOption(id, item.label, item.value) + '</span>';
         card.onclick = () => select(item, card);
         grid.append(card);
       }

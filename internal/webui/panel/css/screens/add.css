@@ -304,8 +304,6 @@ svg.x{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke
 .dlg.add .trgrid button.on::before{transform:scaleY(1)}
 .dlg.add .trgrid .tn2{display:flex;align-items:baseline;gap:8px}
 .dlg.add .trgrid b{font-size:12.5px;font-weight:640;letter-spacing:0}
-.dlg.add .trgrid .key2{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;color:var(--dim);
-  background:var(--sunk);padding:1px 6px;border-radius:5px}
 .dlg.add .trgrid .root2{margin-left:auto;font-size:12px;font-weight:600;letter-spacing:0;
   padding:2px 6px;border-radius:5px;background:color-mix(in srgb,var(--wr) 15%,transparent);color:var(--wr)}
 .dlg.add .trgrid i{display:block;font-style:normal;font-size:11px;color:var(--dim);margin-top:5px;line-height:1.5}

@@ -46,7 +46,9 @@ generates a working Setup command for Kharej. Verify that Connection Test
 starts both temporary endpoints, sends and validates real echo traffic over
 the transport, reports the result and removes the temporary instances on
 completion or cancellation. If a prerequisite is missing, show why the test
-was skipped.
+was skipped. For an imported transport, put the source script or engine name
+in the muted badge beside the protocol name in both panel views. Keep that
+mapping in the shared panel transport labels.
 
 ## Building with libpcap (the PCK carrier)
 

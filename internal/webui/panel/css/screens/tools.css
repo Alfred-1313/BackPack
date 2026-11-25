@@ -212,6 +212,7 @@ body[data-accent]:not([data-accent="signal"]) .panel .ct-steps li.on .n{backgrou
 .panel .ct-row.run .dot{background:var(--ac);animation:ct-pulse 1.4s ease-in-out infinite}
 @keyframes ct-pulse{50%{opacity:.35}}
 .panel .ct-row .nm{min-width:0}
+.panel .ct-row .ct-title{display:flex;align-items:baseline;flex-wrap:wrap;gap:2px 5px}
 /* Two lines, then the ellipsis: "Naive / HTTP/2 over TLS" is not a name to
    cut at ten characters. The full name is also the title. */
 .panel .ct-row .nm b{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;font-size:12.5px;

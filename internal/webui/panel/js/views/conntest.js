@@ -12,6 +12,7 @@
  */
 
 import { $, esc, copyText, flashCopied } from '../lib/dom.js';
+import { transportDisplay, transportKey } from '../lib/transports.js';
 import * as api from '../api.js';
 import { toast, oops } from '../ui/toast.js';
 import { confirmBox } from '../ui/confirm.js';
@@ -208,12 +209,13 @@ function bestPane(v) {
           in the kharej's table; a different kharej, or its provider's firewall, is the usual answer.</span></div>
       ${foot}</div>`;
   }
+  const { name, source } = transportDisplay(b.tr, b.name || b.tr);
   const cell = (k, val, unit = '') => (val || val === 0) && val !== ''
     ? `<div class="ct-bc"><span>${k}</span><b>${esc(String(val))}${unit ? `<em>${unit}</em>` : ''}</b></div>` : '';
   return `<div class="ct-l-in ct-best">
     <div class="ct-best-head">
       <span class="ct-medal">${ICON.medal}</span>
-      <div><span class="badge">Best for this path</span><b class="tr">${esc(b.name || b.tr)}</b></div>
+      <div><span class="badge">Best for this path</span><b class="tr">${esc(name)} ${transportKey(source)}</b></div>
     </div>
     <div class="ct-bgrid">
       ${cell('IP path', b.family || '')}
@@ -271,7 +273,7 @@ const keyOf = r => `${r.kind}:${r.tr}`;
 
 function rowHTML() {
   return `<span class="dot"></span>
-    <span class="nm"><b></b><small></small></span>
+    <span class="nm"><span class="ct-title"><b></b><span class="key2 transport-key" hidden></span></span><small></small></span>
     <span class="bar"><i></i></span>
     <span class="ec"><span class="ec-count"></span><small class="ec-percent"></small></span>
     <span class="fg"></span>
@@ -292,8 +294,12 @@ function fillRow(n, r) {
   const share = Math.max(0, Math.min(1, done / total));
   n.className = `ct-row ${waiting ? "queued" : tone(r.status)}${r.uploadMbps ? ' has-speed' : ''}`;
   const nb = n.querySelector('.nm b');
-  nb.textContent = r.name;
+  const { name, source } = transportDisplay(r.tr, r.name);
+  nb.textContent = name;
   nb.title = r.name;
+  const badge = n.querySelector('.ct-title .transport-key');
+  badge.hidden = !source;
+  badge.textContent = source || '';
   const sm = n.querySelector('.nm small');
   sm.textContent = r.detail || (r.uploadMbps ? 'max: best second of both passes' : '');
   sm.title = r.detail || '';
