@@ -43,7 +43,7 @@ func TestGRETAPPanelCreateAndPeer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if peer.Carrier != l3.CarrierGRETAP || peer.Addr != n.GRELocal || peer.LocalIP != n.PeerIP || peer.PeerIP != "10.212.237.1" {
+	if peer.Carrier != l3.CarrierGRETAP || peer.Addr != n.GRELocal || peer.LocalIP != n.PeerIP+"/30" || peer.PeerIP != "10.212.237.1" {
 		t.Fatalf("the peer did not get the mirrored GRETAP link: %+v", peer)
 	}
 	settings := directSettingsFrom(n.Name, cfg.L3)

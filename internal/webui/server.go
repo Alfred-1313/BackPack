@@ -426,6 +426,8 @@ func (s *server) routes() *http.ServeMux {
 	mux.HandleFunc("/api/direct/options", s.requireAuth(s.handleDirectOptions))
 	mux.HandleFunc("/api/direct/defaults", s.requireAuth(s.handleDirectDefaults))
 	mux.HandleFunc("/api/direct/create", s.requireAuth(s.handleDirectCreate))
+	mux.HandleFunc("/api/direct/peer-setup", s.requireAdmin(s.handleDirectPeerSetup))
+	mux.HandleFunc("/api/routed/peer-setup", s.requireAdmin(s.handleRoutedPeerSetup))
 	mux.HandleFunc("/api/tunnel/settings", s.requireAuth(s.handleTunnelSettings))
 	// Managed servers: the fleet and the login each one is reached with. See
 	// handlers_nodes.go.

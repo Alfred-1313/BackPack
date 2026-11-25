@@ -44,6 +44,8 @@ export function addView(ctx) {
          the kharej side owns the address that is dialled. */
       const chosen = { side: 'server', direction: 'reverse', transport: null,
                        carrier: 'pck', preset: null };
+      const pairedDirect = () => chosen.side === 'server' && chosen.direction === 'direct' &&
+        ['gretap', 'l2tpv3', 'easytier'].includes(chosen.carrier);
 
       /* The preset the form is already showing counts as chosen.
        *
@@ -485,6 +487,11 @@ export function addView(ctx) {
           });
           row.hidden = !ok;
         });
+        if (pairedDirect()) {
+          root.querySelectorAll('[name="peerAddr"], [name="greLocal"], [name="localIp"], [name="peerIp"]').forEach(input => {
+            input.closest('.f3').hidden = true;
+          });
+        }
         /* A group every one of whose rows that rule hid is a heading over
            nothing — GRE's "Carrier tuning", whose two switches are both
            "!gre". It goes with them, and comes back with them. */
@@ -593,6 +600,7 @@ export function addView(ctx) {
         ['Writing the configuration', 'Starting it here'].forEach((lb, i) => {
           const tx = rows[i]?.querySelector('.tx6');
           if (tx) tx.textContent = lb;
+          if (rows[i]) rows[i].hidden = false;
           rows[i]?.classList.remove('done', 'doing', 'failed');
         });
         if (title) title.textContent = 'Building…';
@@ -629,6 +637,20 @@ export function addView(ctx) {
 
         const { r, name } = out;
         settle(0, true);
+        if (r.pending) {
+          const label = rows[0]?.querySelector('.tx6');
+          if (label) label.textContent = 'Setup command ready';
+          if (rows[1]) rows[1].hidden = true;
+          spin?.setAttribute('hidden', '');
+          if (title) title.textContent = 'Waiting for Kharej';
+          if (sub) sub.textContent = 'Run this Setup command on the other server.';
+          if (result) {
+            result.innerHTML = setupLinkHTML(r);
+            bindSetupLink(result);
+          }
+          building = false;
+          return;
+        }
         await pause(240);
         start(1); await pause(200);
         const up = r.active !== false;
@@ -1190,6 +1212,10 @@ export function addView(ctx) {
         }
         if (chosen.preset) payload.preset = chosen.preset;
 
+        if (pairedDirect()) {
+          for (const key of ['peerAddr', 'greLocal', 'localIp', 'peerIp']) delete payload[key];
+          return { r: await api.directPeerSetup(payload), name: payload.name };
+        }
         // Only this end: the other is built from its setup link.
         const r = chosen.direction === 'direct'
           ? await api.directCreate(payload)

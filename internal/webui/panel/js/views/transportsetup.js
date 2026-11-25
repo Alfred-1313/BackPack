@@ -1,6 +1,7 @@
 import * as api from '../api.js';
 import { showBackhaulSetup } from './backhaulsetup.js';
-import { copyText, flashCopied, esc } from '../lib/dom.js';
+import { esc } from '../lib/dom.js';
+import { setupLinkHTML, bindSetupLink } from '../ui/setuplink.js';
 import { transportOption } from '../lib/transports.js';
 
 export function bindExtraTransports(root, options) {
@@ -38,51 +39,29 @@ export function bindExtraTransports(root, options) {
     const gost = value === 'gost-direct';
     const title = item.label;
     const form = document.createElement('form');
-    const fields = [['name', 'Tunnel name'], ...(!gost ? [['local', 'Iran IPv4']] : []),
-      ['peer', 'Kharej IPv4'], ...(gost
-        ? [['ingress', 'Public TCP port on Iran'], ['port', 'GOST TLS port on Kharej'], ['target', 'Service port on Kharej (127.0.0.1)']]
-        : [['omniport', 'Kharej tunnel port (optional)']])];
+    const fields = [['name', 'Tunnel name'], ...(gost
+      ? [['ingress', 'Public TCP port on Iran'], ['port', 'GOST TLS port on Kharej'], ['target', 'Service port on Kharej (127.0.0.1)']]
+      : [['port', 'Kharej tunnel port (optional)']])];
     form.innerHTML = `<h3>${esc(title)}</h3>
-      ${fields.map(([key, label]) => `<label>${label}<input ${key === 'omniport' ? '' : 'required'} autocomplete="off" name="${key}"></label>`).join('')}
+      ${fields.map(([key, label]) => `<label>${label}<input ${key === 'port' && !gost ? '' : 'required'} autocomplete="off" name="${key}"></label>`).join('')}
       <button type="submit" class="nb solid2">Create tunnel</button>
-      <pre aria-live="polite"></pre><button type="button" class="nb" data-copy hidden>Copy Kharej command</button>`;
+      <div aria-live="polite"></div>`;
     panel.append(form);
-    const result = form.querySelector('pre'), copy = form.querySelector('[data-copy]');
+
+    const result = form.querySelector('[aria-live]');
     const submit = form.querySelector('[type="submit"]');
-    const shellArg = text => "'" + text.replaceAll("'", "'\\''") + "'";
-    let command = '';
-    copy.onclick = async () => flashCopied(copy, await copyText(command));
+    bindSetupLink(result);
     form.onsubmit = async event => {
       event.preventDefault();
       const f = Object.fromEntries([...new FormData(form)].map(([name, value]) => [name, value.trim()]));
       submit.disabled = true;
-      result.textContent = 'Creating the tunnel on Iran…';
-      copy.hidden = true;
+      result.textContent = 'Preparing the Setup command…';
       try {
-        let token, output;
-        if (gost) {
-          const data = await api.gostDirect({ ...f, action: 'setup' });
-          token = data.token;
-          output = data.unit;
-        } else {
-          const args = ['setup', value, f.name, f.local, f.peer];
-          if (f.omniport) args.push(f.omniport);
-          const data = await api.omniRun(args);
-          output = data.output.replace(/\x1b\[[0-9;]*m/g, '').trim();
-          token = output.split(/\r?\n/).map(line => line.trim()).find(line => /^[A-Za-z0-9+/]{16,}={0,2}$/.test(line));
-        }
-        if (!token) {
-          result.textContent = 'The server did not return a setup token.' + (output ? '\n' + output : '');
-          return;
-        }
-
-        const join = gost ? 'sudo backpack gost-direct join' : 'sudo backpack omni join ' + shellArg(value);
-        command = `printf '%s\\n' ${shellArg(token)} | ${join}`;
-        result.textContent = 'Tunnel created on Iran. Run this command on Kharej.\n\n' + command;
-        copy.hidden = false;
+        const setup = await api.routedPeerSetup({ ...f, transport: value });
+        for (const field of form.elements) field.disabled = true;
+        result.innerHTML = setupLinkHTML(setup);
       } catch (err) {
         result.textContent = err.message;
-      } finally {
         submit.disabled = false;
       }
     };

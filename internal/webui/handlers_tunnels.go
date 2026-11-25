@@ -1,6 +1,7 @@
 package webui
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -404,6 +405,33 @@ func (s *server) handleDirectDefaults(w http.ResponseWriter, r *http.Request) {
 // handleDirectCreate builds a direct tunnel from the form.
 func (s *server) handleDirectCreate(w http.ResponseWriter, r *http.Request) {
 	serveCreate(w, r, manage.CreateDirectTunnel)
+}
+
+func (s *server) handleDirectPeerSetup(w http.ResponseWriter, r *http.Request) {
+	servePeerSetup(w, r, s.ctx, manage.StartDirectPeerSetup)
+}
+
+func (s *server) handleRoutedPeerSetup(w http.ResponseWriter, r *http.Request) {
+	servePeerSetup(w, r, s.ctx, manage.StartRoutedPeerSetup)
+}
+
+func servePeerSetup[F any](w http.ResponseWriter, r *http.Request, ctx context.Context, start func(context.Context, F) (manage.SetupLinkInfo, error)) {
+	w.Header().Set("Cache-Control", "no-store")
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var form F
+	if err := decodeJSON(w, r, &form); err != nil {
+		http.Error(w, "could not read the form", http.StatusBadRequest)
+		return
+	}
+	info, err := start(ctx, form)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, info)
 }
 
 // serveCreate is a POST that builds a tunnel from a form: decode it, create the

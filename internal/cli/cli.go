@@ -647,6 +647,10 @@ func linkReport(done manage.LinkApplied) Result {
 		say("  %s The service %s did not start — see: journalctl -u %s -n 30\n%s", paint("31;1", "✗"), done.Service, done.Service, rule)
 		return Result{Out: b.String(), Code: CodeUnhealthy}
 	}
+	if done.External {
+		say("  %s Both ends were set up.\n%s", ok, rule)
+		return Result{Out: b.String()}
+	}
 	if done.Kind == "direct" {
 		if l3.KernelCarrier(done.Transport) {
 			// Neither end of a GRE link dials: each names the other, and the

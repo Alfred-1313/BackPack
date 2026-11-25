@@ -39,6 +39,7 @@ type LinkApplied struct {
 	Dials          string // reverse: the Iran address this side dials
 	Backups        []string
 	Active         bool
+	External       bool
 	RestartHours   int
 	RestartMinute  int
 	ScheduleFailed string // why the restart schedule could not be set, if it could not
@@ -95,7 +96,11 @@ func FindSetupLink(text string) string {
 // ApplySetupLink builds and starts the tunnel a setup link describes, on the
 // side it was made for.
 func ApplySetupLink(raw string, o LinkApplyOptions) (LinkApplied, error) {
-	link, err := DecodeShareLink(FindSetupLink(raw))
+	raw = FindSetupLink(raw)
+	if strings.HasPrefix(raw, peerJoinScheme) {
+		return applyPeerJoin(raw, o)
+	}
+	link, err := DecodeShareLink(raw)
 	if err != nil {
 		return LinkApplied{}, err
 	}

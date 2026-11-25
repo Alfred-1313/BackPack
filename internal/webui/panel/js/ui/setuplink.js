@@ -48,7 +48,7 @@ export function setupLinkHTML(info) {
   }
   return `<div class="sl">
     <div class="sl-steps">
-      <span class="sl-side here"><b>This server</b><small>${info.kind === 'direct' ? 'direct' : 'reverse'} · built</small></span>
+      <span class="sl-side here"><b>This server</b><small>${info.kind === 'direct' ? 'direct' : 'reverse'} · ${info.pending ? 'waiting for peer' : 'built'}</small></span>
       <span class="sl-wire"><i></i></span>
       <span class="sl-side there"><b>${kharej ? 'Kharej' : 'Iran'}</b><small>build it with the ${kharej ? 'line' : 'link'} below</small></span>
     </div>
@@ -67,6 +67,7 @@ export function setupLinkHTML(info) {
          refuses to guess it — the command above carries --host for it. */
       ? `<div class="tl-note wr">This server's own address could not be found, so the link does not name it. Put the address the kharej reaches this server at in place of IRAN_SERVER_IP above.</div>`
       : `<div class="tl-note wr">This server's public address could not be found, so the other side will ask for it.</div>`) : ''}
+    ${info.pending ? '<div class="tl-note">Run the command on Kharej within 15 minutes to configure both ends.</div>' : ''}
     <div class="tl-note">${info.gre
       ? 'Holds the GRE key and both addresses — send it only to the server it is for.'
       : 'Holds the tunnel token — send it only to the server it is for.'}</div>

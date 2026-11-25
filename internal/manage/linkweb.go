@@ -39,7 +39,8 @@ type SetupLinkInfo struct {
 	NeedsAddress bool   `json:"needsAddress,omitempty"`
 	// GRE is a kernel GRE tunnel's link, which carries a GRE key and no
 	// token, so the screen's warning names what it does hold.
-	GRE bool `json:"gre,omitempty"`
+	GRE     bool `json:"gre,omitempty"`
+	Pending bool `json:"pending,omitempty"`
 	// GRETAP is configured from the other server's Add tunnel form.
 	GRETAPPeer      *PeerForm `json:"gretapPeer,omitempty"`
 	PanelDirectPeer *PeerForm `json:"panelDirectPeer,omitempty"`

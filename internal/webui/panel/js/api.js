@@ -82,7 +82,6 @@ export const tunnelSettings = name =>
   get('/api/tunnel/settings?name=' + encodeURIComponent(name));
 export const tunnelEdit  = payload => post('/api/tunnel/edit', payload);
 export const transportProbe = form => post('/api/conntest/transport', form);
-export const gostDirect = form => post('/api/gost/direct', form);
 export const omniOptions = () => get('/api/omni');
 export const backhaulOptions = () => get('/api/backhaul');
 export const backhaulCreate = body => post('/api/backhaul', body);
@@ -160,6 +159,8 @@ export const directOptions  = () => get('/api/direct/options');
 export const directDefaults = side =>
   get('/api/direct/defaults?side=' + encodeURIComponent(side || ''));
 export const directCreate   = payload => post('/api/direct/create', payload);
+export const directPeerSetup = payload => post('/api/direct/peer-setup', payload);
+export const routedPeerSetup = payload => post('/api/routed/peer-setup', payload);
 
 /* ---- CLI: Manage → Health Check / Link Test -------------------------------- */
 export const health = () => get('/api/health');
