@@ -150,7 +150,7 @@ func (w *ctExtraInstance) joinBackhaul(ctx context.Context, link ConnTestLink, j
 			return err
 		}
 	}
-	dir, err := os.MkdirTemp("", "backpack-ct-backhaul-")
+	dir, err := os.MkdirTemp(w.dir, "backhaul-")
 	if err != nil {
 		return err
 	}

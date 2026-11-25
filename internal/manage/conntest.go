@@ -433,6 +433,7 @@ type connTestCase struct {
 // ConnTestIran is a test the Iran side is running.
 type ConnTestIran struct {
 	dir           string
+	workspace     *ctWorkspace
 	link          ConnTestLink
 	cases         []*connTestCase
 	coord         *ctCoordinator
@@ -499,11 +500,12 @@ func StartConnTestIran(o ConnTestOptions) (*ConnTestIran, string, error) {
 	if host == "" {
 		return nil, "", fmt.Errorf("this server's address is needed: it is what the kharej dials")
 	}
-	dir, err := os.MkdirTemp("", "backpack-conntest-")
+	workspace, err := ctNewWorkspace(os.TempDir())
 	if err != nil {
 		return nil, "", err
 	}
-	s := &ConnTestIran{dir: dir, root: os.Geteuid() == 0}
+	dir := workspace.dir
+	s := &ConnTestIran{dir: dir, workspace: workspace, root: os.Geteuid() == 0}
 	fail := func(err error) (*ConnTestIran, string, error) {
 		s.Close()
 		return nil, "", err
@@ -1606,7 +1608,7 @@ func (s *ConnTestIran) Close() {
 	if s.coord != nil {
 		s.coord.close()
 	}
-	os.RemoveAll(s.dir)
+	s.workspace.close()
 }
 
 // ctProbe pushes traffic through one tunnel and judges it.
@@ -2460,11 +2462,12 @@ func runConnTestKharejLink(ctx context.Context, link ConnTestLink, out io.Writer
 	defer cancel()
 	root := os.Geteuid() == 0
 
-	dir, err := os.MkdirTemp("", "backpack-conntest-")
+	workspace, err := ctNewWorkspace(os.TempDir())
 	if err != nil {
 		return nil, ConnTestBest{}, err
 	}
-	defer os.RemoveAll(dir)
+	defer workspace.close()
+	dir := workspace.dir
 
 	// The far ends of the tunnels: what the Iran side's echoes land on.
 	echoes, err := ctStartEchoes(ctx, link)
@@ -2578,7 +2581,7 @@ func runConnTestKharejLink(ctx context.Context, link ConnTestLink, out io.Writer
 	}
 
 	if link.pairKey != "" {
-		if worker := ctStartExtraWorker(ctx, link, out); worker != nil {
+		if worker := ctStartExtraWorker(ctx, link, out, dir); worker != nil {
 			defer worker()
 		}
 	}

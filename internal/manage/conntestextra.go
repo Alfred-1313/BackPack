@@ -181,12 +181,14 @@ func (a *ctExtraPorts) take(mode string) (int, error) {
 }
 
 type ctExtraWorker struct {
+	dir       string
 	parallel  bool
 	ports     *ctExtraPorts
 	instances map[string]*ctExtraInstance
 }
 
 type ctExtraInstance struct {
+	dir        string
 	mode, name string
 	echo       *ctEchoes
 	helper     *ctHelperProcess
@@ -262,7 +264,7 @@ func (w *ctExtraWorker) perform(ctx context.Context, link ConnTestLink, job ctEx
 		if w.instances[job.Name] != nil || len(w.instances) >= len(ctExtraCases()) {
 			return 0, errors.New("no slot for this temporary test tunnel")
 		}
-		instance := &ctExtraInstance{}
+		instance := &ctExtraInstance{dir: w.dir}
 		err := instance.join(ctx, link, job)
 		if instance.name != "" {
 			w.instances[job.Name] = instance
@@ -332,7 +334,7 @@ func ctCheckOmniTestHelper(ctx context.Context) error {
 	return nil
 }
 
-func ctStartExtraWorker(ctx context.Context, link ConnTestLink, out io.Writer) func() {
+func ctStartExtraWorker(ctx context.Context, link ConnTestLink, out io.Writer, dir string) func() {
 	key, err := ctExtraCipher(link.pairKey)
 	if err != nil {
 		return nil
@@ -366,17 +368,17 @@ func ctStartExtraWorker(ctx context.Context, link ConnTestLink, out io.Writer) f
 		fmt.Fprintln(out, "Temporary transport cleanup:", ctExtraError(err))
 	}
 	for worker := range workers {
-		workersDone.Go(func() { ctExtraWork(ctx, link, worker, ports, reportCleanup) })
+		workersDone.Go(func() { ctExtraWork(ctx, link, worker, ports, reportCleanup, dir) })
 	}
 	return func() { cancel(); workersDone.Wait() }
 }
 
-func ctExtraWork(ctx context.Context, link ConnTestLink, worker int, ports *ctExtraPorts, reportCleanup func(error)) {
+func ctExtraWork(ctx context.Context, link ConnTestLink, worker int, ports *ctExtraPorts, reportCleanup func(error), dir string) {
 	key, err := ctExtraCipher(link.pairKey)
 	if err != nil {
 		return
 	}
-	w := &ctExtraWorker{parallel: link.ParallelExtra, ports: ports, instances: make(map[string]*ctExtraInstance)}
+	w := &ctExtraWorker{dir: dir, parallel: link.ParallelExtra, ports: ports, instances: make(map[string]*ctExtraInstance)}
 	defer func() {
 		for name := range w.instances {
 			if err := w.close(name); err != nil {

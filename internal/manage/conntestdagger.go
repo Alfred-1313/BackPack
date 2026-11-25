@@ -261,7 +261,7 @@ func (w *ctExtraInstance) joinDagger(ctx context.Context, link ConnTestLink, job
 			return err
 		}
 	}
-	dir, err := os.MkdirTemp("", "backpack-ct-dagger-")
+	dir, err := os.MkdirTemp(w.dir, "dagger-")
 	if err != nil {
 		return err
 	}
