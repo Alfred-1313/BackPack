@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// Random belongs to the tunnel port and nowhere else.
+// The port and GRE key buttons request different kinds of suggestions.
 //
 // This is the bug report "I made a plain TCP tunnel in the panel and the config
 // did not work". The Forwarded ports field had a Random button beside it, and
@@ -22,7 +22,7 @@ import (
 // button could only ever build a tunnel that comes up, reports a peer, shows
 // green, and refuses every connection at the last hop — which is precisely what
 // it did.
-func TestRandomIsOfferedOnlyForThePortThisSideBinds(t *testing.T) {
+func TestRandomIsOfferedForTunnelPortsAndGREKeys(t *testing.T) {
 	loadPanel()
 
 	raw, err := fs.ReadFile(panelRoot, "views/add.html")
@@ -43,11 +43,14 @@ func TestRandomIsOfferedOnlyForThePortThisSideBinds(t *testing.T) {
 			t.Errorf("a Random button sits beside no named field:\n%s", block)
 			continue
 		}
-		if name[1] != "tunnelPort" {
-			t.Errorf("Random is offered for %q. It asks for a port free on THIS "+
-				"machine, which is only meaningful for the port this side binds — "+
-				"on a forwarded port it guarantees nothing is listening at the far "+
-				"end, and the tunnel comes up carrying nothing.", name[1])
+		switch name[1] {
+		case "tunnelPort":
+		case "greKey":
+			if !strings.Contains(block, `id="randomGreKey"`) {
+				t.Error("the GRE key requires its own Random button")
+			}
+		default:
+			t.Errorf("unexpected Random button for %q", name[1])
 		}
 	}
 }

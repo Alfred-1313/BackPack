@@ -63,8 +63,8 @@ func TestTheAddFormFitsAGRETunnel(t *testing.T) {
 			t.Errorf("%s is offered on GRE, which cannot have it", label)
 		}
 	}
-	if !strings.Contains(direct, `data-when="gre"`) || !strings.Contains(direct, "GRE is not encrypted") {
-		t.Error("the form does not say that GRE is not encrypted")
+	if !strings.Contains(direct, `class="hint" id="greEncryptionNote">GRE traffic is unencrypted.`) {
+		t.Error("the form must show the GRE encryption note as a hint")
 	}
 
 	// The negation has to be something the form's own code evaluates.

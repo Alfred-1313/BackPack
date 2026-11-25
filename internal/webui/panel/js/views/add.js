@@ -46,6 +46,7 @@ export function addView(ctx) {
                        carrier: 'pck', preset: null };
       const pairedDirect = () => chosen.side === 'server' && chosen.direction === 'direct' &&
         ['gretap', 'l2tpv3', 'easytier'].includes(chosen.carrier);
+      const randomGreKey = root.querySelector('#randomGreKey');
 
       /* The preset the form is already showing counts as chosen.
        *
@@ -459,6 +460,14 @@ export function addView(ctx) {
                 ? 'Direct: EasyTier connects over TCP using a shared network name and secret.'
             : 'Direct: Iran connects to Kharej. Peer-to-peer carriers exchange packets in both directions.'
           : 'Reverse — the kharej dials in to Iran. Try this first.';
+        const gretap = chosen.carrier === 'gretap';
+        root.querySelector('#greEncryptionNote').textContent = gretap
+          ? 'GRETAP traffic is unencrypted. Use WireGuard, TLS or SSH inside it when encryption is needed.'
+          : 'GRE traffic is unencrypted. Use WireGuard, TLS or SSH inside it when encryption is needed.';
+        root.querySelector('#directGreKeyHint').textContent = gretap
+          ? 'Leave blank or enter 0 for no key. If you choose a key, the Setup command carries it to Kharej.'
+          : 'Use the same key on both ends. GRE picks one on Iran if the field is blank.';
+        randomGreKey.hidden = !direct || chosen.side !== 'server' || !['gre', 'ip6gre', 'gretap'].includes(chosen.carrier);
         if (direct) suggestDirect(chosen.side);
 
         /* "server" is the Iran side, "client" the kharej side — the words the
@@ -1139,6 +1148,17 @@ export function addView(ctx) {
           backhaulTransport: item.value })),
       ]);
       reveal();
+      randomGreKey.addEventListener('click', async () => {
+        const carrier = chosen.carrier;
+        randomGreKey.disabled = true;
+        try {
+          const { greKey } = await api.directDefaults('iran');
+          if (chosen.carrier === carrier && !randomGreKey.hidden) {
+            root.querySelector('#directGreKey').value = String(greKey);
+          }
+        } catch (e) { oops(e); }
+        finally { randomGreKey.disabled = false; }
+      });
 
       /* The token, made here.
        *
@@ -1211,6 +1231,10 @@ export function addView(ctx) {
           payload.transport = chosen.transport;
         }
         if (chosen.preset) payload.preset = chosen.preset;
+        const key = payload.greKey;
+        if (key !== undefined && (!Number.isInteger(key) || key < 0 || key > 4294967295)) {
+          throw new Error('Enter a GRE key from 0 to 4294967295.');
+        }
 
         if (pairedDirect()) {
           for (const key of ['peerAddr', 'greLocal', 'localIp', 'peerIp']) delete payload[key];

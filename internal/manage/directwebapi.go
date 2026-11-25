@@ -259,13 +259,17 @@ func SuggestDirectDefaults(side string) map[string]any {
 		s = sideKharej
 	}
 	local, peer := freeL3Subnet(s)
-	return map[string]any{
+	out := map[string]any{
 		"localIp": local,
 		"peerIp":  peer,
 		"iface":   freeL3Iface(),
 		"token":   randomToken(64),
 		"preset":  PresetTurbo,
 	}
+	if s == sideIran {
+		out["greKey"] = freeGREKey()
+	}
+	return out
 }
 
 // CreateDirectTunnel writes a direct tunnel from a filled form and starts it.
