@@ -157,6 +157,9 @@ func minifyJS(src []byte) []byte {
 				depth++
 			}
 			i, prev, word = j, '`', ""
+			if !done {
+				prev = '{'
+			}
 		case c == '/' && regexAllowed():
 			flush()
 			j, inClass := i+1, false
@@ -206,6 +209,9 @@ func minifyJS(src []byte) []byte {
 						depth++
 					}
 					i, prev, word = j, '`', ""
+					if !done {
+						prev = '{'
+					}
 					continue
 				}
 			}
