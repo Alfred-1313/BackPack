@@ -1116,7 +1116,7 @@ export function addView(ctx) {
         ...omniChoices,
         ...daggerChoices.map(item => ({ direction: 'reverse', ...item, value: 'dagger-' + item.value,
           daggerTransport: item.value })),
-        ...backhaulChoices.map(item => ({ ...item, value: 'backhaul-' + item.value,
+        ...backhaulChoices.map(item => ({ ...item, value: 'native-' + item.value,
           backhaulTransport: item.value })),
       ]);
       reveal();

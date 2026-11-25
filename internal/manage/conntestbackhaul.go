@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"net/netip"
 	"os"
@@ -17,44 +16,23 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/backpack/backpack/config"
 	"github.com/backpack/backpack/internal/backhaulpremium"
+	"github.com/backpack/backpack/internal/nativebackhaul"
 )
 
-const ctBackhaulPrefix = backhaulpremium.Prefix
-
-func (c *connTestCase) exclusiveBackhaulIPX() bool {
-	return strings.HasPrefix(c.tr, ctBackhaulPrefix+"tun-ipx-")
-}
+const ctBackhaulPrefix = "native-"
 
 func ctBackhaulCases() []*connTestCase {
 	var cases []*connTestCase
-	for _, item := range backhaulpremium.Options() {
-		if item.Value == "tun-ipx" {
-			for _, profile := range backhaulpremium.Profiles() {
-				cases = append(cases, &connTestCase{kind: item.Direction, tr: ctBackhaulPrefix + item.Value + "-" + profile, extra: true})
-			}
-			continue
-		}
+	for _, item := range nativebackhaul.Options() {
 		cases = append(cases, &connTestCase{kind: item.Direction, tr: ctBackhaulPrefix + item.Value, extra: true})
 	}
 	return cases
 }
 
-func ctBackhaulMode(tr string) (string, string) {
-	mode := strings.TrimPrefix(tr, ctBackhaulPrefix)
-	if profile, ok := strings.CutPrefix(mode, "tun-ipx-"); ok {
-		return "tun-ipx", profile
-	}
-	return mode, ""
-}
-
 func ctBackhaulLabel(tr string) string {
-	mode, profile := ctBackhaulMode(tr)
-	item, ok := backhaulpremium.Find(mode)
+	item, ok := backhaulpremium.Find(strings.TrimPrefix(tr, ctBackhaulPrefix))
 	if !ok {
 		return tr
-	}
-	if profile != "" {
-		return item.Label + " / " + strings.ToUpper(profile)
 	}
 	return item.Label
 }
@@ -83,10 +61,7 @@ func ctBackhaulPair(name string) (string, string) {
 }
 
 func (p *ctHelperProcess) startBackhaul(ctx context.Context, name string, c config.BackhaulConfig) error {
-	if err := backhaulpremium.Validate(c); err != nil {
-		return err
-	}
-	if err := backhaulpremium.Ensure(ctx); err != nil {
+	if err := nativebackhaul.Validate(c); err != nil {
 		return err
 	}
 	var doc bytes.Buffer
@@ -98,33 +73,26 @@ func (p *ctHelperProcess) startBackhaul(ctx context.Context, name string, c conf
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	p.label, p.secret = "Backhaul", c.Token
+	p.label, p.secret = "BackPack", c.Token
 	var err error
 	p.engine, err = startCTEngine(p.dir, name, doc.String())
 	return err
 }
 
 func (s *ConnTestIran) setupBackhaul(ctx context.Context, c *connTestCase, tr string) error {
-	mode, profile := ctBackhaulMode(tr)
+	mode := strings.TrimPrefix(tr, ctBackhaulPrefix)
 	tun := backhaulpremium.IsTUN(mode)
 	token, err := backhaulToken()
 	if err != nil {
 		return err
 	}
-	cfg := config.BackhaulConfig{Role: "server", Mode: mode, IranHost: s.link.Host, Token: token, IPXProfile: profile}
+	cfg := config.BackhaulConfig{Native: true, Role: "server", Mode: mode, IranHost: s.link.Host, Token: token}
 	s.mu.Lock()
-	if mode != "tun-ipx" {
-		cfg.Port = uint16(ctPickPort(s.helperPorts, true))
-	}
-	if tun {
-		cfg.HealthPort = uint16(ctPickPort(s.helperPorts, true))
-	} else {
+	cfg.Port = uint16(ctPickPort(s.helperPorts, true))
+	if !tun {
 		c.entry = ctPickPort(s.helperPorts, false)
 	}
 	s.mu.Unlock()
-	if mode == "tun-ipx" {
-		cfg.KharejIP = ctIPv4Context(ctx, s.Kharej())
-	}
 	if tun {
 		cfg.IranTunnel, cfg.KharejTunnel = ctBackhaulPair(c.name)
 		if err := backhaulTUNAvailable(cfg.IranTunnel); err != nil {
@@ -166,11 +134,11 @@ func (w *ctExtraInstance) joinBackhaul(ctx context.Context, link ConnTestLink, j
 		return errors.New("invalid Backhaul test setup")
 	}
 	c := peer.Side
-	mode, profile := ctBackhaulMode(job.Mode)
-	if c.Role != "client" || c.Mode != mode || c.IPXProfile != profile || c.IranHost != link.Host || len(c.Ports) != 0 {
+	mode := strings.TrimPrefix(job.Mode, ctBackhaulPrefix)
+	if !c.Native || c.Role != "client" || c.Mode != mode || c.IranHost != link.Host || len(c.Ports) != 0 {
 		return errors.New("unexpected Backhaul test configuration")
 	}
-	if err := backhaulpremium.Validate(c); err != nil {
+	if err := nativebackhaul.Validate(c); err != nil {
 		return err
 	}
 	if backhaulpremium.IsTUN(mode) {
@@ -209,7 +177,7 @@ func (w *ctExtraInstance) joinBackhaul(ctx context.Context, link ConnTestLink, j
 		}
 		ctSleep(echoCtx, 250*time.Millisecond)
 	}
-	return errors.New("Backhaul did not bring up the Kharej TUN interface")
+	return errors.New("BackPack did not bring up the Kharej TUN interface")
 }
 
 func ctBackhaulStartupCheck(ctx context.Context, process *ctHelperProcess) error {
@@ -222,18 +190,4 @@ func ctBackhaulStartupCheck(ctx context.Context, process *ctHelperProcess) error
 		ctSleep(window, 200*time.Millisecond)
 	}
 	return ctx.Err()
-}
-
-func backhaulHelperLicenseProblem(path string) string {
-	file, err := os.Open(path)
-	if err != nil {
-		return ""
-	}
-	defer file.Close()
-	const limit = 4096
-	if st, err := file.Stat(); err == nil && st.Size() > limit {
-		_, _ = file.Seek(-limit, io.SeekEnd)
-	}
-	tail, _ := io.ReadAll(io.LimitReader(file, limit))
-	return backhaulpremium.LicenseProblem(string(tail))
 }

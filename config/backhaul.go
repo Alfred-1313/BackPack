@@ -1,7 +1,9 @@
 package config
 
-// BackhaulConfig describes one end of a Backhaul Premium tunnel.
+// BackhaulConfig describes one end of a native or legacy Backhaul-derived tunnel.
 type BackhaulConfig struct {
+	// Native selects the built-in BackPack implementation.
+	Native bool `toml:"native,omitempty"`
 	// Role selects the Iran server or the Kharej client.
 	Role string `toml:"role"`
 	// Mode selects XTcpMux, XWsMux, TUN over TCP or TUN over IPX.

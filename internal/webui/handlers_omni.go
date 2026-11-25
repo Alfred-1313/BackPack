@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/backpack/backpack/internal/backhaulpremium"
 	"github.com/backpack/backpack/internal/daggerconnect"
 	"github.com/backpack/backpack/internal/manage"
+	"github.com/backpack/backpack/internal/nativebackhaul"
 	"github.com/backpack/backpack/internal/omni"
 )
 
@@ -84,7 +84,7 @@ func (s *server) handleBackhaul(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	switch r.Method {
 	case http.MethodGet:
-		writeJSON(w, backhaulpremium.Options())
+		writeJSON(w, nativebackhaul.Options())
 	case http.MethodPost:
 		var form manage.BackhaulForm
 		if err := decodeJSON(w, r, &form); err != nil {

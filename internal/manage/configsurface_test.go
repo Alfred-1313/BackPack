@@ -40,6 +40,7 @@ var engineDirs = []string{
 	"../tunnel",
 	"../daggerconnect",
 	"../backhaulpremium",
+	"../nativebackhaul",
 	"../utils",
 	"../web",
 	"../socks",

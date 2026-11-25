@@ -113,8 +113,10 @@ func installHelperTunnel(ctx context.Context, name string, cfg any, ensure func(
 	if _, err := os.Lstat(app.ConfigPath(name)); !os.IsNotExist(err) {
 		return "", false, fmt.Errorf("a tunnel named %q already exists", name)
 	}
-	if err := ensure(ctx); err != nil {
-		return "", false, err
+	if ensure != nil {
+		if err := ensure(ctx); err != nil {
+			return "", false, err
+		}
 	}
 	if err := os.MkdirAll(app.ConfigDir, 0755); err != nil {
 		return "", false, err

@@ -7,6 +7,7 @@ import (
 	"github.com/backpack/backpack/config"
 	"github.com/backpack/backpack/internal/backhaulpremium"
 	"github.com/backpack/backpack/internal/daggerconnect"
+	"github.com/backpack/backpack/internal/nativebackhaul"
 	"github.com/backpack/backpack/internal/tunnel/l3"
 )
 
@@ -17,6 +18,9 @@ func checkEngine(cfg *config.Config) error {
 	if cfg.Backhaul.Present() {
 		if cfg.Dagger.Present() || cfg.Server.BindAddr != "" || cfg.Client.RemoteAddr != "" || cfg.L3.Enabled() || cfg.Direct.Present() {
 			return errors.New("[backhaul] must be the only tunnel in the file")
+		}
+		if cfg.Backhaul.Native {
+			return nativebackhaul.Validate(cfg.Backhaul)
 		}
 		return backhaulpremium.Validate(cfg.Backhaul)
 	}

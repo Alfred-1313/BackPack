@@ -81,11 +81,6 @@ type ctHelperProcess struct {
 }
 
 func (p *ctHelperProcess) startupFailure() (bool, string) {
-	if p.label == "Backhaul" {
-		if detail := backhaulHelperLicenseProblem(p.engine.log); detail != "" {
-			return true, "Backhaul license check: " + detail
-		}
-	}
 	exited, detail := p.engine.exited()
 	if !exited {
 		return false, ""

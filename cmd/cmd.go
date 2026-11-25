@@ -14,6 +14,7 @@ import (
 	"github.com/backpack/backpack/internal/backhaulpremium"
 	"github.com/backpack/backpack/internal/client"
 	"github.com/backpack/backpack/internal/daggerconnect"
+	"github.com/backpack/backpack/internal/nativebackhaul"
 
 	"github.com/backpack/backpack/internal/server"
 	"github.com/backpack/backpack/internal/utils"
@@ -107,6 +108,16 @@ func Run(configPath string, ctx context.Context) {
 	}
 
 	if cfg.Backhaul.Present() {
+		if cfg.Backhaul.Native {
+			stop := startMetrics(ctx, configPath, cfg.Backhaul.Mode, cfg.Backhaul.Role)
+			err := nativebackhaul.Run(ctx, tunnelNameFromPath(configPath), cfg.Backhaul, logger)
+			stop()
+			if err != nil {
+				logger.Errorf("native tunnel stopped: %v", err)
+				os.Exit(1)
+			}
+			return
+		}
 		if err := backhaulpremium.Run(ctx, tunnelNameFromPath(configPath), cfg.Backhaul); err != nil {
 			logger.Errorf("Backhaul stopped: %v", err)
 			if errors.Is(err, backhaulpremium.ErrLicenseRejected) {

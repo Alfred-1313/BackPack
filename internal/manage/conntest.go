@@ -698,11 +698,8 @@ func StartConnTestIran(o ConnTestOptions) (*ConnTestIran, string, error) {
 				c.skip = "needs root on both servers"
 			} else if _, ok := strings.CutPrefix(c.tr, ctDaggerPrefix); ok {
 				c.skip = s.daggerSkip(c.tr)
-			} else if ctFamily(host) != "IPv4" {
-				mode, _ := ctBackhaulMode(c.tr)
-				if !strings.HasPrefix(c.tr, ctBackhaulPrefix) || mode == "tun-ipx" {
-					c.skip = "this transport setup requires an IPv4 path"
-				}
+			} else if ctFamily(host) != "IPv4" && !strings.HasPrefix(c.tr, ctBackhaulPrefix) {
+				c.skip = "this transport setup requires an IPv4 path"
 			}
 			useExtraChannel = useExtraChannel || c.skip == ""
 			s.cases = append(s.cases, c)
@@ -1239,7 +1236,7 @@ func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResul
 		}
 		r.Phase, r.Detail = "speed", "measuring download and upload"
 		reportRow(i, r)
-		rebuildHelper := c.extra && (!parallelExtra || c.exclusiveBackhaulIPX())
+		rebuildHelper := c.extra && !parallelExtra
 		var speed ctSpeedResult
 		var err error
 		if rebuildHelper {
@@ -1316,7 +1313,7 @@ func (s *ConnTestIran) runStabilityStages(ctx context.Context, kharej string, wo
 		if kind == "direct" {
 			s.startDirectTestEngines(ctx, kharej)
 		}
-		var native, helpers, exclusive []int
+		var native, helpers []int
 		for i, c := range s.cases {
 			if c.kind != kind || rows[i].Status == ctSkipped {
 				continue
@@ -1328,11 +1325,7 @@ func (s *ConnTestIran) runStabilityStages(ctx context.Context, kharej string, wo
 				r.Status, r.Phase, r.Detail = ctSkipped, "", c.skip
 			} else if c.extra {
 				r.Phase, r.Detail = ctPhaseTransportQueued, "waiting for temporary tunnel setup"
-				if c.exclusiveBackhaulIPX() {
-					exclusive = append(exclusive, i)
-				} else {
-					helpers = append(helpers, i)
-				}
+				helpers = append(helpers, i)
 			} else {
 				r.Phase, r.Detail = "", ""
 				native = append(native, i)
@@ -1367,9 +1360,6 @@ func (s *ConnTestIran) runStabilityStages(ctx context.Context, kharej string, wo
 		}
 		s.probeStageExtras(ctx, helpers, workers, retainHelpers, report)
 		running.Wait()
-		// Each raw IPX core allocates packet queues and owns a host interface.
-		// Reuse one worker and tear it down before opening the next profile.
-		s.probeStageExtras(ctx, exclusive, 1, false, report)
 	}
 }
 

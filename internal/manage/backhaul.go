@@ -11,6 +11,7 @@ import (
 	"github.com/backpack/backpack/config"
 	"github.com/backpack/backpack/internal/backhaulpremium"
 	"github.com/backpack/backpack/internal/manage/core"
+	"github.com/backpack/backpack/internal/nativebackhaul"
 )
 
 type BackhaulForm struct {
@@ -50,15 +51,12 @@ func CreateBackhaul(ctx context.Context, f BackhaulForm) (BackhaulSetup, error) 
 		return BackhaulSetup{}, err
 	}
 	c := config.BackhaulConfig{
-		Role: "server", Mode: f.Mode, Port: f.Port, Token: token,
+		Native: true, Role: "server", Mode: f.Mode, Port: f.Port, Token: token,
 		IranHost: strings.Trim(strings.TrimSpace(f.IranHost), "[]"), KharejIP: strings.TrimSpace(f.KharejIP),
 		IranTunnel: strings.TrimSpace(f.IranTunnel), KharejTunnel: strings.TrimSpace(f.KharejTunnel),
 		IPXProfile: f.IPXProfile, Ports: strings.FieldsFunc(f.Ports, func(r rune) bool {
 			return r == ',' || r == '\n' || r == '\r' || r == ' ' || r == '\t'
 		}),
-	}
-	if backhaulpremium.IsTUN(c.Mode) {
-		c.HealthPort = uint16(ctPickPort(map[int]bool{int(c.Port): true}, true))
 	}
 	service, active, err := installBackhaul(ctx, f.Name, c)
 	if err != nil {
@@ -93,7 +91,12 @@ func installBackhaul(ctx context.Context, name string, c config.BackhaulConfig) 
 	if err := core.CheckName(name); err != nil {
 		return "", false, err
 	}
-	if err := backhaulpremium.Validate(c); err != nil {
+	validate := backhaulpremium.Validate
+	ensure := backhaulpremium.Ensure
+	if c.Native {
+		validate, ensure = nativebackhaul.Validate, nil
+	}
+	if err := validate(c); err != nil {
 		return "", false, err
 	}
 	if c.Mode == "tun-ipx" {
@@ -116,5 +119,5 @@ func installBackhaul(ctx context.Context, name string, c config.BackhaulConfig) 
 	}
 	return installHelperTunnel(ctx, name, struct {
 		Backhaul config.BackhaulConfig `toml:"backhaul"`
-	}{Backhaul: c}, backhaulpremium.Ensure)
+	}{Backhaul: c}, ensure)
 }

@@ -23,6 +23,7 @@ them both ends have to agree on. This says what exists.
 | `kharej_ip` | `string` | KharejIP is the Kharej IPv4 endpoint for IPX. |
 | `kharej_tunnel` | `string` | KharejTunnel is the IPv4/CIDR address inside the tunnel on Kharej. |
 | `mode` | `string` | Mode selects XTcpMux, XWsMux, TUN over TCP or TUN over IPX. |
+| `native` | `bool` | Native selects the built-in BackPack implementation. |
 | `port` | `uint16` | Port is the Iran listener port for TCP-based modes. |
 | `ports` | `[]string` | Ports holds optional TCP forwarding rules on Iran. |
 | `role` | `string` | Role selects the Iran server or the Kharej client. |

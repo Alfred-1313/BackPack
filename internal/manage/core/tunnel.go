@@ -72,6 +72,13 @@ func tunnelOf(name string, cfg config.Config) (Tunnel, bool) {
 	case cfg.Backhaul.Present():
 		c := cfg.Backhaul
 		t.Role, t.Transport, t.Ports = c.Role, "backhaul/"+c.Mode, c.Ports
+		if c.Native {
+			t.Transport = "native/" + c.Mode
+			if t.Role == "server" {
+				t.Addr = ":" + strconv.Itoa(int(c.Port))
+				break
+			}
+		}
 		t.Addr = net.JoinHostPort(c.IranHost, strconv.Itoa(int(c.Port)))
 		if c.Mode == "tun-ipx" {
 			t.Addr = c.KharejIP
