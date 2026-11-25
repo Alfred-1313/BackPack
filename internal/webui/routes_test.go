@@ -164,12 +164,15 @@ func routeSource(t *testing.T) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	src := string(data)
+	src := strings.ReplaceAll(string(data), "\r\n", "\n")
 	start := strings.Index(src, "func (s *server) routes() *http.ServeMux {")
 	if start < 0 {
 		t.Fatal("routes() is not in server.go")
 	}
 	end := strings.Index(src[start:], "\n}\n")
+	if end < 0 {
+		t.Fatal("routes() has no closing brace in server.go")
+	}
 	return src[start : start+end]
 }
 
