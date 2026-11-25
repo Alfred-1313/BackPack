@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/netip"
 	"os"
@@ -190,14 +191,7 @@ func (w *ctExtraInstance) joinBackhaul(ctx context.Context, link ConnTestLink, j
 		return err
 	}
 	if !backhaulpremium.IsTUN(mode) {
-		ctSleep(ctx, 3*time.Second)
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		if exited, detail := w.helper.startupFailure(); exited {
-			return errors.New(detail)
-		}
-		return nil
+		return ctBackhaulStartupCheck(ctx, w.helper)
 	}
 	far, _ := netip.ParsePrefix(c.KharejTunnel)
 	address := net.JoinHostPort(far.Addr().String(), fmt.Sprint(link.L3))
@@ -208,7 +202,7 @@ func (w *ctExtraInstance) joinBackhaul(ctx context.Context, link ConnTestLink, j
 			w.echo = &ctEchoes{}
 			w.echo.add(l)
 			go ctServeTCPEcho(l, w.echo)
-			return nil
+			return ctBackhaulStartupCheck(ctx, w.helper)
 		}
 		if exited, detail := w.helper.startupFailure(); exited {
 			return errors.New(detail)
@@ -216,4 +210,30 @@ func (w *ctExtraInstance) joinBackhaul(ctx context.Context, link ConnTestLink, j
 		ctSleep(echoCtx, 250*time.Millisecond)
 	}
 	return errors.New("Backhaul did not bring up the Kharej TUN interface")
+}
+
+func ctBackhaulStartupCheck(ctx context.Context, process *ctHelperProcess) error {
+	window, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	for window.Err() == nil {
+		if failed, detail := process.startupFailure(); failed {
+			return errors.New(detail)
+		}
+		ctSleep(window, 200*time.Millisecond)
+	}
+	return ctx.Err()
+}
+
+func backhaulHelperLicenseProblem(path string) string {
+	file, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer file.Close()
+	const limit = 4096
+	if st, err := file.Stat(); err == nil && st.Size() > limit {
+		_, _ = file.Seek(-limit, io.SeekEnd)
+	}
+	tail, _ := io.ReadAll(io.LimitReader(file, limit))
+	return backhaulpremium.LicenseProblem(string(tail))
 }

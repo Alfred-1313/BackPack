@@ -233,13 +233,7 @@ func (w *tokenRedactor) Write(p []byte) (int, error) {
 			w.failure = strings.TrimSpace(line)
 		}
 		if w.licenseFailure == "" && (strings.Contains(line, "ERROR") || strings.Contains(line, "FATAL")) {
-			lower := strings.ToLower(line)
-			switch {
-			case strings.Contains(lower, "license does not exist"):
-				w.licenseFailure = "License does not exist"
-			case strings.Contains(lower, "license rejected"):
-				w.licenseFailure = "License rejected"
-			}
+			w.licenseFailure = LicenseProblem(line)
 			if w.licenseFailure != "" {
 				w.reject()
 			}
@@ -247,4 +241,18 @@ func (w *tokenRedactor) Write(p []byte) (int, error) {
 	}
 	_, err := io.WriteString(os.Stderr, message)
 	return len(p), err
+}
+
+// LicenseProblem recognizes the messages emitted by the official engine.
+// Console output may include ANSI styles around those messages.
+func LicenseProblem(message string) string {
+	lower := strings.ToLower(message)
+	switch {
+	case strings.Contains(lower, "license does not exist"):
+		return "License does not exist"
+	case strings.Contains(lower, "license rejected"):
+		return "License rejected"
+	default:
+		return ""
+	}
 }
