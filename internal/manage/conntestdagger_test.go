@@ -6,6 +6,7 @@ import (
 
 	"github.com/backpack/backpack/config"
 	"github.com/backpack/backpack/internal/daggerconnect"
+	"github.com/backpack/backpack/internal/nativebackhaul"
 )
 
 func TestEveryDaggerPanelTransportHasAConnectionTest(t *testing.T) {
@@ -14,6 +15,19 @@ func TestEveryDaggerPanelTransportHasAConnectionTest(t *testing.T) {
 		if rows[c.tr] != nil {
 			t.Fatalf("duplicate transport test %q", c.tr)
 		}
+		rows[c.tr] = c
+	}
+	for _, option := range nativebackhaul.Options() {
+		c := rows[ctBackhaulPrefix+option.Value]
+		if c == nil || c.kind != option.Direction || ctBackhaulLabel(c.tr) != option.Label {
+			t.Errorf("%s has no matching Connection Test", option.Label)
+		}
+	}
+}
+
+func TestDaggerLegacyTestModes(t *testing.T) {
+	rows := map[string]*connTestCase{}
+	for _, c := range ctDaggerCases() {
 		rows[c.tr] = c
 	}
 	for _, option := range daggerconnect.Options() {

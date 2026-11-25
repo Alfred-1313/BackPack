@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/backpack/backpack/config"
 	"github.com/backpack/backpack/internal/app"
 	"github.com/backpack/backpack/internal/tunnel/l3"
 )
@@ -52,13 +53,7 @@ func SetupLinkFor(name, host string) (SetupLinkInfo, error) {
 		if cfg.Backhaul.Role != "server" {
 			return SetupLinkInfo{}, fmt.Errorf("open Setup link on Iran to get the Backhaul join command")
 		}
-		kind := "reverse"
-		if cfg.Backhaul.Mode == "tun-ipx" {
-			kind = "direct"
-		}
-		apply := backhaulJoinCommand(backhaulPeerToken(name, cfg.Backhaul))
-		return SetupLinkInfo{Name: name, For: "kharej", Kind: kind, Apply: apply,
-			Install: app.SourceInstallCommand() + " && " + apply, Where: "Kharej terminal"}, nil
+		return backhaulSetupLink(name, cfg.Backhaul), nil
 	}
 	if cfgErr == nil && cfg.Dagger.Present() {
 		if cfg.Dagger.Role != "server" {
@@ -92,19 +87,13 @@ func SetupLinkFor(name, host string) (SetupLinkInfo, error) {
 	if gre {
 		info.Host, info.NeedsAddress, info.GRE = l.Host, l.Host == "", true
 	}
-	if l.Kind == "direct" && l.Tr == l3.CarrierGRETAP {
+	if info.For == "iran" && l.Kind == "direct" && l.Tr == l3.CarrierGRETAP {
 		peer := MirrorForPeer(l)
-		if _, prefix, ok := strings.Cut(l.LocalIP, "/"); ok && peer.LocalIP != "" && !strings.Contains(peer.LocalIP, "/") {
-			peer.LocalIP += "/" + prefix
-		}
 		info.GRETAPPeer, info.Where = &peer, "Add a tunnel → Direct → GRETAP"
 		return info, nil
 	}
-	if l.Kind == "direct" && (l.Tr == l3.CarrierL2TPv3 || l.Tr == l3.CarrierEasyTier) {
+	if info.For == "iran" && l.Kind == "direct" && (l.Tr == l3.CarrierL2TPv3 || l.Tr == l3.CarrierEasyTier) {
 		peer := MirrorForPeer(l)
-		if _, prefix, ok := strings.Cut(l.LocalIP, "/"); ok && peer.LocalIP != "" && !strings.Contains(peer.LocalIP, "/") {
-			peer.LocalIP += "/" + prefix
-		}
 		info.PanelDirectPeer, info.Where = &peer, "Add a tunnel → Direct → "+carrierLabel(l.Tr)
 		return info, nil
 	}
@@ -122,4 +111,14 @@ func SetupLinkFor(name, host string) (SetupLinkInfo, error) {
 		info.Where = "sudo backpack → Manage → Set Up From A Link"
 	}
 	return info, nil
+}
+
+func backhaulSetupLink(name string, c config.BackhaulConfig) SetupLinkInfo {
+	kind := "reverse"
+	if c.Mode == "tun-ipx" {
+		kind = "direct"
+	}
+	apply := backhaulJoinCommand(backhaulPeerToken(name, c))
+	return SetupLinkInfo{Name: name, For: "kharej", Kind: kind, Apply: apply, Host: c.IranHost,
+		Install: app.SourceInstallCommand() + " && " + apply, Where: "Kharej terminal"}
 }

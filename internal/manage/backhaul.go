@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/backpack/backpack/config"
@@ -27,9 +28,10 @@ type BackhaulForm struct {
 }
 
 type BackhaulSetup struct {
-	Service string `json:"service"`
-	Active  bool   `json:"active"`
-	Apply   string `json:"apply"`
+	Service string        `json:"service"`
+	Active  bool          `json:"active"`
+	Apply   string        `json:"apply"`
+	Setup   SetupLinkInfo `json:"setup"`
 }
 
 type backhaulLink struct {
@@ -46,23 +48,46 @@ func backhaulToken() (string, error) {
 }
 
 func CreateBackhaul(ctx context.Context, f BackhaulForm) (BackhaulSetup, error) {
+	host := strings.Trim(strings.TrimSpace(f.IranHost), "[]")
+	if host == "" {
+		host = linkHost()
+	}
+	if host == "" {
+		if ip := PublicIPv6(); ip != "-" {
+			host = ip
+		}
+	}
+	if host == "" {
+		return BackhaulSetup{}, errors.New("could not detect the Iran address; enter an Iran IP or hostname")
+	}
 	token, err := backhaulToken()
 	if err != nil {
 		return BackhaulSetup{}, err
 	}
 	c := config.BackhaulConfig{
 		Native: true, Role: "server", Mode: f.Mode, Port: f.Port, Token: token,
-		IranHost: strings.Trim(strings.TrimSpace(f.IranHost), "[]"), KharejIP: strings.TrimSpace(f.KharejIP),
+		IranHost: host, KharejIP: strings.TrimSpace(f.KharejIP),
 		IranTunnel: strings.TrimSpace(f.IranTunnel), KharejTunnel: strings.TrimSpace(f.KharejTunnel),
 		IPXProfile: f.IPXProfile, Ports: strings.FieldsFunc(f.Ports, func(r rune) bool {
 			return r == ',' || r == '\n' || r == '\r' || r == ' ' || r == '\t'
 		}),
 	}
+	if c.Mode == "tun-tcp" && c.IranTunnel == "" && c.KharejTunnel == "" {
+		for i := range 16 {
+			// Draw a fresh /30 for each attempt. Active interfaces are also
+			// checked on the peer before applying its setup command.
+			c.IranTunnel, c.KharejTunnel = ctBackhaulPair(f.Name + token + fmt.Sprint(i))
+			if backhaulTUNAvailable(c.IranTunnel) == nil {
+				break
+			}
+		}
+	}
 	service, active, err := installBackhaul(ctx, f.Name, c)
 	if err != nil {
 		return BackhaulSetup{}, err
 	}
-	return BackhaulSetup{Service: service, Active: active, Apply: backhaulJoinCommand(backhaulPeerToken(f.Name, c))}, nil
+	setup := backhaulSetupLink(f.Name, c)
+	return BackhaulSetup{Service: service, Active: active, Apply: setup.Apply, Setup: setup}, nil
 }
 
 func backhaulPeerToken(name string, c config.BackhaulConfig) string {

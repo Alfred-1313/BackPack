@@ -47,7 +47,6 @@ func ctExtraCases() []*connTestCase {
 		cases = append(cases, &connTestCase{kind: mode["direction"], tr: ctOmniPrefix + mode["value"], extra: true})
 	}
 	cases = append(cases, &connTestCase{kind: "direct", tr: ctGostDirect, extra: true})
-	cases = append(cases, ctDaggerCases()...)
 	return append(cases, ctBackhaulCases()...)
 }
 

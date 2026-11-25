@@ -475,7 +475,7 @@ func MirrorForPeer(l ShareLink) PeerForm {
 		// The private network's two addresses swap: the producer's local is the
 		// receiver's peer.
 		f.LocalIP, f.PeerIP = l.PeerIP, hostOf(l.LocalIP)
-		if l.Tr == l3.CarrierL2TPv3 || l.Tr == l3.CarrierEasyTier {
+		if l.Tr == l3.CarrierGRETAP || l.Tr == l3.CarrierL2TPv3 || l.Tr == l3.CarrierEasyTier {
 			if _, prefix, ok := strings.Cut(l.LocalIP, "/"); ok && f.LocalIP != "" && !strings.Contains(f.LocalIP, "/") {
 				f.LocalIP += "/" + prefix
 			}

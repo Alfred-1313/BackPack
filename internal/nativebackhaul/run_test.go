@@ -1,6 +1,7 @@
 package nativebackhaul
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"io"
@@ -14,8 +15,63 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+func TestNativeSplitHTTPAuthenticatesAndTransfersAcrossBothRequests(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	listener := listenTest(t)
+	mode := config.BackhaulConfig{Mode: "dagger-xhttp", Token: base64.StdEncoding.EncodeToString(make([]byte, 32))}
+	creds, err := linkTLS(mode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	sent := make(chan struct{})
+	go func() {
+		done <- serveSplitHTTP(ctx, listener, mode.Token, creds, func(c net.Conn) {
+			close(sent)
+			_, _ = io.Copy(c, c)
+		})
+	}()
+	addr := listener.Addr().String()
+	wrongKey := mode
+	wrongKey.Token = base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{1}, 32))
+	if conn, err := dialLane(ctx, wrongKey, addr, creds); err == nil {
+		conn.Close()
+		t.Fatal("accepted an invalid request proof")
+	}
+	conn, err := dialLane(ctx, mode, addr, creds)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	_ = conn.SetDeadline(time.Now().Add(2 * time.Second))
+	payload := bytes.Repeat([]byte("split-http transfer\n"), 4096)
+	writeErr := make(chan error, 1)
+	go func() {
+		_, err := conn.Write(payload)
+		writeErr <- err
+	}()
+	got := make([]byte, len(payload))
+	if _, err := io.ReadFull(conn, got); err != nil || !bytes.Equal(got, payload) {
+		t.Fatalf("incorrect echo: %v", err)
+	}
+	if err := <-writeErr; err != nil {
+		t.Fatal(err)
+	}
+	<-sent
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("Split HTTP listener did not stop")
+	}
+}
+
 func TestNativeBackhaulMuxReplacesOneLaneWithoutResettingOthers(t *testing.T) {
-	for _, mode := range []string{"xtcpmux", "xwsmux"} {
+	for _, mode := range []string{"xtcpmux", "xwsmux", "dagger-http", "dagger-https"} {
 		t.Run(mode, func(t *testing.T) {
 			target := listenTest(t)
 			relay := listenTest(t)

@@ -120,9 +120,6 @@ function startPane(v) {
     <label class="tl-f ct-field" id="ctManualField" ${pathMode === 'manual' ? '' : 'hidden'}><span>This server's address</span>
       <input id="ctHost" type="text" value="${esc(host)}" placeholder="IP or hostname · NAT/private addresses allowed" autocomplete="off" spellcheck="false"></label>
     <div class="tl-note">Detected public interface addresses are candidates. Kharej checks each selected path's reachability. You can choose another detected address or enter one manually.</div>
-    <label class="tl-f ct-field"><span>DaggerConnect license PSK (optional)</span>
-      <input id="ctDaggerLicense" type="password" maxlength="4096" autocomplete="off">
-      <small>Enter a license to test DaggerConnect on this pair of servers.</small></label>
     <div class="tl-f ct-field"><span>Preset</span>
       <div class="tl-seg" id="ctPreset">${PRESETS.map(p =>
         `<button type="button" data-p="${p.v}" class="${p.v === preset ? 'on' : ''}">
@@ -609,8 +606,7 @@ export function connTestView(ctx) {
       b.innerHTML = `${ICON.play}Starting…`;
       try {
         fresh = false; selectedPath = -1;
-        const daggerLicense = $('#ctDaggerLicense', view).value.trim();
-        paint(await api.connTestStart({ host, preset, path: pathMode, ipv4, ipv6, daggerLicense }));
+        paint(await api.connTestStart({ host, preset, path: pathMode, ipv4, ipv6 }));
         schedule();
       } catch (e) { oops(e); b.disabled = false; b.innerHTML = `${ICON.play}Start the test`; }
       return;

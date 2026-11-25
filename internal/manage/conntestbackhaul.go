@@ -30,7 +30,7 @@ func ctBackhaulCases() []*connTestCase {
 }
 
 func ctBackhaulLabel(tr string) string {
-	item, ok := backhaulpremium.Find(strings.TrimPrefix(tr, ctBackhaulPrefix))
+	item, ok := nativebackhaul.Find(strings.TrimPrefix(tr, ctBackhaulPrefix))
 	if !ok {
 		return tr
 	}
@@ -102,7 +102,7 @@ func (s *ConnTestIran) setupBackhaul(ctx context.Context, c *connTestCase, tr st
 		c.peerIP = far.Addr().String()
 	} else {
 		if c.entry == 0 {
-			return errors.New("no free Backhaul forwarding port")
+			return errors.New("no free tunnel forwarding port")
 		}
 		cfg.Ports = []string{fmt.Sprintf("127.0.0.1:%d=127.0.0.1:%d", c.entry, s.link.TCP)}
 	}

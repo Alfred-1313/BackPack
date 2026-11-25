@@ -66,17 +66,35 @@ func Options() []backhaulpremium.Option {
 		{Value: "xtcpmux", Label: "XTcpMux", Direction: "reverse"},
 		{Value: "xwsmux", Label: "XWsMux", Direction: "reverse"},
 		{Value: "tun-tcp", Label: "TUN / TCP", Direction: "reverse"},
+		{Value: "dagger-http", Label: "HTTP Upgrade", Direction: "reverse"},
+		{Value: "dagger-https", Label: "HTTPS Upgrade", Direction: "reverse"},
+		{Value: "dagger-xhttp", Label: "Split HTTP", Direction: "reverse"},
 	}
 }
 
+func Find(mode string) (backhaulpremium.Option, bool) {
+	for _, option := range Options() {
+		if mode == option.Value {
+			return option, true
+		}
+	}
+	return backhaulpremium.Option{}, false
+}
+
 func Validate(c config.BackhaulConfig) error {
-	if c.Mode != "xtcpmux" && c.Mode != "xwsmux" && c.Mode != "tun-tcp" {
+	if _, ok := Find(c.Mode); !ok {
 		return errors.New("unknown native BackPack tunnel mode")
 	}
+	// Validate the shared reverse-tunnel settings in the same way for every
+	// stream transport. The TUN-specific fields are checked only for TUN.
+	common := c
+	if c.Mode != "tun-tcp" {
+		common.Mode = "xtcpmux"
+	}
 	if c.HealthPort == 0 {
-		c.HealthPort = 1
+		common.HealthPort = 1
 	} // native TUN has no separate health listener
-	if err := backhaulpremium.Validate(c); err != nil {
+	if err := backhaulpremium.Validate(common); err != nil {
 		return err
 	}
 	raw, err := base64.StdEncoding.DecodeString(c.Token)
@@ -99,6 +117,9 @@ func listenLanes(ctx context.Context, c config.BackhaulConfig, addr string, t *t
 	stop := context.AfterFunc(ctx, func() { listener.Close() })
 	defer stop()
 	defer listener.Close()
+	if c.Mode == "dagger-xhttp" {
+		return serveSplitHTTP(ctx, listener, c.Token, t, handle)
+	}
 	if c.Mode == "xwsmux" {
 		upgrader := websocket.Upgrader{HandshakeTimeout: linkTimeout}
 		server := http.Server{TLSConfig: t, ReadHeaderTimeout: linkTimeout, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -132,16 +153,15 @@ func listenLanes(ctx context.Context, c config.BackhaulConfig, addr string, t *t
 		select {
 		case slots <- struct{}{}:
 			go func() {
-				tconn := tls.Server(conn, t)
 				hctx, cancel := context.WithTimeout(ctx, linkTimeout)
-				err := tconn.HandshakeContext(hctx)
+				lane, err := admitLane(hctx, c.Mode, conn, t)
 				cancel()
 				<-slots
 				if err != nil {
 					conn.Close()
 					return
 				}
-				handle(tconn)
+				handle(lane)
 			}()
 		default:
 			conn.Close()
@@ -151,6 +171,12 @@ func listenLanes(ctx context.Context, c config.BackhaulConfig, addr string, t *t
 
 func dialLane(ctx context.Context, c config.BackhaulConfig, addr string, t *tls.Config) (net.Conn, error) {
 	dial := &net.Dialer{Timeout: linkTimeout, KeepAlive: 15 * time.Second}
+	switch c.Mode {
+	case "dagger-xhttp":
+		return dialSplitHTTP(ctx, dial, addr, c.Token, t)
+	case "dagger-http", "dagger-https":
+		return dialUpgrade(ctx, dial, c.Mode, addr, t)
+	}
 	if c.Mode != "xwsmux" {
 		td := tls.Dialer{NetDialer: dial, Config: t}
 		return td.DialContext(ctx, "tcp", addr)

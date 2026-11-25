@@ -28,9 +28,8 @@ export function addView(ctx) {
       let opts = { families: [], presets: [] };
       try { opts = await api.tunnelOptions(); } catch (e) { oops(e); }
 
-      const [omniChoices, daggerChoices, backhaulChoices] = await Promise.all([
+      const [omniChoices, backhaulChoices] = await Promise.all([
         api.omniOptions().catch(e => { oops(e); return []; }),
-        api.daggerOptions().catch(() => []),
         api.backhaulOptions().catch(e => { oops(e); return []; }),
       ]);
       let mountExtras;
@@ -1114,8 +1113,6 @@ export function addView(ctx) {
       stageSingle();
       mountExtras = bindExtraTransports(root, [
         ...omniChoices,
-        ...daggerChoices.map(item => ({ direction: 'reverse', ...item, value: 'dagger-' + item.value,
-          daggerTransport: item.value })),
         ...backhaulChoices.map(item => ({ ...item, value: 'native-' + item.value,
           backhaulTransport: item.value })),
       ]);

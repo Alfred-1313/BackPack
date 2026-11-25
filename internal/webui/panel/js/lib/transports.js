@@ -9,6 +9,7 @@ const sources = new Map([
 ]);
 
 export function transportDisplay(id, label) {
+  if (id?.startsWith('native-dagger-')) return { name: label, source: 'Dagger' };
   if (id?.startsWith('native-')) return { name: label, source: 'BackPack' };
   if (id?.startsWith('backhaul-')) return { name: label, source: 'Backhaul' };
   if (id?.startsWith('dagger-')) {
