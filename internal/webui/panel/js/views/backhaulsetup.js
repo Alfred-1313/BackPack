@@ -3,17 +3,12 @@ import { copyText, flashCopied } from '../lib/dom.js';
 
 export function showBackhaulSetup(panel, mode, label) {
   const form = document.createElement('form');
-  const tun = mode === 'tun-tcp' || mode === 'tun-ipx';
-  const ipx = mode === 'tun-ipx';
+  const tun = mode === 'tun-tcp';
   form.innerHTML = `<h3></h3>
     <label>Tunnel name<input name="name" required maxlength="40" autocomplete="off"></label>
-    <label>${ipx ? 'Iran IPv4' : 'Iran address for Kharej to dial'}<input name="iranHost" required autocomplete="off"></label>
-    ${ipx ? `<label>Kharej IPv4<input name="kharejIP" required autocomplete="off"></label>
-      <label>IPX profile<select name="ipxProfile">
-        <option value="tcp">TCP</option><option value="udp">UDP</option><option value="icmp">ICMP</option>
-        <option value="gre">GRE</option><option value="ipip">IP-in-IP</option><option value="bip">BIP</option>
-      </select></label>` : `<label>Tunnel port on Iran
-        <input name="port" type="number" min="1" max="65535" required value="8443"></label>`}
+    <label>Iran address for Kharej to dial<input name="iranHost" required autocomplete="off"></label>
+    <label>Tunnel port on Iran
+      <input name="port" type="number" min="1" max="65535" required value="8443"></label>
     ${tun ? `<label>Iran tunnel IPv4/CIDR<input name="iranTunnel" required placeholder="10.43.0.1/30"></label>
       <label>Kharej tunnel IPv4/CIDR<input name="kharejTunnel" required placeholder="10.43.0.2/30"></label>` : ''}
     <label>Forwarded TCP ports (optional)<input name="ports" autocomplete="off" placeholder="443, 2053=8443"></label>
@@ -35,13 +30,13 @@ export function showBackhaulSetup(panel, mode, label) {
     if (body.port) body.port = Number(body.port);
     submit.disabled = true;
     copy.hidden = true;
-    result.textContent = 'Creating the Backhaul tunnel on Iran?';
+    result.textContent = 'Creating the native tunnel on Iran?';
     try {
       const response = await api.backhaulCreate(body);
       command = response.apply;
       result.textContent = response.active
         ? 'Run the Setup command on Kharej. It contains this tunnel?s private token.'
-        : 'The tunnel was configured. Check the Backhaul service log on Iran for startup status.';
+        : 'The tunnel was configured. Check the BackPack tunnel log on Iran for startup status.';
       copy.hidden = !command;
     } catch (err) {
       result.textContent = err.message;
