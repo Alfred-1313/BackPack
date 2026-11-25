@@ -89,7 +89,7 @@ export function addView(ctx) {
          put a key in the config that transport never reads. */
       const isMux = t => ['tcpmux', 'wsmux', 'wssmux', 'kcp', 'xdi', 'spoof', 'pck'].includes(t);
       const isKCP = t => ['kcp', 'xdi', 'spoof', 'pck'].includes(t);
-      const isManaged = t => ['naive', 'xhttp', 'reality', 'gost'].includes(t);
+      const isManaged = t => ['naive', 'anytls', 'xhttp', 'reality', 'gost'].includes(t);
       const needsTLS = t => ['wss', 'wssmux'].includes(t);
       /* Both taken from internal/manage/config.go, because the server refuses
          these combinations by name and a form that offers them is a form that
@@ -124,7 +124,7 @@ export function addView(ctx) {
         const hr = root.querySelector('#httpsRow');
         if (hr) {
           hr.hidden = !https;
-          hr.querySelector('code').textContent = t === 'gost' ? 'BP_HELPERS=gost' : 'BP_HELPERS=naive,xray';
+          hr.querySelector('code').textContent = t === 'gost' || t === 'anytls' ? 'BP_HELPERS=' + t : 'BP_HELPERS=naive,xray';
         }
         const cr = root.querySelector('#coverRow');
         if (cr) cr.hidden = !(https && t === 'reality');

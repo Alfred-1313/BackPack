@@ -32,6 +32,9 @@ func InstallCommand(link string) string {
 	// Managed transports need optional helpers on the peer. Print their
 	// installation instructions instead of the plain source install command.
 	if l, err := DecodeShareLink(link); err == nil && managedTransport(l.Tr) {
+		if l.Tr == "anytls" {
+			return app.SourceInstallAnyTLSCommand(link)
+		}
 		return ""
 	}
 	return app.SourceInstallCommand("link", "apply", link)

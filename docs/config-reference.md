@@ -90,12 +90,13 @@ them both ends have to agree on. This says what exists.
 
 | Key | Type | Description |
 |---|---|---|
-| `binary` | `string` | Binary is the absolute path to the official NaiveProxy client binary; Backpack never downloads or replaces it. |
+| `binary` | `string` | Binary is the path to the official NaiveProxy client, or to sing-box for AnyTLS. |
 | `ca_file` | `string` | CAFile optionally trusts a PEM CA for this helper alone; empty uses the official client's normal certificate verification. |
 | `connections` | `int` | Connections is how many HTTP/2 connections the client spreads the tunnel's streams over (NaiveProxy's insecure-concurrency); 0 means DefaultNaiveConnections, 1 a single connection, as one browser tab opens. One connection carried at most ~120 Mbit/s up on a 70 ms path — one HTTP/2 flow-control window per round trip — and four carried four times that; on a lossy path each is its own TCP congestion window, so the gain is the same factor. More connections to one host is also something an observer can count. |
-| `password` | `string` | Password is the HTTP/2 proxy secret; keep the tunnel configuration readable only by its owner. |
-| `server` | `string` | Server is the HTTP/2 proxy's host:port, reached from the outside client toward the Iran server. |
-| `username` | `string` | Username authenticates the HTTP/2 proxy independently of the reverse tunnel token. |
+| `mode` | `string` | Mode selects AnyTLS when set to "anytls". Empty uses Naive over HTTP/2. |
+| `password` | `string` | Password authenticates the helper and is separate from the reverse tunnel token. |
+| `server` | `string` | Server is the TLS helper's host:port on Iran. |
+| `username` | `string` | Username authenticates the HTTP/2 proxy and is an account label for AnyTLS. |
 
 ## [client.xray]
 
@@ -247,9 +248,10 @@ them both ends have to agree on. This says what exists.
 | `binary` | `string` | Binary is the absolute path to the compatible sing-box server binary; the initial integration is tested with v1.14.2. |
 | `certificate` | `string` | Certificate is the absolute path to the PEM certificate chain. Renew externally; validated certificate/key replacements reload the tunnel automatically. |
 | `key` | `string` | Key is the absolute path to the certificate's PEM private key. |
-| `listen` | `string` | Listen is the public TCP host:port for HTTP/2, separate from the loopback server.bind_addr. |
+| `listen` | `string` | Listen is the public TLS helper host:port, separate from the loopback server.bind_addr. |
+| `mode` | `string` | Mode selects AnyTLS when set to "anytls". Empty uses Naive over HTTP/2. |
 | `password` | `string` | Password is the proxy account's secret, separate from server.token. |
-| `username` | `string` | Username is the proxy account accepted from the official Naive client. |
+| `username` | `string` | Username identifies the account on the TLS helper. |
 
 ## [server.xray]
 
@@ -338,4 +340,4 @@ them both ends have to agree on. This says what exists.
 
 ---
 
-*Generated from `config/` on 2026-11-24. Last verified against Backpack v2.0.0.*
+*Generated from `config/` on 2026-11-25. Last verified against Backpack v2.0.0.*

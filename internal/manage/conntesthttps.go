@@ -48,7 +48,8 @@ func ctProbeHTTPS(parent context.Context, spec TunnelSpec) string {
 			}
 			stopClose := context.AfterFunc(attempt, func() { conn.Close() })
 			cfg := &tls.Config{ServerName: serverName, RootCAs: roots, MinVersion: tls.VersionTLS12}
-			if !spec.GostClient.Enabled() {
+			requireH2 := !spec.GostClient.Enabled() && spec.NaiveClient.Mode != "anytls"
+			if requireH2 {
 				cfg.NextProtos = []string{"h2"}
 			}
 			client := tls.Client(conn, cfg)
@@ -57,7 +58,7 @@ func ctProbeHTTPS(parent context.Context, spec TunnelSpec) string {
 			stopClose()
 			stopAttempt()
 			if err == nil {
-				if spec.GostClient.Enabled() || client.ConnectionState().NegotiatedProtocol == "h2" {
+				if !requireH2 || client.ConnectionState().NegotiatedProtocol == "h2" {
 					return "tls-ok"
 				}
 				return result

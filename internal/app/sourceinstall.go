@@ -8,10 +8,15 @@ func SourceInstallCommand(args ...string) string {
 	return sourceInstall("", args)
 }
 
+// SourceInstallAnyTLSCommand equips a fresh Kharej server with sing-box.
+func SourceInstallAnyTLSCommand(link string) string {
+	return sourceInstall(" BP_HELPERS=anytls", []string{"link", "apply", link})
+}
+
 // SourceInstallTestCommand installs the optional transport helpers before
 // applying a paired Connection Test link.
 func SourceInstallTestCommand(link string) string {
-	return sourceInstall(" BP_HELPERS=omni,gost", []string{"link", "apply", link})
+	return sourceInstall(" BP_HELPERS=omni,gost,anytls", []string{"link", "apply", link})
 }
 
 func sourceInstall(helpers string, args []string) string {

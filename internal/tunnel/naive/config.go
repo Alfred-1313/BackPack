@@ -97,8 +97,11 @@ func ValidateClient(c *config.ClientConfig) error {
 	if !n.Enabled() {
 		return nil
 	}
+	if n.Mode != "" && n.Mode != "anytls" {
+		return errors.New("unsupported client.naive.mode")
+	}
 	if c.Transport != config.TCP || len(c.FallbackTransports) != 0 {
-		return errors.New("Naive currently supports only transport = tcp without transport fallbacks")
+		return errors.New("the TLS helper requires transport = tcp without transport fallbacks")
 	}
 	if c.Proxy != "" || c.LocalAddr != "" || c.Interface != "" || c.SOMark != 0 || len(c.FallbackAddrs) != 0 || c.HealthFailover || c.LoadBalance {
 		return errors.New("Naive cannot be combined with proxy, routing bindings or endpoint failover/balancing")
@@ -139,8 +142,11 @@ func ValidateServer(c *config.ServerConfig) error {
 	if !n.Enabled() {
 		return nil
 	}
+	if n.Mode != "" && n.Mode != "anytls" {
+		return errors.New("unsupported server.naive.mode")
+	}
 	if c.ForwardsUDP() {
-		return errors.New("the initial Naive integration forwards TCP only")
+		return errors.New("the TLS helper forwards TCP only")
 	}
 	if c.Transport != config.TCP || len(c.FallbackTransports) != 0 {
 		return errors.New("Naive currently supports only transport = tcp without transport fallbacks")
@@ -214,9 +220,19 @@ func serverJSON(c *config.ServerConfig) ([]byte, error) {
 	if net.ParseIP(target).To4() == nil {
 		bits = "/128"
 	}
+	tlsFields := map[string]any{"enabled": true, "certificate": []string{string(certificate)}, "key": []string{string(key)}}
+	inbound := map[string]any{"type": "naive", "listen": host, "listen_port": port, "tls": tlsFields}
+	if n.Mode == "anytls" {
+		inbound["type"] = "anytls"
+		inbound["users"] = []any{map[string]any{"name": n.Username, "password": n.Password}}
+	} else {
+		inbound["users"] = []any{map[string]any{"username": n.Username, "password": n.Password}}
+		inbound["network"] = "tcp"
+		tlsFields["alpn"] = []string{"h2"}
+	}
 	return json.Marshal(map[string]any{
 		"log":       map[string]any{"level": "warn"},
-		"inbounds":  []any{map[string]any{"type": "naive", "listen": host, "listen_port": port, "network": "tcp", "users": []any{map[string]any{"username": n.Username, "password": n.Password}}, "tls": map[string]any{"enabled": true, "certificate": []string{string(certificate)}, "key": []string{string(key)}, "alpn": []string{"h2"}}}},
+		"inbounds":  []any{inbound},
 		"outbounds": []any{map[string]any{"type": "direct", "tag": "tunnel"}},
 		"route":     map[string]any{"rules": []any{map[string]any{"ip_cidr": []string{target + bits}, "port": []int{targetPort}, "network": "tcp", "action": "route", "outbound": "tunnel"}, map[string]any{"action": "reject"}}},
 	})

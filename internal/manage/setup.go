@@ -69,17 +69,21 @@ func cliTransportGroups() []transportGroup {
 			{"Naive / HTTP2", "HTTPS proxy — certificate or a private trust file", "naive"},
 			{"XHTTP / TLS", "HTTP/2 streaming — certificate or a private trust file", "xhttp"},
 			{"REALITY / Vision", "TLS cover endpoint — no local certificate required", "reality"},
+			{"AnyTLS", "TLS with a private trust certificate", "anytls"},
 		},
 	})
 }
 
 func managedTransport(value string) bool {
-	return value == "naive" || value == "xhttp" || value == "reality" || value == "gost"
+	return value == "naive" || value == "anytls" || value == "xhttp" || value == "reality" || value == "gost"
 }
 
 func selectedTransport(s TunnelSpec) string {
 	if s.GostServer.Enabled() || s.GostClient.Enabled() {
 		return "gost"
+	}
+	if s.NaiveServer.Mode == "anytls" || s.NaiveClient.Mode == "anytls" {
+		return "anytls"
 	}
 	if s.NaiveServer.Enabled() || s.NaiveClient.Enabled() {
 		return "naive"
@@ -288,13 +292,18 @@ func setupManagedCarrierWithProbe(s *TunnelSpec, chosen, public, host string, pr
 		if !configureReality(&n, *s, public, probe) {
 			return false
 		}
-	} else if chosen == "naive" {
+	} else if chosen == "naive" || chosen == "anytls" {
+		mode, tool, label := "", "naive", "Naive"
+		if chosen == "anytls" {
+			mode, tool, label = "anytls", "sing-box", "AnyTLS"
+		}
 		if n.Role == "server" {
 			x := s.NaiveServer
+			x.Mode = mode
 			x.Binary = tui.PromptDefault("Sing-Box Binary", defaultString(x.Binary, managedHelperPath("sing-box")))
 			x.Listen = public
-			x.Username = tui.PromptDefault("Naive Username (Same On Kharej)", defaultString(x.Username, "backpack"))
-			x.Password = managedSecret("Naive Password (Same On Kharej)", x.Password, randomToken(32))
+			x.Username = tui.PromptDefault(label+" Username (Same On Kharej)", defaultString(x.Username, "backpack"))
+			x.Password = managedSecret(label+" Password (Same On Kharej)", x.Password, randomToken(32))
 			var ok bool
 			x.Certificate, x.Key, ok = managedCertificate(n, host, x.Certificate, x.Key)
 			if !ok {
@@ -303,10 +312,14 @@ func setupManagedCarrierWithProbe(s *TunnelSpec, chosen, public, host string, pr
 			n.NaiveServer = x
 		} else {
 			x := s.NaiveClient
-			x.Binary = tui.PromptDefault("NaiveProxy Binary", defaultString(x.Binary, managedHelperPath("naive")))
+			if x.Mode != mode {
+				x.Binary = ""
+			}
+			x.Mode = mode
+			x.Binary = tui.PromptDefault(label+" Client Binary", defaultString(x.Binary, managedHelperPath(tool)))
 			x.Server = public
-			x.Username = tui.PromptDefault("Naive Username (From Iran)", defaultString(x.Username, "backpack"))
-			x.Password = managedSecret("Naive Password (From Iran)", x.Password, "")
+			x.Username = tui.PromptDefault(label+" Username (From Iran)", defaultString(x.Username, "backpack"))
+			x.Password = managedSecret(label+" Password (From Iran)", x.Password, "")
 			x.CAFile = tui.PromptDefault("CA File (Required For A Private Certificate; Empty For Public TLS)", x.CAFile)
 			n.NaiveClient = x
 		}

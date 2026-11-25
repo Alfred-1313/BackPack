@@ -77,7 +77,7 @@ const connTestKind = "test"
 // the direct ones when the operator names a source to forge (see
 // ConnTestOptions.SpoofSrc); pck, on either side, needs root on both servers.
 var (
-	connTestReverse = []string{"tcp", "tcpmux", "stealth", "pck", "ws", "wss", "wsmux", "wssmux", "kcp", "quic", "udp", "naive", "xhttp", "reality"}
+	connTestReverse = []string{"tcp", "tcpmux", "stealth", "pck", "ws", "wss", "wsmux", "wssmux", "kcp", "quic", "udp", "naive", "anytls", "xhttp", "reality"}
 	// The direct tunnel's carriers, all raw since v2.0.0 took udp and quic
 	// out, and kernel GRE — over IPv4 or IPv6, whichever the two servers
 	// reach each other on. Spoof joins them as above.
@@ -920,7 +920,7 @@ func ctFindRealityCover(ctx context.Context, targets []string, probe func(contex
 
 func (s *ConnTestIran) startManagedCase(c *connTestCase, used map[int]bool, o ConnTestOptions) {
 	tool := "xray"
-	if c.tr == "naive" {
+	if c.tr == "naive" || c.tr == "anytls" {
 		tool = "sing-box"
 	} else if c.tr == "gost" {
 		tool = "gost"
@@ -1000,9 +1000,12 @@ func (s *ConnTestIran) startManagedCase(c *connTestCase, used map[int]bool, o Co
 	case "gost":
 		spec.GostServer = config.GostServerConfig{Binary: binary, Listen: public,
 			Username: "backpack", Password: token, Certificate: cert, Key: key}
-	case "naive":
+	case "naive", "anytls":
 		spec.NaiveServer = config.NaiveServerConfig{Binary: binary, Listen: public,
 			Username: "backpack", Password: token, Certificate: cert, Key: key}
+		if c.tr == "anytls" {
+			spec.NaiveServer.Mode = c.tr
+		}
 	case "xhttp":
 		spec.XrayServer = config.XrayServerConfig{Binary: binary, Listen: public, Mode: c.tr,
 			UUID: ctUUID(token), ServerName: settings.ServerName, Path: "/" + token,
@@ -1045,6 +1048,8 @@ func ctManagedClient(ctx context.Context, link ConnTestLink, c ShareLink, dir st
 	tool := "xray"
 	if c.Tr == "naive" {
 		tool = "naive"
+	} else if c.Tr == "anytls" {
+		tool = "sing-box"
 	} else if c.Tr == "gost" {
 		tool = "gost"
 	}
@@ -1085,7 +1090,7 @@ func ctManagedClient(ctx context.Context, link ConnTestLink, c ShareLink, dir st
 			return TunnelSpec{}, err
 		}
 	}
-	if c.Tr == "naive" {
+	if c.Tr == "naive" || c.Tr == "anytls" {
 		spec.NaiveClient.Binary, spec.NaiveClient.CAFile = binary, ca
 	} else if c.Tr == "gost" {
 		spec.GostClient.Binary, spec.GostClient.CAFile = binary, ca

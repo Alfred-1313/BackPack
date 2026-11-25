@@ -85,6 +85,8 @@ func tunnelOf(name string, cfg config.Config) (Tunnel, bool) {
 		t.Ports = cfg.Server.Ports
 		if cfg.Server.Gost.Enabled() {
 			t.Transport, t.Addr = "gost", cfg.Server.Gost.Listen
+		} else if cfg.Server.Naive.Mode == "anytls" {
+			t.Transport, t.Addr = "anytls", cfg.Server.Naive.Listen
 		}
 	case cfg.Client.RemoteAddr != "":
 		t.Role = "client"
@@ -92,6 +94,8 @@ func tunnelOf(name string, cfg config.Config) (Tunnel, bool) {
 		t.Addr = cfg.Client.RemoteAddr
 		if cfg.Client.Gost.Enabled() {
 			t.Transport, t.Addr = "gost", cfg.Client.Gost.Server
+		} else if cfg.Client.Naive.Mode == "anytls" {
+			t.Transport, t.Addr = "anytls", cfg.Client.Naive.Server
 		}
 	// A direct tunnel is listed on the same terms as a reverse tunnel, so it
 	// can be started, stopped, watched and deleted from the same menu.

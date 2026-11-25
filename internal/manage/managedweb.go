@@ -89,7 +89,7 @@ func managedFromPanel(s *TunnelSpec, f managedForm, probe realitySetupProbe) err
 		n.GostServer.Binary, n.GostServer.Listen = binary, public
 		n.GostServer.Username, n.GostServer.Password = "backpack", randomToken(32)
 		n.GostServer.Certificate, n.GostServer.Key = cert, key
-	case "naive":
+	case "naive", "anytls":
 		binary, err := managedHelper("sing-box")
 		if err != nil {
 			return err
@@ -101,6 +101,9 @@ func managedFromPanel(s *TunnelSpec, f managedForm, probe realitySetupProbe) err
 		n.NaiveServer.Binary, n.NaiveServer.Listen = binary, public
 		n.NaiveServer.Username, n.NaiveServer.Password = "backpack", randomToken(32)
 		n.NaiveServer.Certificate, n.NaiveServer.Key = cert, key
+		if f.chosen == "anytls" {
+			n.NaiveServer.Mode = f.chosen
+		}
 	case "xhttp":
 		binary, err := managedHelper("xray")
 		if err != nil {
@@ -224,6 +227,9 @@ func managedHelper(tool string) (string, error) {
 func helperMissing(tool, path string) error {
 	if tool == "gost" {
 		return fmt.Errorf("GOST is required at %s; install it with BP_HELPERS=gost bash install.sh", path)
+	}
+	if tool == "sing-box" {
+		return fmt.Errorf("sing-box is required at %s; install it with BP_HELPERS=anytls bash install.sh", path)
 	}
 	return fmt.Errorf("the %s helper is not installed at %s — install it with BP_HELPERS=naive,xray bash install.sh", tool, path)
 }

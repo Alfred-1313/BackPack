@@ -32,7 +32,7 @@ var ctTransportNames = map[string]string{
 	"tcp": "TCP", "tcpmux": "TCP MUX", "stealth": "Stealth", "pck": "PCK",
 	"ws": "WS", "wss": "WSS", "wsmux": "WS MUX", "wssmux": "WSS MUX",
 	"kcp": "KCP FEC", "quic": "QUIC", "udp": "UDP", "xdi": "xDi", ctXdiFEC: "xDi + FEC", "sni": "SNI", "gre": "GRE",
-	"naive": "Naive / HTTP2", "xhttp": "XHTTP / TLS", "reality": "REALITY / Vision", "gost": "GOST v3",
+	"naive": "Naive / HTTP2", "anytls": "AnyTLS", "xhttp": "XHTTP / TLS", "reality": "REALITY / Vision", "gost": "GOST v3",
 	ctSpoofToKharej: "Iran→Kharej", ctSpoofToIran: "Kharej→Iran",
 }
 

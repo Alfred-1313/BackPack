@@ -41,19 +41,25 @@ func StartClient(ctx context.Context, c *config.ClientConfig, log *logrus.Logger
 		return nil, err
 	}
 	addr := l.Addr().String()
-	body, err := clientJSON(c.Naive, addr)
+	defer l.Close()
+	mode := "client"
+	var body []byte
+	if c.Naive.Mode == "anytls" {
+		mode = "anytls-client"
+		body, err = anyTLSClientJSON(c, addr)
+	} else {
+		body, err = clientJSON(c.Naive, addr)
+	}
 	if err != nil {
-		l.Close()
 		return nil, err
 	}
 	// Reserve the selected port while writing the configuration. The official
 	// client cannot adopt a listener; release it immediately before spawning.
-	defer l.Close()
 	env := os.Environ()
-	if c.Naive.CAFile != "" {
+	if c.Naive.CAFile != "" && mode == "client" {
 		env = replaceEnv(env, "SSL_CERT_FILE", c.Naive.CAFile)
 	}
-	return startManaged(ctx, c.Naive.Binary, "client", body, addr, env, log, l.Close)
+	return startManaged(ctx, c.Naive.Binary, mode, body, addr, env, log, l.Close)
 }
 
 func StartServer(ctx context.Context, c *config.ServerConfig, log *logrus.Logger) (*Helper, error) {
@@ -71,7 +77,11 @@ func StartServer(ctx context.Context, c *config.ServerConfig, log *logrus.Logger
 		return nil, fmt.Errorf("reserve Naive server listener: %w", err)
 	}
 	defer l.Close()
-	return startManaged(ctx, c.Naive.Binary, "server", body, c.Naive.Listen, os.Environ(), log, l.Close)
+	mode := "server"
+	if c.Naive.Mode == "anytls" {
+		mode = "anytls-server"
+	}
+	return startManaged(ctx, c.Naive.Binary, mode, body, c.Naive.Listen, os.Environ(), log, l.Close)
 }
 
 func StartXrayClient(ctx context.Context, c *config.ClientConfig, log *logrus.Logger) (*Helper, error) {
@@ -113,6 +123,9 @@ func helperLabel(mode string) string {
 	}
 	if strings.HasPrefix(mode, "xray-") {
 		return "Xray"
+	}
+	if strings.HasPrefix(mode, "anytls-") {
+		return "AnyTLS"
 	}
 	return "Naive"
 }
@@ -175,7 +188,7 @@ func startManagedWithConfig(parent context.Context, binary, mode, addr string, e
 	ctx, cancel := context.WithCancel(parent)
 	output := helperOutput(ctx)
 	h := &Helper{cancel: cancel, done: make(chan struct{}), addr: addr, dir: dir}
-	if mode == "server" || strings.HasPrefix(mode, "xray-") {
+	if mode == "server" || label == "AnyTLS" || label == "Xray" {
 		checkCtx, stop := context.WithTimeout(ctx, 10*time.Second)
 		args := []string{"check", "-c", file}
 		if label == "Xray" {
@@ -214,7 +227,7 @@ func startManagedWithConfig(parent context.Context, binary, mode, addr string, e
 		first := true
 		for ctx.Err() == nil {
 			args := []string{file}
-			if mode == "server" || label == "Xray" {
+			if mode == "server" || label == "AnyTLS" || label == "Xray" {
 				args = []string{"run", "-c", file}
 			}
 			if label == "GOST" {
@@ -321,7 +334,7 @@ func waitReady(ctx context.Context, addr, mode string, exited <-chan error) erro
 		conn, err := net.DialTimeout("tcp", addr, 100*time.Millisecond)
 		if err == nil {
 			_ = conn.SetDeadline(time.Now().Add(200 * time.Millisecond))
-			if mode == "client" || mode == "xray-client" || mode == "gost-client" {
+			if mode == "client" || strings.HasSuffix(mode, "-client") {
 				_, err = conn.Write([]byte{5, 1, 0})
 				if err == nil {
 					var reply [2]byte

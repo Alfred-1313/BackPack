@@ -770,6 +770,9 @@ func shareLinkOf(name, host string, cfg config.Config) (string, error) {
 		} else if cfg.Server.Naive.Enabled() {
 			x := cfg.Server.Naive
 			l.Tr, l.Port, l.HelperUser, l.HelperPassword = "naive", addrPort(x.Listen), x.Username, x.Password
+			if x.Mode == "anytls" {
+				l.Tr = x.Mode
+			}
 			cert = x.Certificate
 		} else {
 			x := cfg.Server.Xray
@@ -890,8 +893,12 @@ func managedClientFromLink(s *TunnelSpec, link ShareLink, host string) {
 	if link.Tr == "gost" {
 		s.GostClient = config.GostClientConfig{Binary: managedHelperPath("gost"), Server: public,
 			Username: link.HelperUser, Password: link.HelperPassword, CAFile: managedLinkCAPath(link.HelperCA)}
-	} else if link.Tr == "naive" {
-		s.NaiveClient = config.NaiveClientConfig{Binary: managedHelperPath("naive"), Server: public,
+	} else if link.Tr == "naive" || link.Tr == "anytls" {
+		mode, tool := "", "naive"
+		if link.Tr == "anytls" {
+			mode, tool = link.Tr, "sing-box"
+		}
+		s.NaiveClient = config.NaiveClientConfig{Mode: mode, Binary: managedHelperPath(tool), Server: public,
 			Username: link.HelperUser, Password: link.HelperPassword, CAFile: managedLinkCAPath(link.HelperCA)}
 	} else {
 		s.XrayClient = config.XrayClientConfig{Binary: managedHelperPath("xray"), Server: public,

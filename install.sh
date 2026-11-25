@@ -131,8 +131,8 @@ esac
 # Optional protocol helpers: pinned, isolated and installed only on request.
 helpers_validate() {
   [[ -z "${BP_HELPERS:-}" ]] && return 0
-  if ! [[ "$BP_HELPERS" =~ ^((naive|xray|gost|omni),)*(naive|xray|gost|omni)$ ]]; then
-    err 'BP_HELPERS accepts a comma-separated list of naive, xray, gost and omni'
+  if ! [[ "$BP_HELPERS" =~ ^((naive|xray|gost|omni|anytls),)*(naive|xray|gost|omni|anytls)$ ]]; then
+    err 'BP_HELPERS accepts a comma-separated list of naive, xray, gost, omni and anytls'
     return 2
   fi
   [[ "$(uname -s)" == Linux ]] || { err 'Optional helpers require Linux'; return 1; }
@@ -231,6 +231,8 @@ install_helpers() {
   [[ -n "${BP_HELPERS:-}" ]] || return 0
   if [[ "$BP_HELPERS" == *naive* ]]; then
     install_helper naive || return 1
+  fi
+  if [[ "$BP_HELPERS" == *naive* || "$BP_HELPERS" == *anytls* ]]; then
     install_helper sing-box || return 1
   fi
   [[ "$BP_HELPERS" != *xray* ]] || install_helper xray || return 1
