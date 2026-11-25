@@ -17,21 +17,21 @@ import (
 const CoreVersion = "v4.3.1"
 
 type Transport struct {
-	Value string `json:"value"`
-	Label string `json:"label"`
+	Value     string `json:"value"`
+	Label     string `json:"label"`
+	Direction string `json:"direction"`
 }
 
 func Options() []Transport {
 	return []Transport{
-		{"http", "Dagger HTTP"},
-		{"https", "Dagger HTTPS"},
-		{"xhttp", "Dagger XHTTP (cleartext)"},
-		{"quantum", "Quantum"},
-		{"quantum+", "Quantum+"},
-		{"quantum-gaming", "Quantum Gaming"},
-		{"nova", "Nova"},
-		{"dc6", "DC6"},
-		{"tun", "Dagger TUN"},
+		{"http", "Dagger HTTP", "reverse"},
+		{"https", "Dagger HTTPS", "reverse"},
+		{"xhttp", "Dagger XHTTP (cleartext)", "reverse"},
+		{"quantum", "Quantum", "reverse"},
+		{"quantum+", "Quantum+", "reverse"},
+		{"nova", "Nova", "reverse"},
+		{"dc6", "DC6", "reverse"},
+		{"tun", "Dagger TUN", "direct"},
 	}
 }
 
@@ -58,7 +58,7 @@ func parsePort(v string) (string, bool) {
 	return strconv.FormatUint(port, 10), err == nil && port > 0
 }
 
-func parseMaps(raw string) ([]portMap, error) {
+func parseMaps(raw, bindIP string) ([]portMap, error) {
 	maps := []portMap{}
 	seen := make(map[string]bool)
 	for _, field := range strings.FieldsFunc(raw, func(r rune) bool { return r == ',' || r == '\n' }) {
@@ -87,7 +87,7 @@ func parseMaps(raw string) ([]portMap, error) {
 			return nil, fmt.Errorf("forwarded port %s is listed twice", key)
 		}
 		seen[key] = true
-		maps = append(maps, portMap{kind, "0.0.0.0:" + bind, "127.0.0.1:" + target})
+		maps = append(maps, portMap{kind, net.JoinHostPort(bindIP, bind), "127.0.0.1:" + target})
 	}
 	return maps, nil
 }
@@ -104,7 +104,7 @@ func Build(name string, c config.DaggerConfig) ([]byte, error) {
 			break
 		}
 	}
-	if !known {
+	if !known && c.Flavor != "quantum-gaming" {
 		return nil, fmt.Errorf("unknown DaggerConnect transport")
 	}
 	if c.Port == 0 {
@@ -172,7 +172,11 @@ func Build(name string, c config.DaggerConfig) ([]byte, error) {
 	}
 
 	if server {
-		maps, err := parseMaps(c.Ports)
+		bindIP := "0.0.0.0"
+		if c.LoopbackOnly {
+			bindIP = "127.0.0.1"
+		}
+		maps, err := parseMaps(c.Ports, bindIP)
 		if err != nil {
 			return nil, err
 		}

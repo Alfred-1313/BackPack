@@ -34,6 +34,20 @@ go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 Coverage is measured with `-coverpkg` and has a floor that only goes up. If it
 drops, find out what stopped being exercised before lowering it.
 
+## Adding a transport
+
+Check whether an existing transport uses the same wire protocol, direction
+and forwarding behavior before adding another choice. A different name alone
+does not establish a new transport.
+
+Every new transport belongs in both the web panel's **Add a tunnel** and
+**Connection Test**. Verify that the panel builds Iran's configuration and
+generates a working Setup command for Kharej. Verify that Connection Test
+starts both temporary endpoints, sends and validates real echo traffic over
+the transport, reports the result and removes the temporary instances on
+completion or cancellation. If a prerequisite is missing, show why the test
+was skipped.
+
 ## Building with libpcap (the PCK carrier)
 
 The `pck` carrier is [paqet](https://github.com/hanselime/paqet)'s engine

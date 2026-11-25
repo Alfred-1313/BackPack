@@ -173,7 +173,7 @@ func rowOf(r manage.ConnTestResult) conntestRow {
 
 // start begins a test in the background and returns once the test tunnels are
 // up and the link exists, or they could not be started.
-func (c *conntestRunner) start(parent context.Context, hosts []string, preset string) error {
+func (c *conntestRunner) start(parent context.Context, hosts []string, preset, daggerLicense string) error {
 	ctx, cancel := context.WithCancel(parent)
 	c.mu.Lock()
 	if conntestBusy(c.v.State) {
@@ -186,6 +186,7 @@ func (c *conntestRunner) start(parent context.Context, hosts []string, preset st
 	c.mu.Unlock()
 	suite, link, err := manage.StartConnTestSuite(manage.ConnTestOptions{
 		Context: ctx, Preset: preset, Direct: os.Geteuid() == 0, ExtraTransports: true, SpoofSrc: manage.ConnTestSpoofSource,
+		DaggerLicense: daggerLicense,
 	}, hosts)
 	if err != nil {
 		stopped := c.finish(ctx, err.Error(), nil)
@@ -291,7 +292,12 @@ func (s *server) handleConnTest(w http.ResponseWriter, r *http.Request) {
 			if ctx == nil {
 				ctx = context.Background()
 			}
-			if err := s.conntest.start(ctx, hosts, preset); err != nil {
+			license := strings.TrimSpace(r.PostForm.Get("daggerLicense"))
+			if len(license) > 4096 || strings.ContainsAny(license, "\x00\r\n") {
+				http.Error(w, "invalid DaggerConnect license PSK", http.StatusBadRequest)
+				return
+			}
+			if err := s.conntest.start(ctx, hosts, preset, license); err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}

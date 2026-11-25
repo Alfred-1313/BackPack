@@ -37,6 +37,7 @@ them both ends have to agree on. This says what exists.
 | `kharej_ip` | `string` | KharejIP is the other endpoint's IPv4 for the TUN carrier. |
 | `kharej_tunnel_ip` | `string` | KharejTunnelIP is the Kharej endpoint's IPv4 inside the TUN transport. |
 | `license` | `string` | License is the DaggerConnect PSK issued for the two endpoints. |
+| `loopback_only` | `bool` | LoopbackOnly keeps temporary forwarded listeners private. |
 | `port` | `uint16` | Port is the DaggerConnect tunnel port. |
 | `ports` | `string` | Ports are comma-separated mappings, optionally prefixed by tcp: or udp:. |
 | `role` | `string` | Role is server on Iran and client on Kharej. |

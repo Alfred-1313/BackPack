@@ -18,6 +18,8 @@ type DaggerConfig struct {
 	License string `toml:"license"`
 	// Ports are comma-separated mappings, optionally prefixed by tcp: or udp:.
 	Ports string `toml:"ports"`
+	// LoopbackOnly keeps temporary forwarded listeners private.
+	LoopbackOnly bool `toml:"loopback_only,omitempty"`
 	// HTTPHost is the host name sent by the HTTP or HTTPS transport.
 	HTTPHost string `toml:"http_host"`
 	// HTTPPath is the path sent by the HTTP or HTTPS transport.

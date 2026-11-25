@@ -13,6 +13,13 @@ export function showDaggerSetup(panel, transport) {
     ${input('port', 'Tunnel port on Iran', number + ' required value="8443"')}
     ${input('license', 'DaggerConnect license PSK', 'type="password" required autocomplete="off"')}
     ${input('ports', 'Forwarded ports (optional)', 'placeholder="443, udp:2053=53"')}
+    ${transport === 'quantum' ? `
+      <label>Quantum profile
+        <select name="quantumProfile">
+          <option value="">Default</option><option value="gaming">Gaming</option>
+        </select>
+      </label>
+    ` : ''}
     ${transport === 'dc6' ? input('iranIPv6', 'Iran IPv6 endpoint') : ''}
     ${transport === 'http' || transport === 'https' ? `
       ${input('httpHost', 'HTTP host')}
@@ -56,7 +63,9 @@ export function showDaggerSetup(panel, transport) {
   form.onsubmit = async event => {
     event.preventDefault();
     const body = Object.fromEntries(new FormData(form));
-    body.transport = transport;
+    body.transport = transport === 'quantum' && body.quantumProfile === 'gaming'
+      ? 'quantum-gaming' : transport;
+    delete body.quantumProfile;
     body.port = Number(body.port);
     if (body.tunPort) body.tunPort = Number(body.tunPort);
     submit.disabled = true;

@@ -416,6 +416,7 @@ func ctNeedsV2Note(kind, tr string) string {
 type connTestCase struct {
 	extra                     bool
 	extraWorker               int
+	dagger                    *ctDaggerProcess
 	localStarted, peerStarted bool
 	kind, tr                  string
 	name                      string
@@ -441,6 +442,9 @@ type ConnTestIran struct {
 	best          ConnTestBest
 	realityTarget string
 	realityLog    string
+	daggerLicense string
+	daggerIPv4    string
+	daggerPorts   map[int]bool
 }
 
 // ConnTestOptions are what the Iran operator answers.
@@ -455,7 +459,10 @@ type ConnTestOptions struct {
 	RealityTarget string
 	// Direct includes the direct tunnels. They need root on both servers.
 	Direct          bool
-	ExtraTransports bool // standard CLI and panel include OmniTunnel and GOST Direct
+	ExtraTransports bool // include transports started through helper programs
+	// The DaggerConnect PSK stays local until sent through the encrypted test channel.
+	DaggerLicense string
+	DaggerIPv4    string // license endpoint for DC6 when measuring an IPv6 path
 	// Preset is balance, turbo or aggressive; empty is turbo, the wizards'
 	// default.
 	Preset string
@@ -684,15 +691,20 @@ func StartConnTestIran(o ConnTestOptions) (*ConnTestIran, string, error) {
 	}
 
 	if o.ExtraTransports {
+		s.daggerLicense, s.daggerIPv4, s.daggerPorts = strings.TrimSpace(o.DaggerLicense), o.DaggerIPv4, used
+		useExtraChannel := false
 		for _, c := range ctExtraCases() {
 			if !s.root {
 				c.skip = "needs root on both servers"
+			} else if _, ok := strings.CutPrefix(c.tr, ctDaggerPrefix); ok {
+				c.skip = s.daggerSkip(c.tr)
 			} else if ctFamily(host) != "IPv4" {
 				c.skip = "this transport setup requires an IPv4 path"
 			}
+			useExtraChannel = useExtraChannel || c.skip == ""
 			s.cases = append(s.cases, c)
 		}
-		if s.root && ctFamily(host) == "IPv4" {
+		if useExtraChannel {
 			var key [ctPairKeySize]byte
 			if _, err := rand.Read(key[:]); err != nil {
 				return fail(err)
@@ -1621,6 +1633,13 @@ func ctProbe(ctx context.Context, c *connTestCase, l3Echo int, report func(ConnT
 			say("")
 			return r
 		}
+		if c.dagger != nil {
+			if exited, detail := c.dagger.startupFailure(); exited {
+				r.Status, r.Detail = ctSkipped, detail
+				say("")
+				return r
+			}
+		}
 		if time.Since(start) > connectWaitFor(c) {
 			r.Status, r.Detail = ctDown, fmt.Sprintf("never carried traffic in %s", connectWaitFor(c))
 			if c.tr == "spoof" {
@@ -1869,7 +1888,7 @@ type ctEngine struct {
 	done chan struct{}
 }
 
-func startCTEngine(dir, name, body string) (*ctEngine, error) {
+func startCTEngine(dir, name, body string, extraEnv ...string) (*ctEngine, error) {
 	bin, err := connTestBinary()
 	if err != nil {
 		return nil, err
@@ -1891,7 +1910,7 @@ func startCTEngine(dir, name, body string) (*ctEngine, error) {
 	defer parent.Close()
 	cmd := exec.Command(bin, "-c", cfg)
 	cmd.Stdin = parent
-	cmd.Env = append(os.Environ(), app.ConnTestParentPipe+"=1")
+	cmd.Env = append(append(os.Environ(), app.ConnTestParentPipe+"=1"), extraEnv...)
 	cmd.Stdout, cmd.Stderr = f, f
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {

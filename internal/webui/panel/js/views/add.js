@@ -1114,8 +1114,8 @@ export function addView(ctx) {
       stageSingle();
       mountExtras = bindExtraTransports(root, [
         ...omniChoices,
-        ...daggerChoices.map(item => ({ ...item, value: 'dagger-' + item.value,
-          direction: 'reverse', daggerTransport: item.value })),
+        ...daggerChoices.map(item => ({ direction: 'reverse', ...item, value: 'dagger-' + item.value,
+          daggerTransport: item.value })),
       ]);
       reveal();
 

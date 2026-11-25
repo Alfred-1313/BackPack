@@ -46,7 +46,8 @@ func ctExtraCases() []*connTestCase {
 	for _, mode := range omni.Options() {
 		cases = append(cases, &connTestCase{kind: mode["direction"], tr: ctOmniPrefix + mode["value"], extra: true})
 	}
-	return append(cases, &connTestCase{kind: "direct", tr: ctGostDirect, extra: true})
+	cases = append(cases, &connTestCase{kind: "direct", tr: ctGostDirect, extra: true})
+	return append(cases, ctDaggerCases()...)
 }
 
 func ctExtraName() string {
@@ -188,6 +189,7 @@ type ctExtraWorker struct {
 type ctExtraInstance struct {
 	mode, name string
 	echo       *ctEchoes
+	dagger     *ctDaggerProcess
 }
 
 func (w *ctExtraWorker) close(name string) error {
@@ -206,6 +208,10 @@ func (w *ctExtraInstance) close() error {
 	if w.echo != nil {
 		w.echo.close()
 		w.echo = nil
+	}
+	if w.dagger != nil {
+		w.dagger.close()
+		w.dagger, w.name, w.mode = nil, "", ""
 	}
 	if w.name == "" {
 		return nil
@@ -267,6 +273,9 @@ func (w *ctExtraWorker) perform(ctx context.Context, link ConnTestLink, job ctEx
 }
 
 func (w *ctExtraInstance) join(ctx context.Context, link ConnTestLink, job ctExtraJob) error {
+	if _, ok := strings.CutPrefix(job.Mode, ctDaggerPrefix); ok {
+		return w.joinDagger(ctx, link, job)
+	}
 	if job.Mode == ctGostDirect {
 		raw, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(job.Token, "bpgost1."))
 		var token struct {
@@ -405,6 +414,9 @@ func (s *ConnTestIran) setupExtra(ctx context.Context, c *connTestCase, mode str
 	if !ready {
 		return errors.New("Kharej did not enable the transport-test control channel; update both servers")
 	}
+	if _, ok := strings.CutPrefix(mode, ctDaggerPrefix); ok {
+		return s.setupDagger(ctx, c, mode)
+	}
 	near, far := ctIPv4Context(ctx, s.link.Host), ctIPv4Context(ctx, s.Kharej())
 	if near == "" || far == "" || near == far {
 		return errors.New("this carrier requires two different IPv4 endpoints")
@@ -494,7 +506,12 @@ func (s *ConnTestIran) removeExtra(c *connTestCase) error {
 		c.peerStarted = peerErr != nil
 	}
 	if c.localStarted {
-		localErr = ctExtraRemove(mode, c.name)
+		if c.dagger != nil {
+			c.dagger.close()
+			c.dagger = nil
+		} else {
+			localErr = ctExtraRemove(mode, c.name)
+		}
 		c.localStarted = localErr != nil
 	}
 	return errors.Join(peerErr, localErr)

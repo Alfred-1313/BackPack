@@ -111,6 +111,22 @@ func StartConnTestSuite(o ConnTestOptions, hosts []string) (*ConnTestSuite, stri
 	if len(hosts) == 2 && ctFamily(hosts[0]) == ctFamily(hosts[1]) {
 		return nil, "", errors.New("a two-path test requires one IPv4 and one IPv6 address")
 	}
+	if o.DaggerLicense != "" {
+		for _, host := range hosts {
+			if ctFamily(host) == "IPv4" {
+				o.DaggerIPv4 = host
+				break
+			}
+		}
+		if o.DaggerIPv4 == "" {
+			for _, addr := range ConnTestAddresses() {
+				if addr.Family == "IPv4" {
+					o.DaggerIPv4 = addr.Host
+					break
+				}
+			}
+		}
+	}
 	s := &ConnTestSuite{changed: make(chan struct{}, 1), tests: make([]*ConnTestIran, len(hosts))}
 	routes := make([]connTestAddr, len(hosts))
 	until := time.Now().Add(connTestJoinWait + time.Duration(len(hosts))*ConnTestRunTime() + connTestSlack).Unix()
