@@ -21,6 +21,7 @@ type Form struct {
 	Target  string `json:"target"`
 	Ingress string `json:"ingress"`
 	Token   string `json:"token"`
+	Secret  string `json:"secret,omitempty"`
 }
 type Result struct {
 	Token string `json:"token"`

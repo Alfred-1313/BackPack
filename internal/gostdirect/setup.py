@@ -71,7 +71,9 @@ def install(form):
             config = {"services":[service]}
         else:
             ingress = port(form["ingress"])
-            password = secrets.token_urlsafe(36)
+            password = form.get("secret") or secrets.token_urlsafe(36)
+            if not re.fullmatch(r"[A-Za-z0-9_-]{32,96}", password):
+                raise ValueError("invalid relay credential")
             run("openssl","req","-x509","-newkey","ec","-pkeyopt","ec_paramgen_curve:P-256","-nodes",
                 "-days","365","-subj","/CN="+host,"-addext","subjectAltName=IP:"+host,"-keyout",key,"-out",cert)
             payload = dict(name=name,peer=host,port=endpoint,target=target,password=password,

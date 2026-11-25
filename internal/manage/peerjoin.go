@@ -18,8 +18,6 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
-	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -41,6 +39,7 @@ type peerJoinLink struct {
 
 type peerJoinResult struct {
 	Link, Driver, Token, Mode, Name string
+	MuxToken                        string
 }
 
 // beginPeerJoin lets the Kharej operator supply the peer via an authenticated
@@ -229,14 +228,20 @@ func StartDirectPeerSetup(ctx context.Context, form NewDirectTunnel) (SetupLinkI
 		form.Token = randomToken(64)
 	}
 	preview := form
-	preview.PeerAddr = "192.0.2.1"
+	form.PeerAddr = strings.TrimSpace(form.PeerAddr)
+	preview.PeerAddr = form.PeerAddr
+	if preview.PeerAddr == "" {
+		preview.PeerAddr = "192.0.2.1"
+	}
 	spec, err := preview.spec()
 	if err != nil {
 		return SetupLinkInfo{}, err
 	}
 	form.Name = spec.Name
 	return beginPeerJoin(ctx, form.Name, "direct", form.Carrier == l3.CarrierEasyTier, func(_ context.Context, host, peer string) (peerJoinResult, error) {
-		form.PeerAddr = peer
+		if form.PeerAddr == "" {
+			form.PeerAddr = peer
+		}
 		service, _, err := CreateDirectTunnel(form)
 		if err != nil {
 			return peerJoinResult{}, err
@@ -245,57 +250,6 @@ func StartDirectPeerSetup(ctx context.Context, form NewDirectTunnel) (SetupLinkI
 		info, err := SetupLinkFor(name, host)
 		return peerJoinResult{Link: info.Link}, err
 	})
-}
-
-type RoutedPeerForm struct {
-	Transport string `json:"transport"`
-	Name      string `json:"name"`
-	Port      string `json:"port"`
-	Ingress   string `json:"ingress"`
-	Target    string `json:"target"`
-}
-
-var routedSetupName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$`)
-
-func StartRoutedPeerSetup(ctx context.Context, form RoutedPeerForm) (SetupLinkInfo, error) {
-	name := strings.TrimSpace(form.Name)
-	if !routedSetupName.MatchString(name) {
-		return SetupLinkInfo{}, errors.New("use 1–32 letters, digits, underscores or hyphens for the tunnel name")
-	}
-	if form.Transport == ctGostDirect {
-		for _, p := range []string{form.Ingress, form.Port, form.Target} {
-			port, err := strconv.ParseUint(p, 10, 16)
-			if err != nil || port == 0 {
-				return SetupLinkInfo{}, errors.New("enter ports from 1 to 65535")
-			}
-		}
-		return beginPeerJoin(ctx, name, "direct", false, func(ctx context.Context, _, peer string) (peerJoinResult, error) {
-			result, err := gostdirect.Install(ctx, gostdirect.Form{Action: "setup", Name: name, Peer: peer,
-				Port: form.Port, Ingress: form.Ingress, Target: form.Target})
-			return peerJoinResult{Driver: "gost", Token: result.Token, Mode: form.Transport, Name: name}, err
-		})
-	}
-	for _, option := range omni.Options() {
-		if option["value"] != form.Transport {
-			continue
-		}
-		if form.Port != "" && !validPort(form.Port) {
-			return SetupLinkInfo{}, errors.New("enter a peer port from 1 to 65535")
-		}
-		return beginPeerJoin(ctx, name, option["direction"], false, func(ctx context.Context, host, peer string) (peerJoinResult, error) {
-			args := []string{"setup", form.Transport, name, host, peer}
-			if form.Port != "" {
-				args = append(args, form.Port)
-			}
-			output, err := ctOmniRun(ctx, "", args...)
-			if err != nil {
-				return peerJoinResult{}, err
-			}
-			token, err := ctOmniToken(output)
-			return peerJoinResult{Driver: "omni", Token: token, Mode: form.Transport, Name: name}, err
-		})
-	}
-	return SetupLinkInfo{}, errors.New("unknown routed transport")
 }
 
 func applyPeerJoin(raw string, options LinkApplyOptions) (LinkApplied, error) {
@@ -324,6 +278,12 @@ func applyPeerJoin(raw string, options LinkApplyOptions) (LinkApplied, error) {
 		}
 		var output bytes.Buffer
 		err := omni.RunContext(ctx, []string{"join", result.Mode}, strings.NewReader(result.Token), &output, &output)
+		if err == nil && result.MuxToken != "" {
+			_, err = ctOmniRun(ctx, result.MuxToken, "mux-join")
+			if err != nil {
+				return done, err
+			}
+		}
 		done.Active = err == nil
 		if err != nil && output.Len() != 0 {
 			err = errors.New(ctExtraError(errors.New(output.String())))

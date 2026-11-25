@@ -32,6 +32,14 @@ export function addView(ctx) {
         api.omniOptions().catch(e => { oops(e); return []; }),
         api.backhaulOptions().catch(e => { oops(e); return []; }),
       ]);
+      const managedReverse = new Map([
+        ...backhaulChoices.map(item => ['native-' + item.value, {
+          ...item, native: true, port: true, value: 'native-' + item.value, mode: item.value,
+        }]),
+        ...omniChoices.filter(item => item.direction === 'reverse').map(item => ['omni-' + item.value, {
+          ...item, value: 'omni-' + item.value, mode: item.value,
+        }]),
+      ]);
       let mountExtras;
       /* families */
       /* The family list, the variants and the presets are all painted from
@@ -44,9 +52,17 @@ export function addView(ctx) {
          the kharej side owns the address that is dialled. */
       const chosen = { side: 'server', direction: 'reverse', transport: null,
                        carrier: 'pck', preset: null };
+      const reverseSetup = () => chosen.direction === 'reverse' && managedReverse.get(chosen.transport);
       const pairedDirect = () => chosen.side === 'server' && chosen.direction === 'direct' &&
         ['gretap', 'l2tpv3', 'easytier'].includes(chosen.carrier);
       const randomGreKey = root.querySelector('#randomGreKey');
+      const nativeAddress = el('details', { class: 'f3 full', hidden: true });
+      nativeAddress.dataset.nativeAddress = '';
+      nativeAddress.append(el('summary', { text: 'Use a custom Iran address' }),
+        el('label', { text: 'Iran IP or hostname' }, [
+          el('input', { name: 'iranHost', type: 'text', autocomplete: 'off', placeholder: 'Automatically detected' }),
+        ]));
+      root.querySelector('#atok').closest('.f3').after(nativeAddress);
 
       /* The preset the form is already showing counts as chosen.
        *
@@ -214,7 +230,8 @@ export function addView(ctx) {
         const list = root.querySelector('#trlist');
         if (!list) return;
         const entries = (opts.families || []).flatMap(family => family.entries)
-          .filter(item => chosen.side === 'server' || !item.iranOnly);
+          .filter(item => chosen.side === 'server' || !item.iranOnly)
+          .concat(chosen.side === 'server' ? [...managedReverse.values()] : []);
         if (!entries.some(item => item.value === chosen.transport)) chosen.transport = entries[0]?.value || null;
         list.innerHTML = entries.map(item => {
           const root2 = /needs root/i.test(item.desc || '') ? '<span class="root2">needs root</span>' : '';
@@ -496,8 +513,12 @@ export function addView(ctx) {
           });
           row.hidden = !ok;
         });
+        const peerHint = root.querySelector('[data-when="server"] [name="peerAddr"]')?.closest('.f3')?.querySelector('.hint');
+        if (peerHint) peerHint.textContent = pairedDirect()
+          ? 'Leave blank to detect the address from the Setup connection.'
+          : 'The server this side dials out to.';
         if (pairedDirect()) {
-          root.querySelectorAll('[name="peerAddr"], [name="greLocal"], [name="localIp"], [name="peerIp"]').forEach(input => {
+          root.querySelectorAll('[name="greLocal"], [name="localIp"], [name="peerIp"]').forEach(input => {
             input.closest('.f3').hidden = true;
           });
         }
@@ -511,17 +532,25 @@ export function addView(ctx) {
         /* Groups that were moved out of .step3rev / .step3direct carry the mode
            they belong to, because the container that used to decide it is no
            longer their parent. */
+        const setup = reverseSetup();
         root.querySelectorAll('[data-mode]').forEach(g => {
           const wrong = g.dataset.mode !== (direct ? 'dir' : 'rev');
-          g.hidden = wrong;
+          g.hidden = wrong || (!!setup && (!g.closest('.step3rev') || g.classList.contains('dr2b')));
           // A drawer left open in the other mode would spring back open with
           // its own settings when the operator switched away and back.
-          if (wrong) g.classList.remove('open');
+          if (g.hidden) g.classList.remove('open');
         });
+        const reversePort = root.querySelector('#aport');
+        reversePort.closest('.f3').hidden = !!setup && !setup.port;
+        reversePort.placeholder = setup ? '1–65535' : '4443 or 85.10.11.51:4443';
+        show('[data-native-address]', !!setup?.native);
+        root.querySelector('#aports').closest('.f3').querySelector('label').textContent =
+          setup ? 'Forwarded TCP ports' : 'Forwarded ports';
         // The token and the far end's address are the panel's business now.
         root.querySelectorAll('.tokgone, .addrgone').forEach(n => { n.hidden = true; });
         if (!direct) transportRows();
         paintRail();
+        if (root.dataset.staged) paintNav(Number(root.querySelector('.step[data-s]:not([hidden])')?.dataset.s));
 
         /* The spoof settings belong to the spoof carrier. They used to hang off
            a reverse transport that no longer exists, which left every one of
@@ -674,7 +703,7 @@ export function addView(ctx) {
           result.innerHTML = `<div class="sl-wait">Building the setup link…</div>`;
           bindSetupLink(result);
           try {
-            result.innerHTML = setupLinkHTML(await api.tunnelLink(name));
+            result.innerHTML = setupLinkHTML(r.setup || await api.tunnelLink(name));
           } catch (e) {
             result.innerHTML = `<div class="doneline warn"><span class="tick">!</span><div>
               <b>${esc(e.message)}</b><span>Open the tunnel's menu → Setup link to try again.</span></div></div>`;
@@ -982,7 +1011,9 @@ export function addView(ctx) {
           next.disabled = false;
           next.onclick = () => { close(); go('/'); };
         } else {
-          next.textContent = at === last - 1 ? 'Create the tunnel' : 'Continue';
+          const panes = paneList();
+          const creates = panes.slice(at + 1, last).every((pane, i) => paneEmpty(pane, at + 1 + i, panes.length));
+          next.textContent = creates ? 'Create the tunnel' : 'Continue';
           next.onclick = null;
         }
         if (note) note.textContent = at === last - 1
@@ -1142,11 +1173,7 @@ export function addView(ctx) {
         applyShape();
       }
       stageSingle();
-      mountExtras = bindExtraTransports(root, [
-        ...omniChoices,
-        ...backhaulChoices.map(item => ({ ...item, value: 'native-' + item.value,
-          backhaulTransport: item.value })),
-      ]);
+      mountExtras = bindExtraTransports(root, omniChoices.filter(item => item.direction === 'direct'));
       reveal();
       randomGreKey.addEventListener('click', async () => {
         const carrier = chosen.carrier;
@@ -1236,8 +1263,25 @@ export function addView(ctx) {
           throw new Error('Enter a GRE key from 0 to 4294967295.');
         }
 
+        const setup = reverseSetup();
+        if (setup?.native) {
+          if (!/^\d+$/.test(payload.tunnelPort || '') || Number(payload.tunnelPort) < 1 || Number(payload.tunnelPort) > 65535) {
+            throw new Error('Enter a tunnel port from 1 to 65535.');
+          }
+          const r = await api.backhaulCreate({
+            name: payload.name, transport: setup.mode, port: Number(payload.tunnelPort),
+            ports: payload.ports || '', secret: payload.token || '', iranHost: payload.iranHost || '',
+          });
+          return { r, name: payload.name };
+        }
+        if (setup) {
+          const r = await api.routedPeerSetup({
+            name: payload.name, transport: setup.mode, ports: payload.ports || '', secret: payload.token || '',
+          });
+          return { r, name: payload.name };
+        }
         if (pairedDirect()) {
-          for (const key of ['peerAddr', 'greLocal', 'localIp', 'peerIp']) delete payload[key];
+          for (const key of ['greLocal', 'localIp', 'peerIp']) delete payload[key];
           return { r: await api.directPeerSetup(payload), name: payload.name };
         }
         // Only this end: the other is built from its setup link.

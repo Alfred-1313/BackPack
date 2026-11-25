@@ -403,6 +403,16 @@ def temporary_test_instances(text):
 
 
 def commands(text):
+    text = replace_once(text, '    ALLOC_KEY=$(gen_key); type_uses_key "$t" || ALLOC_KEY=""', r'''
+    if [[ "${BACKPACK_OMNI_EXACT_PORT:-}" == 1 && -n "$want_port" && "$ALLOC_PORT" != "$want_port" ]]; then
+        die "tunnel port $want_port overlaps another tunnel"
+    fi
+    if type_uses_key "$t"; then
+        ALLOC_KEY="${BACKPACK_OMNI_SETUP_KEY:-$(gen_key)}"
+        tok_hexkey_ok "$ALLOC_KEY" || die "invalid tunnel secret"
+    else
+        ALLOC_KEY=""
+    fi'''.lstrip('\n'))
 
     text = replace_function(text, "cmd_mux_del", r"""
 cmd_mux_del() {
@@ -452,6 +462,22 @@ case "${1:-}" in
         validate_inst_name "$2"
         command -v openssl >/dev/null && command -v ssh-keygen >/dev/null || die "Reverse Mux setup requires OpenSSL and ssh-keygen"
         shift; cmd_mux_add "$@";;
+    mux-setup-forwards)
+        validate_inst_name "$2"; load_inst "$2"
+        [[ "$ROLE" == client && "$TYPE" == reverse-mux ]] || die "mux forwarding setup requires the Iran side"
+        command -v openssl >/dev/null && command -v ssh-keygen >/dev/null || die "Reverse Mux setup requires OpenSSL and ssh-keygen"
+        mc="$(mux_conf "$2")"
+        [[ ! -e "$mc" ]] || die "mux forwarding is already configured"
+        pf_spec_parse "$3"
+        [[ ${#PF_SPEC[@]} -gt 0 ]] || die "at least one forwarding rule is required"
+        tmp="$(mktemp "$mc.XXXXXX")"
+        for entry in "${PF_SPEC[@]}"; do
+            read -r pub target <<< "$entry"
+            printf '%s:127.0.0.1:%s\n' "$pub" "${target:-$pub}"
+        done > "$tmp"
+        mv "$tmp" "$mc" || { rm -f "$tmp"; die "cannot save mux forwarding rules"; }
+        mux_relay_reconcile "$2"
+        _mux_push_foreign "$2" "$PEER_IP";;
     mux-del) validate_inst_name "$2"; shift; cmd_mux_del "$@";;
     mux-token) IFS= read -r token; cmd_mux_token "$token";;
     mux-off) validate_inst_name "$2"; cmd_mux_off "$2";;

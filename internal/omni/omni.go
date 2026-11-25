@@ -62,7 +62,20 @@ func Options() []map[string]string {
 		if t.value == "reverse-mux" {
 			direction = "reverse"
 		}
-		out = append(out, map[string]string{"value": t.value, "label": t.title, "desc": t.description, "direction": direction})
+		item := map[string]string{"value": t.value, "label": t.title, "desc": t.description, "direction": direction}
+		if t.value != "icmp" && t.value != "reverse-mux" {
+			item["port"] = "1"
+		}
+		switch t.value {
+		case "icmp", "fou", "vxlan":
+		default:
+			item["secret"] = "1"
+		}
+		item["forward"] = "1"
+		if direction == "direct" {
+			item["udp"] = "1"
+		}
+		out = append(out, item)
 	}
 	return out
 }
@@ -74,7 +87,7 @@ const usage = `BackPack OmniTunnel transports
   backpack omni list
   backpack omni status <name>
   backpack omni start|stop|remove <name>
-  backpack omni forward <name> <tcp|udp> <port[:target]>
+  backpack omni forward <name> <tcp|udp|both> <port[:target][,...]>
   backpack omni remove-forward <name> <port> [--force]
   backpack omni mux-forward <name> <port> <target-host> <target-port>
   backpack omni mux-remove <name> <port>
@@ -152,7 +165,7 @@ func parse(args []string, input io.Reader) (operation, error) {
 		}
 	case "forward":
 		if len(args) == 4 && namePattern.MatchString(args[1]) &&
-			(args[2] == "tcp" || args[2] == "udp") && validPortMapping(args[3]) {
+			(args[2] == "tcp" || args[2] == "udp" || args[2] == "both") && validPortMappings(args[3]) {
 			return operation{args: append([]string{"pf-add"}, args[1:]...)}, nil
 		}
 	case "remove-forward":
@@ -167,6 +180,10 @@ func parse(args []string, input io.Reader) (operation, error) {
 	case "mux-forward":
 		if len(args) == 5 && namePattern.MatchString(args[1]) && validPort(args[2]) && validPort(args[4]) {
 			return operation{args: append([]string{"mux-add"}, args[1:]...)}, nil
+		}
+	case "mux-setup-forwards":
+		if len(args) == 3 && namePattern.MatchString(args[1]) && validPortMappings(args[2]) {
+			return operation{args: args}, nil
 		}
 	}
 	return operation{}, fmt.Errorf("invalid OmniTunnel arguments. See backpack omni help")
@@ -191,6 +208,15 @@ func validPortMapping(value string) bool {
 	return validPort(port) && (!hasTarget || validPort(target))
 }
 
+func validPortMappings(value string) bool {
+	for _, spec := range strings.Split(value, ",") {
+		if !validPortMapping(spec) {
+			return false
+		}
+	}
+	return true
+}
+
 func helperPath() (string, error) {
 	if runtime.GOOS != "linux" || (runtime.GOARCH != "amd64" && runtime.GOARCH != "arm64") {
 		return "", fmt.Errorf("OmniTunnel requires Linux amd64 or arm64")
@@ -209,6 +235,23 @@ func Run(args []string, input io.Reader, stdout, stderr io.Writer) error {
 }
 
 func RunContext(ctx context.Context, args []string, input io.Reader, stdout, stderr io.Writer) error {
+	return runContext(ctx, args, input, stdout, stderr, nil)
+}
+
+// RunConfiguredSetup passes the optional PSK to the manager without adding it
+// to process arguments. An explicitly requested tunnel port is kept exact.
+func RunConfiguredSetup(ctx context.Context, args []string, key string, stdout, stderr io.Writer) error {
+	if len(args) == 0 || args[0] != "setup" {
+		return fmt.Errorf("expected a setup operation")
+	}
+	env := []string{"BACKPACK_OMNI_EXACT_PORT=1"}
+	if key != "" {
+		env = append(env, "BACKPACK_OMNI_SETUP_KEY="+key)
+	}
+	return runContext(ctx, args, strings.NewReader(""), stdout, stderr, env)
+}
+
+func runContext(ctx context.Context, args []string, input io.Reader, stdout, stderr io.Writer, env []string) error {
 	if len(args) == 0 || args[0] == "help" || args[0] == "--help" {
 		fmt.Fprint(stdout, usage)
 		return nil
@@ -228,7 +271,7 @@ func RunContext(ctx context.Context, args []string, input io.Reader, stdout, std
 	}
 	cmd := exec.CommandContext(ctx, path, op.args...)
 	cmd.Stdout, cmd.Stderr = stdout, stderr
-	cmd.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LANG=C.UTF-8"}
+	cmd.Env = append([]string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LANG=C.UTF-8"}, env...)
 	cmd.WaitDelay = 2 * time.Second
 	if op.token != "" {
 		cmd.Stdin = strings.NewReader(op.token + "\n")

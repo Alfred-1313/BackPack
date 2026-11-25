@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -21,6 +22,7 @@ type BackhaulForm struct {
 	IranHost     string `json:"iranHost"`
 	KharejIP     string `json:"kharejIP"`
 	Port         uint16 `json:"port"`
+	Secret       string `json:"secret"`
 	Ports        string `json:"ports"`
 	IranTunnel   string `json:"iranTunnel"`
 	KharejTunnel string `json:"kharejTunnel"`
@@ -60,7 +62,7 @@ func CreateBackhaul(ctx context.Context, f BackhaulForm) (BackhaulSetup, error) 
 	if host == "" {
 		return BackhaulSetup{}, errors.New("could not detect the Iran address; enter an Iran IP or hostname")
 	}
-	token, err := backhaulToken()
+	token, err := backhaulFormToken(f.Secret)
 	if err != nil {
 		return BackhaulSetup{}, err
 	}
@@ -88,6 +90,23 @@ func CreateBackhaul(ctx context.Context, f BackhaulForm) (BackhaulSetup, error) 
 	}
 	setup := backhaulSetupLink(f.Name, c)
 	return BackhaulSetup{Service: service, Active: active, Apply: setup.Apply, Setup: setup}, nil
+}
+
+func backhaulFormToken(secret string) (string, error) {
+	if secret == "" {
+		return backhaulToken()
+	}
+	if err := validateRoutedSecret(secret); err != nil {
+		return "", err
+	}
+	if decoded, err := base64.StdEncoding.DecodeString(secret); err == nil && len(decoded) == 32 {
+		return secret, nil
+	}
+	key, err := hex.DecodeString(routedKey(secret))
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(key), nil
 }
 
 func backhaulPeerToken(name string, c config.BackhaulConfig) string {
