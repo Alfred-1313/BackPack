@@ -32,6 +32,8 @@ type BackhaulConfig struct {
 	PacketQueue int                 `toml:"packet_queue,omitempty"`
 	MTU         int                 `toml:"mtu,omitempty"`
 	Mux         *BackhaulMuxOptions `toml:"mux,omitempty"`
+	HTTPPath    string              `toml:"http_path,omitempty"`
+	HTTPHost    string              `toml:"http_host,omitempty"`
 }
 
 func (c BackhaulConfig) Present() bool { return c.Role != "" || c.Mode != "" }

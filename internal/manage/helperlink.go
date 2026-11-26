@@ -35,6 +35,7 @@ func backhaulShare(name string, c config.BackhaulConfig) ShareLink {
 		Host: c.IranHost, Port: linkPort(c.Port), Tok: c.Token, PeerHost: c.KharejIP,
 		LocalIP: c.IranTunnel, PeerIP: c.KharejTunnel, HealthPort: uint32(c.HealthPort), Profile: c.IPXProfile,
 		Preset: c.Preset, TunnelLanes: c.Lanes, PacketQueue: c.PacketQueue, MTU: c.MTU,
+		HelperHost: c.HTTPHost, HelperPath: c.HTTPPath,
 	}
 	if c.Mux != nil {
 		link.Hosts = c.Mux.Backups
@@ -98,6 +99,7 @@ func applyImportedLink(l ShareLink, o LinkApplyOptions) (LinkApplied, error) {
 		Port: uint16(port), Token: l.Tok, IranTunnel: l.LocalIP, KharejTunnel: l.PeerIP,
 		HealthPort: uint16(l.HealthPort), IPXProfile: l.Profile,
 		Preset: l.Preset, Lanes: l.TunnelLanes, PacketQueue: l.PacketQueue, MTU: l.MTU,
+		HTTPHost: l.HelperHost, HTTPPath: l.HelperPath,
 	}
 	if native && (len(l.Hosts) != 0 || l.TunnelHeartbeat != 0 || l.TunnelTimeout != 0) {
 		backups, err := nativebackhaul.BackupAddresses(l.Hosts, c.IranHost, c.Port)

@@ -78,3 +78,16 @@ func TestNativeMuxLinkCarriesBackupAndHeartbeat(t *testing.T) {
 		}
 	}
 }
+
+func TestNativeDaggerSetupLinkCarriesHTTPRoute(t *testing.T) {
+	c := config.BackhaulConfig{Native: true, Role: "server", Mode: "dagger-https", IranHost: "192.0.2.1",
+		Port: 443, Token: "fixture", HTTPHost: "relay.example.test", HTTPPath: "/api/v2"}
+	info, err := importedSetupLink(backhaulShare("peer", c))
+	if err != nil {
+		t.Fatal(err)
+	}
+	l, err := DecodeShareLink(info.Link)
+	if err != nil || l.HelperHost != c.HTTPHost || l.HelperPath != c.HTTPPath {
+		t.Fatalf("native Dagger route did not round trip: %v", err)
+	}
+}

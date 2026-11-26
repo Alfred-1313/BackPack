@@ -95,6 +95,9 @@ func Validate(c config.BackhaulConfig) error {
 	if err := validateMuxOptions(c); err != nil {
 		return err
 	}
+	if err := validateHTTPOptions(c); err != nil {
+		return err
+	}
 	// Validate the shared reverse-tunnel settings in the same way for every
 	// stream transport. The TUN-specific fields are checked only for TUN.
 	common := c
@@ -132,7 +135,7 @@ func listenLanes(ctx context.Context, c config.BackhaulConfig, addr string, t *t
 	defer stop()
 	defer listener.Close()
 	if c.Mode == "dagger-xhttp" {
-		return serveSplitHTTP(ctx, listener, c.Token, t, handle)
+		return serveSplitHTTP(ctx, listener, c, t, handle)
 	}
 	if c.Mode == "xwsmux" {
 		upgrader := websocket.Upgrader{HandshakeTimeout: linkTimeout}
@@ -168,7 +171,7 @@ func listenLanes(ctx context.Context, c config.BackhaulConfig, addr string, t *t
 		case slots <- struct{}{}:
 			go func() {
 				hctx, cancel := context.WithTimeout(ctx, linkTimeout)
-				lane, err := admitLane(hctx, c.Mode, conn, t)
+				lane, err := admitLane(hctx, c, conn, t)
 				cancel()
 				<-slots
 				if err != nil {
@@ -187,9 +190,9 @@ func dialLane(ctx context.Context, c config.BackhaulConfig, addr string, t *tls.
 	dial := &net.Dialer{Timeout: linkTimeout, KeepAlive: 15 * time.Second}
 	switch c.Mode {
 	case "dagger-xhttp":
-		return dialSplitHTTP(ctx, dial, addr, c.Token, t)
+		return dialSplitHTTP(ctx, dial, addr, c, t)
 	case "dagger-http", "dagger-https":
-		return dialUpgrade(ctx, dial, c.Mode, addr, t)
+		return dialUpgrade(ctx, dial, c, addr, t)
 	}
 	if c.Mode != "xwsmux" {
 		td := tls.Dialer{NetDialer: dial, Config: t}

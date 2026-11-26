@@ -9,13 +9,19 @@ import (
 	"crypto/tls"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"math"
 	"net"
 	"net/http"
+	"path"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/backpack/backpack/config"
+	"github.com/backpack/backpack/internal/backhaulpremium"
 )
 
 const (
@@ -24,6 +30,36 @@ const (
 	httpHeaderLimit = 8 << 10
 )
 
+var httpRoute = regexp.MustCompile(`^/[a-zA-Z0-9._~/-]{0,255}$`)
+
+func validateHTTPOptions(c config.BackhaulConfig) error {
+	upgrade := c.Mode == "dagger-http" || c.Mode == "dagger-https"
+	if c.HTTPPath != "" {
+		if !upgrade && c.Mode != "dagger-xhttp" {
+			return fmt.Errorf("HTTP path is only available on the native Dagger HTTP transports")
+		}
+		if !httpRoute.MatchString(c.HTTPPath) || path.Clean(c.HTTPPath) != c.HTTPPath {
+			return fmt.Errorf("enter an absolute HTTP path such as /api/v2, without a query or trailing slash")
+		}
+	}
+	if c.HTTPHost != "" {
+		if !upgrade {
+			return fmt.Errorf("an HTTP Host override is available on HTTP Upgrade and HTTPS Upgrade")
+		}
+		if strings.Contains(c.HTTPHost, ":") || !backhaulpremium.ValidEndpointHost(c.HTTPHost) {
+			return fmt.Errorf("enter an HTTP Host name or IPv4 address without a scheme or port")
+		}
+	}
+	return nil
+}
+
+func requestPath(c config.BackhaulConfig) string {
+	if c.HTTPPath != "" {
+		return c.HTTPPath
+	}
+	return httpPath
+}
+
 type bufferedLane struct {
 	net.Conn
 	reader *bufio.Reader
@@ -31,9 +67,9 @@ type bufferedLane struct {
 
 func (l *bufferedLane) Read(b []byte) (int, error) { return l.reader.Read(b) }
 
-func admitLane(ctx context.Context, mode string, conn net.Conn, t *tls.Config) (net.Conn, error) {
-	if mode == "dagger-http" {
-		lane, err := exchangeUpgrade(ctx, conn, "")
+func admitLane(ctx context.Context, c config.BackhaulConfig, conn net.Conn, t *tls.Config) (net.Conn, error) {
+	if c.Mode == "dagger-http" {
+		lane, err := exchangeUpgrade(ctx, conn, c, "")
 		if err != nil {
 			return nil, err
 		}
@@ -43,24 +79,24 @@ func admitLane(ctx context.Context, mode string, conn net.Conn, t *tls.Config) (
 	if err := lane.HandshakeContext(ctx); err != nil {
 		return nil, err
 	}
-	if mode == "dagger-https" {
-		return exchangeUpgrade(ctx, lane, "")
+	if c.Mode == "dagger-https" {
+		return exchangeUpgrade(ctx, lane, c, "")
 	}
 	return lane, nil
 }
 
-func dialUpgrade(ctx context.Context, dial *net.Dialer, mode, addr string, t *tls.Config) (net.Conn, error) {
+func dialUpgrade(ctx context.Context, dial *net.Dialer, c config.BackhaulConfig, addr string, t *tls.Config) (net.Conn, error) {
 	ctx, cancel := context.WithTimeout(ctx, linkTimeout)
 	defer cancel()
 	conn, err := dial.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return nil, err
 	}
-	if mode == "dagger-https" {
+	if c.Mode == "dagger-https" {
 		conn = tls.Client(conn, t)
 	}
-	lane, err := exchangeUpgrade(ctx, conn, addr)
-	if err == nil && mode == "dagger-http" {
+	lane, err := exchangeUpgrade(ctx, conn, c, addr)
+	if err == nil && c.Mode == "dagger-http" {
 		secure := tls.Client(lane, t)
 		err = secure.HandshakeContext(ctx)
 		lane = secure
@@ -72,17 +108,18 @@ func dialUpgrade(ctx context.Context, dial *net.Dialer, mode, addr string, t *tl
 	return lane, nil
 }
 
-func exchangeUpgrade(ctx context.Context, conn net.Conn, host string) (net.Conn, error) {
+func exchangeUpgrade(ctx context.Context, conn net.Conn, c config.BackhaulConfig, addr string) (net.Conn, error) {
 	stop := context.AfterFunc(ctx, func() { conn.Close() })
 	defer stop()
 	limit := &io.LimitedReader{R: conn, N: httpHeaderLimit}
 	reader := bufio.NewReader(limit)
-	if host == "" {
+	if addr == "" {
 		req, err := http.ReadRequest(reader)
 		if err != nil {
 			return nil, err
 		}
-		if req.Method != http.MethodGet || req.URL.RequestURI() != httpPath || req.ContentLength != 0 ||
+		if req.Method != http.MethodGet || req.URL.RequestURI() != requestPath(c) || req.ContentLength != 0 ||
+			(c.HTTPHost != "" && !strings.EqualFold(req.Host, c.HTTPHost)) ||
 			len(req.TransferEncoding) != 0 || !isUpgrade(req.Header) {
 			return nil, errors.New("unexpected tunnel HTTP request")
 		}
@@ -90,12 +127,15 @@ func exchangeUpgrade(ctx context.Context, conn net.Conn, host string) (net.Conn,
 			return nil, err
 		}
 	} else {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+host+httpPath, nil)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+addr+requestPath(c), nil)
 		if err != nil {
 			return nil, err
 		}
 		req.Header.Set("Connection", "Upgrade")
 		req.Header.Set("Upgrade", upgradeProtocol)
+		if c.HTTPHost != "" {
+			req.Host = c.HTTPHost
+		}
 		if err := req.Write(conn); err != nil {
 			return nil, err
 		}
@@ -136,17 +176,18 @@ type splitSession struct {
 
 // A single lane has two HTTP bodies. The TLS records read and written over
 // them authenticate both peers and keep forwarded data encrypted.
-func serveSplitHTTP(ctx context.Context, listener net.Listener, token string, t *tls.Config, handle func(net.Conn)) error {
+func serveSplitHTTP(ctx context.Context, listener net.Listener, c config.BackhaulConfig, t *tls.Config, handle func(net.Conn)) error {
 	var mu sync.Mutex
 	sessions := make(map[string]*splitSession)
+	prefix := strings.TrimSuffix(requestPath(c), "/") + "/"
 	server := &http.Server{
 		BaseContext:       func(net.Listener) context.Context { return ctx },
 		ReadHeaderTimeout: linkTimeout,
 		IdleTimeout:       linkTimeout,
 		MaxHeaderBytes:    httpHeaderLimit,
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			id, ok := strings.CutPrefix(r.URL.Path, httpPath+"/")
-			if !ok || len(id) != 32 || !hmac.Equal([]byte(r.Header.Get("X-Tunnel-Session")), []byte(splitProof(token, id, r.Method))) {
+			id, ok := strings.CutPrefix(r.URL.Path, prefix)
+			if !ok || len(id) != 32 || !hmac.Equal([]byte(r.Header.Get("X-Tunnel-Session")), []byte(splitProof(c.Token, id, r.Method))) {
 				http.NotFound(w, r)
 				return
 			}
@@ -240,13 +281,13 @@ func splitProof(token, id, method string) string {
 	return hex.EncodeToString(mac.Sum(nil))
 }
 
-func dialSplitHTTP(ctx context.Context, dial *net.Dialer, addr, token string, t *tls.Config) (net.Conn, error) {
+func dialSplitHTTP(ctx context.Context, dial *net.Dialer, addr string, c config.BackhaulConfig, t *tls.Config) (net.Conn, error) {
 	var nonce [16]byte
 	if _, err := rand.Read(nonce[:]); err != nil {
 		return nil, err
 	}
 	id := hex.EncodeToString(nonce[:])
-	url := "http://" + addr + httpPath + "/" + id
+	url := "http://" + addr + strings.TrimSuffix(requestPath(c), "/") + "/" + id
 	transport := &http.Transport{
 		DialContext:           dial.DialContext,
 		ResponseHeaderTimeout: linkTimeout,
@@ -259,7 +300,7 @@ func dialSplitHTTP(ctx context.Context, dial *net.Dialer, addr, token string, t 
 		cancel()
 		return nil, err
 	}
-	download.Header.Set("X-Tunnel-Session", splitProof(token, id, download.Method))
+	download.Header.Set("X-Tunnel-Session", splitProof(c.Token, id, download.Method))
 	resp, err := transport.RoundTrip(download)
 	if err != nil {
 		cancel()
@@ -272,7 +313,7 @@ func dialSplitHTTP(ctx context.Context, dial *net.Dialer, addr, token string, t 
 	}
 	end, wire := net.Pipe()
 	upload, _ := http.NewRequestWithContext(ctx, http.MethodPost, url, wire)
-	upload.Header.Set("X-Tunnel-Session", splitProof(token, id, upload.Method))
+	upload.Header.Set("X-Tunnel-Session", splitProof(c.Token, id, upload.Method))
 	go func() {
 		defer wire.Close()
 		defer cancel()

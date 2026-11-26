@@ -29,6 +29,8 @@ type BackhaulForm struct {
 	IPXProfile   string           `json:"ipxProfile"`
 	Tuning       SetupTuning      `json:"tuning"`
 	Mux          *BackhaulMuxForm `json:"mux"`
+	HTTPPath     string           `json:"httpPath"`
+	HTTPHost     string           `json:"httpHost"`
 }
 
 type BackhaulMuxForm struct {
@@ -94,6 +96,7 @@ func CreateBackhaul(ctx context.Context, f BackhaulForm) (BackhaulSetup, error) 
 		Native: true, Role: "server", Mode: f.Mode, Port: f.Port, Token: token,
 		IranHost: host, KharejIP: strings.TrimSpace(f.KharejIP),
 		IranTunnel: strings.TrimSpace(f.IranTunnel), KharejTunnel: strings.TrimSpace(f.KharejTunnel),
+		HTTPHost: strings.TrimSpace(f.HTTPHost), HTTPPath: strings.TrimSpace(f.HTTPPath),
 		IPXProfile: f.IPXProfile, Ports: strings.FieldsFunc(f.Ports, func(r rune) bool {
 			return r == ',' || r == '\n' || r == '\r' || r == ' ' || r == '\t'
 		}),

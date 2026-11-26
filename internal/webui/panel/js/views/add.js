@@ -62,6 +62,8 @@ export function addView(ctx) {
                        carrier: 'pck', preset: null };
       const reverseSetup = () => chosen.direction === 'reverse' && managedReverse.get(chosen.transport);
       const nativeMuxOptional = () => ['xtcpmux', 'xwsmux'].includes(reverseSetup()?.mode);
+      const daggerUpgrade = () => ['dagger-http', 'dagger-https'].includes(reverseSetup()?.mode);
+      const daggerRoute = () => daggerUpgrade() || reverseSetup()?.mode === 'dagger-xhttp';
       const directSetup = () => chosen.direction === 'direct' && managedDirect.get(chosen.carrier);
       const pairedDirect = () => chosen.side === 'server' && chosen.direction === 'direct' &&
         ['gretap', 'l2tpv3', 'easytier'].includes(chosen.carrier);
@@ -1216,9 +1218,16 @@ export function addView(ctx) {
         mtu.input.min = 576;
         mtu.input.max = 1400;
         mtu.input.placeholder = '1400';
+        const httpField = (id, label, placeholder, maxlength) => {
+          const input = el('input', { id, type: 'text', placeholder, maxlength, autocomplete: 'off' });
+          return { input, row: el('div', { class: 'f3', hidden: true }, [el('label', { for: id, text: label }), input]) };
+        };
+        const httpPath = httpField('nativeDaggerHTTPPath', 'HTTP path', '/tunnel', 256);
+        const httpHost = httpField('nativeDaggerHTTPHost', 'HTTP Host header', 'Use the dial address', 253);
+        httpPath.row.append(el('div', { class: 'hint', text: 'The Setup link passes this path to Kharej.' }));
         const optional = el('div', { class: 'grp3', hidden: true }, [
           el('div', { class: 'gl3', text: 'Fine Tune' }),
-          el('div', { class: 'fgrid' }, [value.row, mtu.row, delay.row, nativeAddress]),
+          el('div', { class: 'fgrid' }, [value.row, mtu.row, delay.row, httpPath.row, httpHost.row, nativeAddress]),
         ]);
         for (const preset of ['balance', 'turbo', 'aggressive']) {
           const card = el('button', { type: 'button', class: 'rp', 'data-pre': preset });
@@ -1232,7 +1241,7 @@ export function addView(ctx) {
         }
         perf.append(group);
         opt.append(optional);
-        return { group, cards, summary, optional, value, delay, mtu, mux: addMuxOptional(opt) };
+        return { group, cards, summary, optional, value, delay, mtu, httpPath, httpHost, mux: addMuxOptional(opt) };
       }
 
       function currentSetupID() {
@@ -1242,7 +1251,7 @@ export function addView(ctx) {
       function paintSetupTuning() {
         if (!setupGroups) return;
         const profile = setupProfile(), id = currentSetupID();
-        const { group, optional, cards, summary, value, delay, mtu, mux } = setupGroups;
+        const { group, optional, cards, summary, value, delay, mtu, httpPath, httpHost, mux } = setupGroups;
         const nativeMux = !!profile && nativeMuxOptional();
         group.hidden = !profile;
         optional.hidden = !profile || nativeMux;
@@ -1278,6 +1287,9 @@ export function addView(ctx) {
         delay.row.hidden = !profile.restart;
         delay.input.placeholder = id === 'gost-direct' || id === 'omni-hysteria' ? '3' : '2';
         mtu.row.hidden = !profile.mtu;
+        optional.querySelector('.gl3').textContent = daggerRoute() ? 'Optional' : 'Fine Tune';
+        httpPath.row.hidden = !daggerRoute();
+        httpHost.row.hidden = !daggerUpgrade();
       }
 
       function setupTuningPayload() {
@@ -1512,6 +1524,8 @@ export function addView(ctx) {
             name: payload.name, transport: setup.mode, port: Number(payload.tunnelPort),
             ports: payload.ports || '', secret: payload.token || '', iranHost: payload.iranHost || '',
             tuning, mux: backhaulMuxPayload(),
+            httpPath: daggerRoute() ? setupGroups.httpPath.input.value.trim() : undefined,
+            httpHost: daggerUpgrade() ? setupGroups.httpHost.input.value.trim() : undefined,
           });
           return { r, name: payload.name };
         }

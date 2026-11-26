@@ -19,7 +19,7 @@ func TestNativeSplitHTTPAuthenticatesAndTransfersAcrossBothRequests(t *testing.T
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	listener := listenTest(t)
-	mode := config.BackhaulConfig{Mode: "dagger-xhttp", Token: base64.StdEncoding.EncodeToString(make([]byte, 32))}
+	mode := config.BackhaulConfig{Mode: "dagger-xhttp", HTTPPath: "/api/v2", Token: base64.StdEncoding.EncodeToString(make([]byte, 32))}
 	creds, err := linkTLS(mode)
 	if err != nil {
 		t.Fatal(err)
@@ -27,12 +27,18 @@ func TestNativeSplitHTTPAuthenticatesAndTransfersAcrossBothRequests(t *testing.T
 	done := make(chan error, 1)
 	sent := make(chan struct{})
 	go func() {
-		done <- serveSplitHTTP(ctx, listener, mode.Token, creds, func(c net.Conn) {
+		done <- serveSplitHTTP(ctx, listener, mode, creds, func(c net.Conn) {
 			close(sent)
 			_, _ = io.Copy(c, c)
 		})
 	}()
 	addr := listener.Addr().String()
+	wrongPath := mode
+	wrongPath.HTTPPath = "/other"
+	if conn, err := dialLane(ctx, wrongPath, addr, creds); err == nil {
+		conn.Close()
+		t.Fatal("accepted an HTTP request on the wrong route")
+	}
 	wrongKey := mode
 	wrongKey.Token = base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{1}, 32))
 	if conn, err := dialLane(ctx, wrongKey, addr, creds); err == nil {
@@ -115,6 +121,9 @@ func TestNativeBackhaulMuxReplacesOneLaneWithoutResettingOthers(t *testing.T) {
 			token := base64.StdEncoding.EncodeToString(make([]byte, 32))
 			ir := config.BackhaulConfig{Native: true, Mode: mode, Role: "server", IranHost: "127.0.0.1", Port: uint16(port), Token: token,
 				Ports: []string{net.JoinHostPort("127.0.0.1", strconv.Itoa(entry)) + "=" + target.Addr().String()}}
+			if mode == "dagger-http" || mode == "dagger-https" {
+				ir.HTTPPath, ir.HTTPHost = "/upgrade/v2", "tunnel.example.test"
+			}
 			kh := ir
 			kh.Role, kh.Port, kh.Ports = "client", uint16(relay.Addr().(*net.TCPAddr).Port), nil
 			log := logrus.New()
