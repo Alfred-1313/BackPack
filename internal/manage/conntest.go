@@ -1306,9 +1306,7 @@ func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResul
 	if ctx.Err() == nil {
 		s.cleanupExtraCases(ctx, setupWorkers, results, reportRow, true)
 	}
-	if ctx.Err() != nil {
-		s.cleanupStoppedExtras(results, reportRow)
-	}
+	s.cleanupLocalExtras(results, reportRow)
 	cleanup.Wait()
 
 	// The kharej's path-MTU measurement, which it has usually sent long before.

@@ -398,6 +398,28 @@ build_execstart() {''')
                         '    local n="$1" pf a f old=() i\n'
                         '    [[ "$n" =~ ^bpct[a-f0-9]{12}$ ]] && return 0')
 
+    text = replace_once(text, '    need_root; inst_exists "$1" || { warn "no such instance: $1"; return 0; }\n'
+                              '    load_inst "$1"\n    with_pf_lock "$1" _inst_remove_fwd', r'''    need_root
+    if ! inst_exists "$1"; then
+        test_remove_pf_lock "$1" || return
+        warn "no such instance: $1"
+        return 0
+    fi
+    load_inst "$1"
+    with_pf_lock "$1" _inst_remove_fwd''')
+    text = replace_once(text, '''    ok "removed instance '$1'"\n}\n_inst_remove_fwd() {''',
+                        r'''    test_remove_pf_lock "$1" || return
+    ok "removed instance '$1'"
+}
+
+test_remove_pf_lock() {
+    [[ "$1" =~ ^bpct[a-f0-9]{12}$ ]] || return 0
+    # Test lanes serialize operations for each instance, including removal.
+    rm -f -- "$RUN_DIR/pf.$(dnat_chain "$1").lock"
+}
+
+_inst_remove_fwd() {''')
+
     # Test names carry an independent ICMP identifier. Old instances retain
     # the wire identifier they received at initial setup.
     text = replace_once(text, "build_execstart() {", r'''build_execstart() {

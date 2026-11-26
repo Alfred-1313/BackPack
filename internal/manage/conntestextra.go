@@ -633,9 +633,9 @@ func (s *ConnTestIran) cleanupExtraCases(ctx context.Context, workers int, rows 
 	cleanup.Wait()
 }
 
-// A stopped peer removes its own temporary transports. Local removal never
-// waits for peer RPCs and all local helpers share one shutdown deadline.
-func (s *ConnTestIran) cleanupStoppedExtras(rows []ConnTestResult, report func(int, ConnTestResult)) {
+// Finish local removals that were interrupted or failed during the run.
+// Local cleanup has its own deadline and does not depend on the peer.
+func (s *ConnTestIran) cleanupLocalExtras(rows []ConnTestResult, report func(int, ConnTestResult)) {
 	ctx, cancel := context.WithTimeout(context.Background(), ctStoppedCleanupLimit)
 	defer cancel()
 	var removals sync.WaitGroup
@@ -644,9 +644,13 @@ func (s *ConnTestIran) cleanupStoppedExtras(rows []ConnTestResult, report func(i
 			continue
 		}
 		removals.Go(func() {
-			if err := s.removeExtraLocal(ctx, c); err != nil {
-				row := rows[i]
-				row.Detail = strings.Trim(strings.Join([]string{row.Detail, ctCleanupUnconfirmed}, "; "), "; ")
+			row := rows[i]
+			detail := strings.TrimSuffix(strings.TrimSuffix(row.Detail, ctCleanupUnconfirmed), "; ")
+			if err := s.removeExtraLocal(ctx, c); err != nil || (c.peerStarted && detail != row.Detail) {
+				detail = strings.Trim(strings.Join([]string{detail, ctCleanupUnconfirmed}, "; "), "; ")
+			}
+			if detail != row.Detail {
+				row.Detail = detail
 				report(i, row)
 			}
 		})

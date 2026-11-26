@@ -57,6 +57,27 @@ if join; then
     exit 1
 fi
 cmp "$instance/instance.conf" "$scratch/original.conf"
+# A test's removal must leave neither the network configuration nor its lock.
+test_name=bpct0123456789ab
+test_token="${token_data/demo/$test_name}"
+test_token="${test_token/27000/27002}"
+test_token="${test_token//10.201.9./10.201.10.}"
+test_encoded="$(printf '%s' "$test_token" | base64 -w 0)"
+printf '%s\n' "$test_encoded" | bash "$scratch/manager" server-token
+test_inst="$scratch/config/inst/$test_name"
+test_lock="$scratch/run/pf.BPOMNI_BPCT0123456789AB.lock"
+other_lock="$scratch/run/pf.BPOMNI_DEMO.lock"
+printf 'tcp:8000:8080\n' > "$test_inst/pf.conf"
+touch "$test_lock" "$other_lock"
+bash "$scratch/manager" remove "$test_name"
+test ! -e "$test_inst"
+test ! -e "$test_lock"
+test ! -d "$scratch/config/removed"
+touch "$test_lock"
+bash "$scratch/manager" remove "$test_name"
+test ! -e "$test_lock"
+test -f "$other_lock"
+
 printf 'KEY=$(touch %q)\n' "$scratch/executed" >> "$instance/instance.conf"
 if bash "$scratch/manager" status demo; then
     echo 'Invalid config was accepted' >&2
