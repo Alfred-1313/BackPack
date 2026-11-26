@@ -94,8 +94,13 @@ def install(form):
         with unit.open("x") as out:
             unit_created = True
             out.write("[Unit]\nDescription=BackPack GOST Direct "+name+"\nAfter=network-online.target\n"
-                      "[Service]\nExecStart="+str(binary)+" -C "+str(cfg)+"\nRestart=on-failure\nRestartSec=3\n"
-                      "[Install]\nWantedBy=multi-user.target\n")
+                      "[Service]\nExecStart="+str(binary)+" -C "+str(cfg)+"\n")
+            if temporary:
+                out.write("Restart=no\nTimeoutStopSec=5\nRuntimeMaxSec=90min\n"
+                          "LogRateLimitIntervalSec=1min\nLogRateLimitBurst=10\n")
+            else:
+                out.write("Restart=on-failure\nRestartSec=3\n")
+            out.write("[Install]\nWantedBy=multi-user.target\n")
         run("systemctl","daemon-reload")
         if temporary:
             run("systemctl","start",unit.name)

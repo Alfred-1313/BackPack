@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os/exec"
 	"strings"
+	"time"
 )
 
 //go:embed setup.py
@@ -50,6 +51,7 @@ func install(ctx context.Context, f Form, test bool) (Result, error) {
 		return result, err
 	}
 	cmd := exec.CommandContext(ctx, "python3", "-c", script)
+	cmd.WaitDelay = 2 * time.Second
 	cmd.Stdin = bytes.NewReader(body)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr

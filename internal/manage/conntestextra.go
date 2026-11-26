@@ -41,6 +41,8 @@ var ctExtraTestName = regexp.MustCompile("^bpct[a-f0-9]{12}$")
 var ctOpaqueToken = regexp.MustCompile("[A-Za-z0-9_+/=-]{40,}")
 var ctANSI = regexp.MustCompile("\\x1b\\[[0-9;]*m")
 
+const ctStoppedCleanupLimit = 15 * time.Second
+
 func ctExtraCases() []*connTestCase {
 	cases := make([]*connTestCase, 0, len(omni.Options())+1)
 	for _, mode := range omni.Options() {
@@ -113,11 +115,11 @@ func ctOmniTokenFields(token string) ([]string, error) {
 	return fields, nil
 }
 
-func ctExtraRemove(mode, name string) error {
+func ctExtraRemove(ctx context.Context, mode, name string) error {
 	if !ctExtraTestName.MatchString(name) {
 		return errors.New("invalid temporary tunnel name")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 32*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 32*time.Second)
 	defer cancel()
 	if mode == ctGostDirect {
 		_, err := gostdirect.RunTest(ctx, gostdirect.Form{Action: "remove", Name: name})
@@ -194,19 +196,19 @@ type ctExtraInstance struct {
 	helper     *ctHelperProcess
 }
 
-func (w *ctExtraWorker) close(name string) error {
+func (w *ctExtraWorker) close(ctx context.Context, name string) error {
 	instance, ok := w.instances[name]
 	if !ok {
 		return nil
 	}
-	if err := instance.close(); err != nil {
+	if err := instance.close(ctx); err != nil {
 		return err
 	}
 	delete(w.instances, name)
 	return nil
 }
 
-func (w *ctExtraInstance) close() error {
+func (w *ctExtraInstance) close(ctx context.Context) error {
 	if w.echo != nil {
 		w.echo.close()
 		w.echo = nil
@@ -218,7 +220,7 @@ func (w *ctExtraInstance) close() error {
 	if w.name == "" {
 		return nil
 	}
-	if err := ctExtraRemove(w.mode, w.name); err != nil {
+	if err := ctExtraRemove(ctx, w.mode, w.name); err != nil {
 		return err
 	}
 	w.name, w.mode = "", ""
@@ -241,7 +243,7 @@ func (w *ctExtraWorker) perform(ctx context.Context, link ConnTestLink, job ctEx
 		}
 		return w.ports.take(job.Mode)
 	case "remove":
-		return 0, w.close(job.Name)
+		return 0, w.close(ctx, job.Name)
 	case "mux":
 		instance := w.instances[job.Name]
 		if instance == nil || instance.mode != "reverse-mux" {
@@ -256,7 +258,7 @@ func (w *ctExtraWorker) perform(ctx context.Context, link ConnTestLink, job ctEx
 	case "join":
 		if !w.parallel {
 			for name := range w.instances {
-				if err := w.close(name); err != nil {
+				if err := w.close(ctx, name); err != nil {
 					return 0, err
 				}
 			}
@@ -380,16 +382,25 @@ func ctExtraWork(ctx context.Context, link ConnTestLink, worker int, ports *ctEx
 	}
 	w := &ctExtraWorker{dir: dir, parallel: link.ParallelExtra, ports: ports, instances: make(map[string]*ctExtraInstance)}
 	defer func() {
-		for name := range w.instances {
-			if err := w.close(name); err != nil {
-				reportCleanup(err)
-			}
+		cleanup, cancel := context.WithTimeout(context.Background(), ctStoppedCleanupLimit)
+		defer cancel()
+		var removals sync.WaitGroup
+		for _, instance := range w.instances {
+			removals.Go(func() {
+				if err := instance.close(cleanup); err != nil {
+					reportCleanup(err)
+				}
+			})
 		}
+		removals.Wait()
 	}()
 	var sequence uint64
 	var reply string
 	for ctx.Err() == nil {
 		job, err := ctExtraReadJob(ctx, link, key, worker)
+		if errors.Is(err, errConnTestStopped) {
+			return
+		}
 		if err != nil || job.ID == 0 || job.ID < sequence {
 			ctSleep(ctx, 300*time.Millisecond)
 			continue
@@ -504,25 +515,30 @@ func (s *ConnTestIran) setupExtra(ctx context.Context, c *connTestCase, mode str
 	return err
 }
 
-func (s *ConnTestIran) removeExtra(c *connTestCase) error {
+func (s *ConnTestIran) removeExtra(ctx context.Context, c *connTestCase) error {
 	mode := strings.TrimPrefix(c.tr, ctOmniPrefix)
-	var peerErr, localErr error
+	var peerErr error
 	if c.peerStarted {
-		ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
+		ctx, cancel := context.WithTimeout(ctx, 40*time.Second)
 		defer cancel()
 		_, peerErr = s.coord.extra.exchange(ctx, c.extraWorker, ctExtraJob{Action: "remove", Name: c.name, Mode: mode})
 		c.peerStarted = peerErr != nil
 	}
+	return errors.Join(peerErr, s.removeExtraLocal(ctx, c))
+}
+
+func (s *ConnTestIran) removeExtraLocal(ctx context.Context, c *connTestCase) error {
+	var err error
 	if c.localStarted {
 		if c.helper != nil {
 			c.helper.close()
 			c.helper = nil
 		} else {
-			localErr = ctExtraRemove(mode, c.name)
+			err = ctExtraRemove(ctx, strings.TrimPrefix(c.tr, ctOmniPrefix), c.name)
 		}
-		c.localStarted = localErr != nil
+		c.localStarted = err != nil
 	}
-	return errors.Join(peerErr, localErr)
+	return err
 }
 
 func (s *ConnTestIran) prepareExtra(ctx context.Context, c *connTestCase, report func(ConnTestResult)) (ConnTestResult, bool) {
@@ -569,7 +585,7 @@ func (s *ConnTestIran) probeStageExtras(ctx context.Context, indices []int, work
 				if ok {
 					row = s.extraStability(ctx, c, update)
 				}
-				s.cleanupExtra(c, row, update)
+				s.cleanupExtra(ctx, c, row, update)
 			}
 		})
 	}
@@ -586,34 +602,56 @@ func (s *ConnTestIran) extraStability(ctx context.Context, c *connTestCase, repo
 	})
 }
 
-func (s *ConnTestIran) cleanupExtra(c *connTestCase, row ConnTestResult, report func(ConnTestResult)) {
-	if !c.localStarted && !c.peerStarted {
+const ctCleanupUnconfirmed = "temporary tunnel cleanup could not be confirmed"
+
+func (s *ConnTestIran) cleanupExtra(ctx context.Context, c *connTestCase, row ConnTestResult, report func(ConnTestResult)) {
+	if ctx.Err() != nil || (!c.localStarted && !c.peerStarted) {
 		return
 	}
 	cleaning := row
 	cleaning.Phase, cleaning.Detail = ctPhaseTransportCleanup, "removing temporary tunnel on both servers"
 	report(cleaning)
-	const unconfirmed = "temporary tunnel cleanup could not be confirmed"
-	row.Detail = strings.TrimSuffix(strings.TrimSuffix(row.Detail, unconfirmed), "; ")
-	if err := s.removeExtra(c); err != nil {
-		row.Detail = strings.Trim(strings.Join([]string{row.Detail, unconfirmed}, "; "), "; ")
+	row.Detail = strings.TrimSuffix(strings.TrimSuffix(row.Detail, ctCleanupUnconfirmed), "; ")
+	if err := s.removeExtra(ctx, c); err != nil && ctx.Err() == nil {
+		row.Detail = strings.Trim(strings.Join([]string{row.Detail, ctCleanupUnconfirmed}, "; "), "; ")
 	}
 	report(row)
 }
 
 // Each lane keeps its removal requests in order while independent lanes clean up concurrently.
-func (s *ConnTestIran) cleanupExtraCases(workers int, rows []ConnTestResult, report func(int, ConnTestResult), includeSpeedQueued bool) {
+func (s *ConnTestIran) cleanupExtraCases(ctx context.Context, workers int, rows []ConnTestResult, report func(int, ConnTestResult), includeSpeedQueued bool) {
 	var cleanup sync.WaitGroup
 	for worker := range workers {
 		cleanup.Go(func() {
 			for i, c := range s.cases {
 				if c.extra && c.extraWorker == worker && (includeSpeedQueued || rows[i].Phase != "speed-queued") {
-					s.cleanupExtra(c, rows[i], func(row ConnTestResult) { report(i, row) })
+					s.cleanupExtra(ctx, c, rows[i], func(row ConnTestResult) { report(i, row) })
 				}
 			}
 		})
 	}
 	cleanup.Wait()
+}
+
+// A stopped peer removes its own temporary transports. Local removal never
+// waits for peer RPCs and all local helpers share one shutdown deadline.
+func (s *ConnTestIran) cleanupStoppedExtras(rows []ConnTestResult, report func(int, ConnTestResult)) {
+	ctx, cancel := context.WithTimeout(context.Background(), ctStoppedCleanupLimit)
+	defer cancel()
+	var removals sync.WaitGroup
+	for i, c := range s.cases {
+		if !c.extra || !c.localStarted {
+			continue
+		}
+		removals.Go(func() {
+			if err := s.removeExtraLocal(ctx, c); err != nil {
+				row := rows[i]
+				row.Detail = strings.Trim(strings.Join([]string{row.Detail, ctCleanupUnconfirmed}, "; "), "; ")
+				report(i, row)
+			}
+		})
+	}
+	removals.Wait()
 }
 
 // Rebuild a helper that was cleaned up after stability. Run both speed

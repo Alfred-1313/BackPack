@@ -193,6 +193,8 @@ func (s *ConnTestSuite) markUnavailable(i int, reason string) bool {
 }
 
 func (s *ConnTestSuite) Run(ctx context.Context, progress func([]ConnTestPath)) []ConnTestPath {
+	stopWatcher := context.AfterFunc(ctx, s.signalStop)
+	defer stopWatcher()
 	var reportMu sync.Mutex
 	report := func() {
 		reportMu.Lock()
@@ -282,25 +284,31 @@ func (s *ConnTestSuite) Run(ctx context.Context, progress func([]ConnTestPath)) 
 
 // Give a reachable peer one poll to hear the cancellation before closing its
 // coordinator. This context deliberately outlives the cancelled measurement,
-// but the grace is shared by all paths and never exceeds three seconds.
+// but the grace is shared by all paths and never exceeds five seconds.
 func (s *ConnTestSuite) stopPeers() {
+	s.signalStop()
 	var waiting []<-chan struct{}
 	for _, test := range s.tests {
 		if test == nil {
 			continue
 		}
-		test.coord.mu.Lock()
-		test.coord.stopped = true
-		test.coord.mu.Unlock()
 		waiting = append(waiting, test.Fetched())
 	}
-	grace := time.NewTimer(3 * time.Second)
+	grace := time.NewTimer(5 * time.Second)
 	defer grace.Stop()
 	for _, ack := range waiting {
 		select {
 		case <-ack:
 		case <-grace.C:
 			return
+		}
+	}
+}
+
+func (s *ConnTestSuite) signalStop() {
+	for _, test := range s.tests {
+		if test != nil {
+			test.coord.stop()
 		}
 	}
 }

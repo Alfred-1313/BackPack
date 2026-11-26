@@ -375,6 +375,27 @@ _mux_push_foreign() {
 
 
 def temporary_test_instances(text):
+    text = replace_once(text, "build_execstart() {", r'''test_unit_settings() {
+    [[ "$1" =~ ^bpct[a-f0-9]{12}$ ]] || return 0
+    printf '%s\n' TimeoutStopSec=5 RuntimeMaxSec=90min LogRateLimitIntervalSec=1min LogRateLimitBurst=10
+}
+
+test_unit_restart() {
+    if [[ "$1" =~ ^bpct[a-f0-9]{12}$ ]]; then echo no; else echo always; fi
+}
+
+build_execstart() {''')
+    def test_unit(match):
+        section = match.group()
+        return (section.replace("[Service]\n", '[Service]\n$(test_unit_settings "$1")\n', 1)
+                       .replace("Restart=always", 'Restart=$(test_unit_restart "$1")'))
+    text, units = re.subn(r"(?m)^\[Service\]\n[\s\S]*?(?=^\[Install\]$|^EOF$)", test_unit, text)
+    if units != 6:
+        raise ValueError(f"expected six OmniTunnel service templates, found {units}")
+    text = replace_once(text, '    local n="$1" pf a f old=() i',
+                        '    local n="$1" pf a f old=() i\n'
+                        '    [[ "$n" =~ ^bpct[a-f0-9]{12}$ ]] && return 0')
+
     # Test names carry an independent ICMP identifier. Old instances retain
     # the wire identifier they received at initial setup.
     text = replace_once(text, "build_execstart() {", r'''build_execstart() {

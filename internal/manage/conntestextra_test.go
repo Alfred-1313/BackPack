@@ -204,7 +204,7 @@ func TestConnectionTestReleasesOnlyTheNamedHelper(t *testing.T) {
 		"first":  {echo: first},
 		"second": {echo: second},
 	}}
-	if err := worker.close("first"); err != nil {
+	if err := worker.close(context.Background(), "first"); err != nil {
 		t.Fatal(err)
 	}
 	if !first.closed || second.closed || worker.instances["first"] != nil || worker.instances["second"] == nil {

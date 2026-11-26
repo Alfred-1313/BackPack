@@ -141,6 +141,11 @@ func (c *conntestRunner) stop() {
 	defer c.mu.Unlock()
 	if conntestBusy(c.v.State) && c.v.State != ctStopping {
 		c.v.State = ctStopping
+		for i := range c.v.Paths {
+			if state := c.v.Paths[i].State; state == ctRunning || state == ctWaiting {
+				c.v.Paths[i].State = ctStopping
+			}
+		}
 		c.cancel()
 	}
 }
@@ -213,6 +218,9 @@ func (c *conntestRunner) start(parent context.Context, hosts []string, preset, d
 				active := -1
 				for i, p := range paths {
 					item := conntestPath{Host: p.Host, Family: p.Family, State: p.State, Error: p.Error, Kharej: p.Kharej, Best: p.Best, Started: p.Started}
+					if v.State == ctStopping && (p.State == ctRunning || p.State == ctWaiting) {
+						item.State = ctStopping
+					}
 					for _, r := range p.Rows {
 						item.Rows = append(item.Rows, rowOf(r))
 					}

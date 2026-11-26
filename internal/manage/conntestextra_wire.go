@@ -214,7 +214,10 @@ func ctExtraReadJob(ctx context.Context, link ConnTestLink, key cipher.AEAD, wor
 		if err != nil {
 			return job, err
 		}
-		if r == "stopped" || r == "wait" {
+		if r == "stopped" {
+			return job, errConnTestStopped
+		}
+		if r == "wait" {
 			return job, nil
 		}
 		wire, ok := strings.CutPrefix(r, "job ")

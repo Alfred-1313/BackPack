@@ -157,6 +157,7 @@ type ConnTestLink struct {
 	DirectPorts   bool `json:"dp,omitempty"`
 	ParallelExtra bool `json:"xp,omitempty"`
 	ParallelSetup bool `json:"xs,omitempty"`
+	WatchStop     bool `json:"ws,omitempty"`
 	// The spoofing check: the forged source, and the UDP port each side's
 	// receiver counts probes on. Empty SpoofSrc is no check.
 	SpoofSrc string `json:"ss,omitempty"`
@@ -534,7 +535,7 @@ func StartConnTestIran(o ConnTestOptions) (*ConnTestIran, string, error) {
 		ID: id, Host: host, Tok: ctNewSecret(), Preset: preset,
 		TCP: ctPickPort(used, false), UDP: ctPickPort(used, false), L3: ctPickPort(used, false),
 		Until:       time.Now().Add(connTestJoinWait + ConnTestRunTime() + connTestSlack).Unix(),
-		DirectPorts: true,
+		DirectPorts: true, WatchStop: true,
 	}
 	s.link.Coord = ctPickPort(used, true)
 	if s.link.TCP == 0 || s.link.UDP == 0 || s.link.L3 == 0 || s.link.Coord == 0 {
@@ -1157,6 +1158,8 @@ func (s *ConnTestIran) startDirectTestEngines(ctx context.Context, kharej string
 // progress receives every initial row and may be called concurrently as the
 // checks in a stage complete. It may be nil.
 func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResult)) []ConnTestResult {
+	stopWatcher := context.AfterFunc(ctx, s.coord.stop)
+	defer stopWatcher()
 	kharej := s.Kharej()
 	s.coord.mu.Lock()
 	for _, c := range s.cases {
@@ -1211,7 +1214,7 @@ func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResul
 
 	s.runStabilityStages(ctx, kharej, setupWorkers, parallelExtra, results, reportRow)
 	if parallelExtra && ctx.Err() == nil {
-		s.cleanupExtraCases(setupWorkers, results, reportRow, false)
+		s.cleanupExtraCases(ctx, setupWorkers, results, reportRow, false)
 	}
 	var failed []string
 	for i, c := range s.cases {
@@ -1260,8 +1263,8 @@ func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResul
 			}
 		}
 		reportRow(i, r)
-		if rebuildHelper {
-			s.cleanupExtra(c, r, func(row ConnTestResult) { reportRow(i, row) })
+		if rebuildHelper && ctx.Err() == nil {
+			s.cleanupExtra(ctx, c, r, func(row ConnTestResult) { reportRow(i, row) })
 		}
 	}
 	// A second pass in the opposite order, each tunnel keeping its better
@@ -1293,8 +1296,15 @@ func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResul
 		}
 	}
 
-	s.closeTestEngines()
-	s.cleanupExtraCases(setupWorkers, results, reportRow, true)
+	var cleanup sync.WaitGroup
+	cleanup.Go(s.closeTestEngines)
+	if ctx.Err() == nil {
+		s.cleanupExtraCases(ctx, setupWorkers, results, reportRow, true)
+	}
+	if ctx.Err() != nil {
+		s.cleanupStoppedExtras(results, reportRow)
+	}
+	cleanup.Wait()
 
 	// The kharej's path-MTU measurement, which it has usually sent long before.
 	pmtu := 0
@@ -1893,6 +1903,34 @@ type ctEngine struct {
 	done chan struct{}
 }
 
+const ctEngineLogLimit = 512 << 10
+
+// Keep a bounded, readable tail of each test engine's combined output.
+// exec.Cmd sends both streams through the same writer.
+type ctEngineLog struct {
+	file *os.File
+	size int
+}
+
+func (l *ctEngineLog) Write(p []byte) (int, error) {
+	n := len(p)
+	if n > ctEngineLogLimit {
+		p = p[n-ctEngineLogLimit:]
+	}
+	if l.size+len(p) > ctEngineLogLimit {
+		if err := l.file.Truncate(0); err != nil {
+			return 0, err
+		}
+		if _, err := l.file.Seek(0, io.SeekStart); err != nil {
+			return 0, err
+		}
+		l.size = 0
+	}
+	written, err := l.file.Write(p)
+	l.size += written
+	return n - len(p) + written, err
+}
+
 func startCTEngine(dir, name, body string, extraEnv ...string) (*ctEngine, error) {
 	bin, err := connTestBinary()
 	if err != nil {
@@ -1916,7 +1954,9 @@ func startCTEngine(dir, name, body string, extraEnv ...string) (*ctEngine, error
 	cmd := exec.Command(bin, "-c", cfg)
 	cmd.Stdin = parent
 	cmd.Env = append(append(os.Environ(), app.ConnTestParentPipe+"=1"), extraEnv...)
-	cmd.Stdout, cmd.Stderr = f, f
+	log := &ctEngineLog{file: f}
+	cmd.Stdout, cmd.Stderr = log, log
+	cmd.WaitDelay = 2 * time.Second
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
 		lifetime.Close()
@@ -2107,7 +2147,7 @@ func (c *ctCoordinator) serveUDP() {
 // shutdown acknowledgement would close the coordinator before the worker hears.
 func ctStopAcknowledged(line string) bool {
 	f := strings.Fields(line)
-	return len(f) >= 2 && (f[0] == "config" || f[0] == "hello" || f[0] == "result")
+	return len(f) >= 2 && (f[0] == "config" || f[0] == "hello" || f[0] == "result" || f[0] == "watch")
 }
 
 // answer is the coordinator's whole protocol. An empty answer is silence: a
@@ -2231,6 +2271,8 @@ func (c *ctCoordinator) answer(line, from string) string {
 		return ""
 	}
 	switch f[0] {
+	case "watch":
+		return "ok"
 	case "config":
 		c.mu.Lock()
 		cfg := c.config
@@ -2382,6 +2424,35 @@ func (c *ctCoordinator) close() {
 	c.sockets.close()
 }
 
+func (c *ctCoordinator) stop() {
+	c.mu.Lock()
+	c.stopped = true
+	c.mu.Unlock()
+}
+
+// A peer watches the run while it builds engines or configures helpers.
+// Lost connectivity also releases its temporary tunnels before link expiry.
+func ctWatchCoordinator(ctx context.Context, link ConnTestLink, stop context.CancelCauseFunc) {
+	lastAnswer := time.Now()
+	for ctx.Err() == nil {
+		probe, cancel := context.WithTimeout(ctx, 2*time.Second)
+		reply, err := ctAskContext(probe, link.Host, link.Coord, "watch "+link.Tok)
+		cancel()
+		if err == nil && reply == "stopped" {
+			stop(errConnTestStopped)
+			return
+		}
+		if err == nil && reply == "ok" {
+			lastAnswer = time.Now()
+		}
+		if time.Since(lastAnswer) >= 45*time.Second {
+			stop(errors.New("the Connection Test coordinator stopped responding"))
+			return
+		}
+		ctSleep(ctx, time.Second)
+	}
+}
+
 // ctAskContext puts one question to the coordinator over TCP and then UDP,
 // stopping the dial and any pending reply when the test is cancelled.
 func ctAskContext(ctx context.Context, host string, port int, line string) (string, error) {
@@ -2458,6 +2529,11 @@ func runConnTestKharejLink(ctx context.Context, link ConnTestLink, out io.Writer
 	}
 	ctx, cancel := context.WithDeadline(ctx, until)
 	defer cancel()
+	ctx, stop := context.WithCancelCause(ctx)
+	defer stop(nil)
+	if link.WatchStop {
+		go ctWatchCoordinator(ctx, link, stop)
+	}
 	root := os.Geteuid() == 0
 
 	workspace, err := ctNewWorkspace(os.TempDir())
@@ -2475,11 +2551,22 @@ func runConnTestKharejLink(ctx context.Context, link ConnTestLink, out io.Writer
 	defer echoes.close()
 
 	var engines []*ctEngine
-	defer func() { ctStopAll(engines) }()
+	var stopWorker func()
+	defer func() {
+		var cleanup sync.WaitGroup
+		cleanup.Go(func() { ctStopAll(engines) })
+		if stopWorker != nil {
+			cleanup.Go(stopWorker)
+		}
+		cleanup.Wait()
+	}()
 	local := map[string]string{}  // kind/transport → why this side could not run it
 	caseOf := map[string]string{} // engine name → kind/transport
 	usedDirectPorts := map[int]bool{link.TCP: true, link.UDP: true, link.L3: true}
 	for i, c := range link.Cases {
+		if err := context.Cause(ctx); err != nil {
+			return nil, ConnTestBest{}, err
+		}
 		name := c.Name
 		caseOf[name] = c.Kind + "/" + c.Tr
 		var body string
@@ -2581,9 +2668,7 @@ func runConnTestKharejLink(ctx context.Context, link ConnTestLink, out io.Writer
 	}
 
 	if link.pairKey != "" {
-		if worker := ctStartExtraWorker(ctx, link, out, dir); worker != nil {
-			defer worker()
-		}
+		stopWorker = ctStartExtraWorker(ctx, link, out, dir)
 	}
 	// Checking in: every few seconds until the Iran side hears it.
 	hello := "hello " + link.Tok
@@ -2599,6 +2684,9 @@ func runConnTestKharejLink(ctx context.Context, link ConnTestLink, out io.Writer
 			break
 		}
 		if ctx.Err() != nil {
+			if cause := context.Cause(ctx); !errors.Is(cause, context.DeadlineExceeded) && !errors.Is(cause, context.Canceled) {
+				return nil, ConnTestBest{}, cause
+			}
 			return nil, ConnTestBest{}, ctCoordinatorFailure(link.Host, link.Coord)
 		}
 		ctSleep(ctx, 3*time.Second)
@@ -2656,6 +2744,9 @@ func runConnTestKharejLink(ctx context.Context, link ConnTestLink, out io.Writer
 			return v.Results, v.Best, nil
 		}
 		if ctx.Err() != nil {
+			if cause := context.Cause(ctx); !errors.Is(cause, context.DeadlineExceeded) && !errors.Is(cause, context.Canceled) {
+				return nil, ConnTestBest{}, cause
+			}
 			return nil, ConnTestBest{}, fmt.Errorf("the verdict never arrived from the Iran server — read it there")
 		}
 	}
