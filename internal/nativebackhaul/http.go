@@ -44,7 +44,7 @@ func validateHTTPOptions(c config.BackhaulConfig) error {
 	}
 	if c.HTTPHost != "" {
 		if !upgrade {
-			return fmt.Errorf("an HTTP Host override is available on HTTP Upgrade and HTTPS Upgrade")
+			return fmt.Errorf("an HTTP Host override is available on Dagger http and https")
 		}
 		if strings.Contains(c.HTTPHost, ":") || !backhaulpremium.ValidEndpointHost(c.HTTPHost) {
 			return fmt.Errorf("enter an HTTP Host name or IPv4 address without a scheme or port")

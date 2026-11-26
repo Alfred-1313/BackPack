@@ -48,7 +48,7 @@ func ctDaggerCases() []*connTestCase {
 
 func ctDaggerLabel(mode string) string {
 	if profile, ok := strings.CutPrefix(mode, ctDaggerTUNPrefix); ok {
-		return "Dagger TUN / " + strings.ToUpper(profile)
+		return "tun / " + profile
 	}
 	flavor, ok := strings.CutPrefix(mode, ctDaggerPrefix)
 	if ok {

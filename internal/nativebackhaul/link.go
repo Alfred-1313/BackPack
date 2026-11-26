@@ -66,9 +66,9 @@ func Options() []backhaulpremium.Option {
 		{Value: "xtcpmux", Label: "XTcpMux", Direction: "reverse"},
 		{Value: "xwsmux", Label: "XWsMux", Direction: "reverse"},
 		{Value: "tun-tcp", Label: "TUN / TCP", Direction: "reverse"},
-		{Value: "dagger-http", Label: "HTTP Upgrade", Direction: "reverse"},
-		{Value: "dagger-https", Label: "HTTPS Upgrade", Direction: "reverse"},
-		{Value: "dagger-xhttp", Label: "Split HTTP", Direction: "reverse"},
+		{Value: "dagger-http", Label: "http", Direction: "reverse"},
+		{Value: "dagger-https", Label: "https", Direction: "reverse"},
+		{Value: "dagger-xhttp", Label: "xhttp", Direction: "reverse"},
 	}
 }
 

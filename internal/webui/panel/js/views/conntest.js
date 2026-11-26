@@ -127,7 +127,7 @@ function startPane(v) {
     <label class="tl-f ct-field"><span>DaggerConnect license PSK (optional)</span>
       <input id="ctDaggerLicense" type="password" maxlength="4096" autocomplete="off" spellcheck="false"
         aria-describedby="ctDaggerLicenseHint">
-      <small id="ctDaggerLicenseHint">Used for Quantum, Quantum+, Nova, DC6 and Dagger TUN in this test.</small>
+      <small id="ctDaggerLicenseHint">Used for Dagger quantum, quantum+, nova, dc6 and tun in this test.</small>
     </label>
     ${v.root ? '' : `<div class="tl-note wr">The panel is not running as root, so the direct tunnels, PCK and the IP-spoofing check are left out.</div>`}
     <span class="sp"></span>

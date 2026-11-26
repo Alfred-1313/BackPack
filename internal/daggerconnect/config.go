@@ -24,14 +24,14 @@ type Transport struct {
 
 func Options() []Transport {
 	return []Transport{
-		{"http", "Dagger HTTP", "reverse"},
-		{"https", "Dagger HTTPS", "reverse"},
-		{"xhttp", "Dagger XHTTP (cleartext)", "reverse"},
-		{"quantum", "Quantum", "reverse"},
-		{"quantum+", "Quantum+", "reverse"},
-		{"nova", "Nova", "reverse"},
-		{"dc6", "DC6", "reverse"},
-		{"tun", "Dagger TUN", "direct"},
+		{"http", "http", "reverse"},
+		{"https", "https", "reverse"},
+		{"xhttp", "xhttp", "reverse"},
+		{"quantum", "quantum", "reverse"},
+		{"quantum+", "quantum+", "reverse"},
+		{"nova", "nova", "reverse"},
+		{"dc6", "dc6", "reverse"},
+		{"tun", "tun", "direct"},
 	}
 }
 
