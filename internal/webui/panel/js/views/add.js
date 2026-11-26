@@ -72,7 +72,6 @@ export function addView(ctx) {
       let setupGroups, lastSetupProfile;
       const randomGreKey = root.querySelector('#randomGreKey');
       const nativeAddress = el('details', { class: 'f3 full', hidden: true });
-      nativeAddress.dataset.nativeAddress = '';
       nativeAddress.append(el('summary', { text: 'Use a custom Iran address' }),
         el('label', { text: 'Iran IP or hostname' }, [
           el('input', { name: 'iranHost', type: 'text', autocomplete: 'off', placeholder: 'Automatically detected' }),
@@ -600,7 +599,6 @@ export function addView(ctx) {
         const reversePort = root.querySelector('#aport');
         reversePort.closest('.f3').hidden = !!setup && !setup.port;
         reversePort.placeholder = setup ? '1–65535' : '4443 or 85.10.11.51:4443';
-        show('[data-native-address]', !!setup?.native && !nativeMuxOptional());
         root.querySelector('#aports').closest('.f3').querySelector('label').textContent =
           setup ? 'Forwarded TCP ports' : 'Forwarded ports';
         // The token and the far end's address are the panel's business now.
@@ -1021,7 +1019,10 @@ export function addView(ctx) {
         // The last one is the result, which is not made of groups.
         if (i === of - 1) return false;
         if (pane.querySelector('.choices')) return false;
-        return ![...pane.querySelectorAll('.grp3, .dr2b')].some(g => !g.hidden);
+        return ![...pane.querySelectorAll('.grp3, .dr2b')].some(g => {
+          const hidden = g.closest('[hidden]');
+          return !hidden || hidden === pane;
+        });
       }
 
       function paintRail() {
@@ -1153,7 +1154,7 @@ export function addView(ctx) {
         const grid = el('div', { class: 'fgrid' }, rows);
         const box = el('div', { class: 'dr2b' }, [header, el('div', { class: 'b4b' }, grid)]);
         header.addEventListener('click', () => header.setAttribute('aria-expanded', String(box.classList.toggle('open'))));
-        return { box, grid };
+        return box;
       }
 
       function tuningSwitch(title, hint) {
@@ -1198,17 +1199,18 @@ export function addView(ctx) {
         const group = el('div', { class: 'grp3', hidden: true, 'data-native-mux-optional': '' }, [
           el('div', { class: 'gl3', text: 'Optional' }),
           el('div', { class: 'fgrid kharejgrid' }, [dial.row, backups.row]),
-          fine.box, limits.box, ipv6.row, proxy.row,
+          fine, limits, ipv6.row, proxy.row,
         ]);
         opt.append(group);
-        return { group, fine, limits, dial, backups, heartbeat, timeout, conns, bandwidth, ipv6, proxy };
+        return { group, dial, backups, heartbeat, timeout, conns, bandwidth, ipv6, proxy };
       }
 
-      function addSetupTuning(perf, opt) {
+      function addSetupTuning(tunnelFields, perf, opt) {
         const cards = el('div', { class: 'trgrid' });
         const summary = el('div', { class: 'rp-sets' });
+        const performanceFields = el('div', { class: 'fgrid', hidden: true });
         const group = el('div', { class: 'grp3', hidden: true, 'data-setup-performance': '' }, [
-          el('div', { class: 'gl3', text: 'Performance' }), cards, summary,
+          el('div', { class: 'gl3', text: 'Performance' }), cards, summary, performanceFields,
         ]);
         const value = tuningField('setupTuningValue', '');
         const delay = tuningField('setupRestartSeconds', 'Restart delay after failure (seconds)');
@@ -1224,10 +1226,12 @@ export function addView(ctx) {
         };
         const httpPath = httpField('nativeDaggerHTTPPath', 'HTTP path', '/tunnel', 256);
         const httpHost = httpField('nativeDaggerHTTPHost', 'HTTP Host header', 'Use the dial address', 253);
-        httpPath.row.append(el('div', { class: 'hint', text: 'The Setup link passes this path to Kharej.' }));
+        httpPath.row.append(el('div', { class: 'hint', text: 'Leave blank for /tunnel. The setup link shares the HTTP settings with Kharej.' }));
+        httpHost.row.append(el('div', { class: 'hint', text: 'Sets the Host header when Kharej makes the HTTP request.' }));
+        tunnelFields.append(httpPath.row, httpHost.row);
+        const optionalFields = el('div', { class: 'fgrid' }, [mtu.row, delay.row, nativeAddress]);
         const optional = el('div', { class: 'grp3', hidden: true }, [
-          el('div', { class: 'gl3', text: 'Fine Tune' }),
-          el('div', { class: 'fgrid' }, [value.row, mtu.row, delay.row, httpPath.row, httpHost.row, nativeAddress]),
+          el('div', { class: 'gl3', text: 'Fine Tune' }), optionalFields,
         ]);
         for (const preset of ['balance', 'turbo', 'aggressive']) {
           const card = el('button', { type: 'button', class: 'rp', 'data-pre': preset });
@@ -1241,7 +1245,8 @@ export function addView(ctx) {
         }
         perf.append(group);
         opt.append(optional);
-        return { group, cards, summary, optional, value, delay, mtu, httpPath, httpHost, mux: addMuxOptional(opt) };
+        return { group, cards, summary, tunnelFields, performanceFields, optional, optionalFields,
+          value, delay, mtu, httpPath, httpHost, mux: addMuxOptional(opt) };
       }
 
       function currentSetupID() {
@@ -1251,14 +1256,23 @@ export function addView(ctx) {
       function paintSetupTuning() {
         if (!setupGroups) return;
         const profile = setupProfile(), id = currentSetupID();
-        const { group, optional, cards, summary, value, delay, mtu, httpPath, httpHost, mux } = setupGroups;
+        const { group, optional, cards, summary, tunnelFields, performanceFields, optionalFields,
+          value, delay, mtu, httpPath, httpHost, mux } = setupGroups;
         const nativeMux = !!profile && nativeMuxOptional();
+        const hasDaggerRoute = daggerRoute();
+        const showAddress = !!reverseSetup()?.native && !nativeMux;
+        const sameKnob = !!profile && profile.label === profile.overrideLabel;
         group.hidden = !profile;
-        optional.hidden = !profile || nativeMux;
+        performanceFields.hidden = !sameKnob;
+        optional.hidden = !profile || nativeMux ||
+          (sameKnob && !profile.restart && !profile.mtu && !(showAddress && !hasDaggerRoute));
         optional.style.display = '';
         mux.group.hidden = !nativeMux;
-        const tuneGrid = nativeMux ? mux.fine.grid : optional.querySelector('.fgrid');
-        if (value.row.parentElement !== tuneGrid) tuneGrid.prepend(value.row);
+        httpPath.row.hidden = !hasDaggerRoute;
+        httpHost.row.hidden = !daggerUpgrade();
+        nativeAddress.hidden = !showAddress;
+        const addressFields = hasDaggerRoute ? tunnelFields : optionalFields;
+        if (nativeAddress.parentElement !== addressFields) addressFields.append(nativeAddress);
         if (!profile) {
           lastSetupProfile = null;
           return;
@@ -1280,16 +1294,15 @@ export function addView(ctx) {
         }
         summary.innerHTML = `<div class="rp-sets-h"><b>What ${preset[0].toUpperCase() + preset.slice(1)} sets</b></div>
           <div class="rp-sets-g"><div><span>${esc(profile.label)}</span><b>${esc(String(applies))}</b></div></div>`;
+        const valueFields = sameKnob ? performanceFields : optionalFields;
+        if (value.row.parentElement !== valueFields) valueFields.prepend(value.row);
         value.title.textContent = profile.overrideLabel;
         value.input.min = profile.min;
         value.input.max = profile.max;
-        value.input.placeholder = profile.label === profile.overrideLabel ? applies : 'Automatic';
+        value.input.placeholder = sameKnob ? applies : 'Automatic';
         delay.row.hidden = !profile.restart;
         delay.input.placeholder = id === 'gost-direct' || id === 'omni-hysteria' ? '3' : '2';
         mtu.row.hidden = !profile.mtu;
-        optional.querySelector('.gl3').textContent = daggerRoute() ? 'Optional' : 'Fine Tune';
-        httpPath.row.hidden = !daggerRoute();
-        httpHost.row.hidden = !daggerUpgrade();
       }
 
       function setupTuningPayload() {
@@ -1395,7 +1408,7 @@ export function addView(ctx) {
         if (directLimits) opt.append(el('div', { class: 'grp3', 'data-mode': 'dir' }, [
           el('div', { class: 'gl3', text: 'Forwarding limits' }), directLimits,
         ]));
-        setupGroups = addSetupTuning(perf, opt);
+        setupGroups = addSetupTuning(details.querySelector('#atok').closest('.fgrid'), perf, opt);
         /* PCK's fine-tuning goes with the presets it overrides, on the same
            step, rather than among the fields that name the tunnel. */
         const pckDrawer = root.querySelector('#dw-pck');

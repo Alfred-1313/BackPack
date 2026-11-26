@@ -458,6 +458,7 @@ body[data-accent]:not([data-accent="signal"]) .dlg.add .rp2.on .rp-load i.on{bac
 }
 .dlg.add .withb .rnd{flex:none}
 .dlg.add .rp-sets{margin-top:12px;border:1px solid var(--ln);border-radius:14px;background:var(--field);overflow:hidden}
+.dlg.add [data-setup-performance] > .fgrid{margin-top:12px}
 .dlg.add .rp-sets-h{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;padding:11px 14px;border-bottom:1px solid var(--ln)}
 .dlg.add .rp-sets-h b{font-size:12.5px;font-weight:640}
 .dlg.add .rp-sets-h small{font-size:11px;color:var(--dim)}

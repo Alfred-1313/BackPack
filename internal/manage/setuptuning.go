@@ -10,7 +10,7 @@ import (
 )
 
 // SetupTuning is shared by the imported transports' setup forms. The preset
-// supplies the default and a Fine Tune value overrides only the advertised knob.
+// supplies the default and a manual value overrides only the advertised setting.
 type SetupTuning struct {
 	Preset         string `json:"preset"`
 	Value          *int   `json:"value"`
