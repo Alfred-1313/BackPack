@@ -2,6 +2,9 @@ import { esc } from './dom.js';
 
 const sources = new Map([
   ['anytls', 'Backhaul'],
+  ['native-xtcpmux', 'Backhaul'],
+  ['native-xwsmux', 'Backhaul'],
+  ['native-tun-tcp', 'Backhaul'],
   ['gretap', 'Gretap'],
   ['l2tpv3', 'VortexL2'],
   ['easytier', 'VortexL2'],
@@ -10,7 +13,7 @@ const sources = new Map([
 
 export function transportDisplay(id, label) {
   if (id?.startsWith('native-dagger-')) return { name: label, source: 'Dagger' };
-  if (id?.startsWith('native-')) return { name: label, source: 'BackPack' };
+  if (id?.startsWith('native-')) return { name: label, source: sources.get(id) || 'BackPack' };
   if (id?.startsWith('backhaul-')) return { name: label, source: 'Backhaul' };
   if (id?.startsWith('dagger-')) {
     return { name: label.replace(/^((?:Reverse|Direct) )?Dagger /, '$1'), source: 'Dagger' };
