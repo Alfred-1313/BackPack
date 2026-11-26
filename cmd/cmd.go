@@ -109,6 +109,11 @@ func Run(configPath string, ctx context.Context) {
 
 	if cfg.Backhaul.Present() {
 		if cfg.Backhaul.Native {
+			ctx, cancel := context.WithCancel(ctx)
+			defer cancel()
+			metrics.ClearPeer()
+			ctl := &engineControl{name: tunnelNameFromPath(configPath), role: cfg.Backhaul.Role, transport: cfg.Backhaul.Mode}
+			serveEngineControl(ctx, ctl)
 			stop := startMetrics(ctx, configPath, cfg.Backhaul.Mode, cfg.Backhaul.Role)
 			err := nativebackhaul.Run(ctx, tunnelNameFromPath(configPath), cfg.Backhaul, logger)
 			stop()

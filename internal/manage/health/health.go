@@ -1,10 +1,13 @@
 package health
 
 import (
+	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/backpack/backpack/internal/app"
+	"github.com/backpack/backpack/internal/enginectl"
 	"github.com/backpack/backpack/internal/manage/core"
 	"github.com/backpack/backpack/internal/manage/tunnelspec"
 	"github.com/backpack/backpack/internal/metrics"
@@ -88,7 +91,11 @@ func tunnelHealthWith(t core.Tunnel, pairs [][2]string) Health {
 		h.State, h.Detail = "unknown", "DaggerConnect service is active; see its log for peer status"
 	default:
 		if !tunnelspec.IsDirectKind(t) {
-			h.Connected = tunnelHealthy(t, pairs)
+			if strings.HasPrefix(t.Transport, "native/") {
+				h.Connected = nativePeerConnected(t.Name)
+			} else {
+				h.Connected = tunnelHealthy(t, pairs)
+			}
 		}
 		// tunnelHealthy answers the watchdog's question — "is this worth
 		// restarting?" — and for a datagram server it deliberately says yes
@@ -155,6 +162,19 @@ func tunnelHealthWith(t core.Tunnel, pairs [][2]string) Health {
 		}
 	}
 	return h
+}
+
+// A native TLS socket can be established before authentication succeeds.
+// Use the live engine's peer state, with its snapshot for older binaries.
+func nativePeerConnected(name string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 400*time.Millisecond)
+	defer cancel()
+	var status enginectl.Status
+	if err := enginectl.AskContext(ctx, name, enginectl.OpStatus, &status); err == nil {
+		return status.Connected
+	}
+	connected, known := engineSaysConnected(name)
+	return connected && known
 }
 
 // datagramPeerWindow is how long a snapshot's peer field stays meaningful. The

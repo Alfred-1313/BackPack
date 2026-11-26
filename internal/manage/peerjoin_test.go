@@ -26,12 +26,11 @@ func TestPeerSetupAuthenticatesAndUsesObservedAddress(t *testing.T) {
 	if !info.Pending || !strings.HasPrefix(link, peerJoinScheme) {
 		t.Fatal("wait-for-peer setup command was not issued")
 	}
-	payload, err := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(link, peerJoinScheme))
-	if err != nil {
-		t.Fatal(err)
+	if len(link) > 115 {
+		t.Fatalf("IPv4 peer link length %d", len(link))
 	}
-	var invalid peerJoinLink
-	if err := json.Unmarshal(payload, &invalid); err != nil {
+	invalid, err := decodePeerJoin(link)
+	if err != nil {
 		t.Fatal(err)
 	}
 	for _, test := range []struct {
@@ -56,8 +55,12 @@ func TestPeerSetupAuthenticatesAndUsesObservedAddress(t *testing.T) {
 			}
 		})
 	}
-	for range 2 {
-		result, err := fetchPeerJoin(link)
+	legacy, err := json.Marshal(invalid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, raw := range []string{link, peerJoinScheme + base64.RawURLEncoding.EncodeToString(legacy)} {
+		result, err := fetchPeerJoin(raw)
 		if err != nil || result.Name != "127.0.0.1" {
 			t.Fatalf("observed peer %q: %v", result.Name, err)
 		}

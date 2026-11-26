@@ -26,6 +26,23 @@ import (
 
 var logger = utils.NewLogger("info")
 
+func setCLIOutput() {
+	if st, err := os.Stdout.Stat(); err == nil && st.Mode()&os.ModeCharDevice != 0 {
+		cli.Color = os.Getenv("NO_COLOR") == ""
+		cli.Progress = func(s string) { fmt.Print(s) }
+	}
+}
+
+func exitCLI(r cli.Result) {
+	if r.Out != "" {
+		fmt.Print(r.Out)
+	}
+	if r.Err != "" {
+		fmt.Fprint(os.Stderr, r.Err)
+	}
+	os.Exit(r.Code)
+}
+
 // main has two modes:
 //
 //   - Engine mode:  `backpack -c /etc/backpack/<name>.toml`
@@ -52,18 +69,14 @@ func main() {
 			fmt.Fprintf(os.Stderr, "read the %s setup token from standard input\n", label)
 			os.Exit(1)
 		}
-		service, active, err := join(ctx, input.Text())
+		done, err := join(ctx, input.Text())
 		cancel()
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
-		fmt.Println("Created", service)
-		if !active {
-			fmt.Fprintf(os.Stderr, "check the %s service log for startup status\n", label)
-			os.Exit(1)
-		}
-		return
+		setCLIOutput()
+		exitCLI(cli.ReportLink(done))
 	}
 	if len(os.Args) > 1 && os.Args[1] == "transport-test" {
 		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -112,18 +125,8 @@ func main() {
 	// testable without a process. This is the only part that needs one.
 	if len(os.Args) > 1 && cli.IsCommand(os.Args[1]) {
 		cli.EngineCheck = cmd.CheckConfigFile
-		if st, err := os.Stdout.Stat(); err == nil && st.Mode()&os.ModeCharDevice != 0 {
-			cli.Color = os.Getenv("NO_COLOR") == ""
-			cli.Progress = func(s string) { fmt.Print(s) }
-		}
-		r := cli.Run(os.Args[1:])
-		if r.Out != "" {
-			fmt.Print(r.Out)
-		}
-		if r.Err != "" {
-			fmt.Fprint(os.Stderr, r.Err)
-		}
-		os.Exit(r.Code)
+		setCLIOutput()
+		exitCLI(cli.Run(os.Args[1:]))
 	}
 
 	configPath := flag.String("c", "", "path to a tunnel configuration file (TOML) — runs in engine mode")

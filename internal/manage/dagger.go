@@ -37,9 +37,10 @@ type DaggerForm struct {
 }
 
 type DaggerSetup struct {
-	Service string `json:"service"`
-	Active  bool   `json:"active"`
-	Apply   string `json:"apply"`
+	Service string        `json:"service"`
+	Active  bool          `json:"active"`
+	Apply   string        `json:"apply"`
+	Setup   SetupLinkInfo `json:"setup"`
 }
 
 type daggerLink struct {
@@ -53,10 +54,6 @@ func daggerPeerToken(name string, c config.DaggerConfig) string {
 	return base64.RawURLEncoding.EncodeToString(body)
 }
 
-func DaggerJoinCommand(token string) string {
-	return "printf '%s\\n' '" + token + "' | sudo backpack dagger join"
-}
-
 func CreateDagger(ctx context.Context, f DaggerForm) (DaggerSetup, error) {
 	c := config.DaggerConfig{
 		Role: "server", Flavor: f.Transport, IranIP: f.IranIP, KharejIP: f.KharejIP,
@@ -65,24 +62,31 @@ func CreateDagger(ctx context.Context, f DaggerForm) (DaggerSetup, error) {
 		TUNProfile: f.TUNProfile, TUNPort: f.TUNPort,
 		IranTunnelIP: f.IranTunnelIP, KharejTunnelIP: f.KharejTunnelIP,
 	}
+	setup, err := importedSetupLink(daggerShare(f.Name, c))
+	if err != nil {
+		return DaggerSetup{}, err
+	}
 	service, active, err := installDagger(ctx, f.Name, c)
 	if err != nil {
 		return DaggerSetup{}, err
 	}
-	return DaggerSetup{Service: service, Active: active, Apply: DaggerJoinCommand(daggerPeerToken(f.Name, c))}, nil
+	return DaggerSetup{Service: service, Active: active, Apply: setup.Apply, Setup: setup}, nil
 }
 
-func JoinDagger(ctx context.Context, token string) (string, bool, error) {
+func JoinDagger(ctx context.Context, token string) (LinkApplied, error) {
 	var link daggerLink
 	if len(token) > 16<<10 {
-		return "", false, fmt.Errorf("DaggerConnect setup token is too long")
+		return LinkApplied{}, fmt.Errorf("DaggerConnect setup token is too long")
 	}
 	body, err := base64.RawURLEncoding.DecodeString(token)
 	if err != nil || json.Unmarshal(body, &link) != nil || link.Side.Role != "client" {
-		return "", false, fmt.Errorf("invalid DaggerConnect setup token")
+		return LinkApplied{}, fmt.Errorf("invalid DaggerConnect setup token")
 	}
 	link.Side.Ports, link.Side.CertFile, link.Side.KeyFile = "", "", ""
-	return installDagger(ctx, link.Name, link.Side)
+	if err := core.CheckName(link.Name); err != nil {
+		return LinkApplied{}, err
+	}
+	return applyDaggerPeer(ctx, link.Name, link.Side)
 }
 
 func installDagger(ctx context.Context, name string, c config.DaggerConfig) (string, bool, error) {

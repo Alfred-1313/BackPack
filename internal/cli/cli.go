@@ -586,7 +586,7 @@ func runLink(args []string) Result {
 	if err != nil {
 		return fail(CodeFailed, "could not set up the tunnel: %v\n", err)
 	}
-	return linkReport(done)
+	return ReportLink(done)
 }
 
 // Progress, when set, receives the lines of a long command as they happen —
@@ -608,10 +608,10 @@ func paint(code, s string) string {
 
 const rule = "  ────────────────────────────────────────────\n"
 
-// linkReport is what `link apply` says: what was built or brought into step,
+// ReportLink is what `link apply` says: what was built or brought into step,
 // then whether it reached the Iran server — the answer the person at this
 // terminal is actually waiting for.
-func linkReport(done manage.LinkApplied) Result {
+func ReportLink(done manage.LinkApplied) Result {
 	var b strings.Builder
 	say := func(format string, a ...any) {
 		line := fmt.Sprintf(format, a...)
@@ -629,6 +629,8 @@ func linkReport(done manage.LinkApplied) Result {
 	verb := "created"
 	if done.Updated {
 		verb = "updated to match the Iran side"
+	} else if done.Existing {
+		verb = "already configured"
 	}
 	say("  %s Tunnel %q %s   %s\n", ok, done.Name, verb, paint("2", done.Kind+" · "+strings.ToUpper(done.Transport)))
 	if done.Dials != "" {
@@ -647,11 +649,17 @@ func linkReport(done manage.LinkApplied) Result {
 		say("  %s The service %s did not start — see: journalctl -u %s -n 30\n%s", paint("31;1", "✗"), done.Service, done.Service, rule)
 		return Result{Out: b.String(), Code: CodeUnhealthy}
 	}
-	if done.External {
-		say("  %s Both ends were set up.\n%s", ok, rule)
+	if done.External && done.AwaitPeer == nil {
+		say("  %s Both ends were set up. The helper manages the peer status.\n%s", ok, rule)
 		return Result{Out: b.String()}
 	}
-	if done.Kind == "direct" {
+	if done.StatusUnavailable && done.AwaitPeer == nil {
+		say("  %s Running. Peer status is available in the helper log: journalctl -u %s -n 30\n%s",
+			ok, done.Service, rule)
+		return Result{Out: b.String()}
+	}
+	if done.AwaitPeer == nil && done.Kind == "direct" && done.Transport != l3.CarrierGRETAP &&
+		done.Transport != l3.CarrierL2TPv3 && done.Transport != l3.CarrierEasyTier {
 		if l3.KernelCarrier(done.Transport) {
 			// Neither end of a GRE link dials: each names the other, and the
 			// link carries traffic once both are up.
@@ -662,13 +670,21 @@ func linkReport(done manage.LinkApplied) Result {
 		return Result{Out: b.String()}
 	}
 	say("  %s Waiting for the Iran server …\n", paint("33", "◌"))
-	if connected, detail := awaitLink(done.Name, linkAwait); connected {
+	check := done.AwaitPeer
+	if check == nil {
+		check = func(within time.Duration) (bool, string) { return awaitLink(done.Name, within) }
+	}
+	if connected, detail := check(linkAwait); connected {
 		say("  %s %s\n", ok, paint("32;1", "Connected — the tunnel is up."))
 		if d := strings.TrimSpace(detail); d != "" {
 			row("link", d)
 		}
 		say("%s", rule)
 		return Result{Out: b.String()}
+	} else if done.External || done.StatusUnavailable || done.Kind == "direct" {
+		say("  %s Not connected yet (%s). Check the service log: journalctl -u %s -n 30\n%s",
+			paint("33;1", "!"), strings.TrimSpace(detail), done.Service, rule)
+		return Result{Out: b.String(), Code: CodeUnhealthy}
 	} else {
 		say("  %s Not connected yet (%s). It keeps trying on its own; if it stays down, check that the "+
 			"Iran server's tunnel port is open and that both ends are on the same version: "+

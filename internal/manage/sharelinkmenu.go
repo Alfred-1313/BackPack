@@ -92,6 +92,11 @@ func setupFromLink() {
 		tui.PressEnter()
 		return
 	}
+	if importedLink(link.Tr) {
+		tui.Info("On Kharej, use: sudo backpack link apply '<the setup link>'")
+		tui.PressEnter()
+		return
+	}
 
 	form := MirrorForPeer(link)
 	if !askMissingAddress(&form) {

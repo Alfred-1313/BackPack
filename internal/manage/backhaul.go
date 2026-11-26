@@ -84,11 +84,14 @@ func CreateBackhaul(ctx context.Context, f BackhaulForm) (BackhaulSetup, error) 
 			}
 		}
 	}
+	setup, err := importedSetupLink(backhaulShare(f.Name, c))
+	if err != nil {
+		return BackhaulSetup{}, err
+	}
 	service, active, err := installBackhaul(ctx, f.Name, c)
 	if err != nil {
 		return BackhaulSetup{}, err
 	}
-	setup := backhaulSetupLink(f.Name, c)
 	return BackhaulSetup{Service: service, Active: active, Apply: setup.Apply, Setup: setup}, nil
 }
 
@@ -115,20 +118,19 @@ func backhaulPeerToken(name string, c config.BackhaulConfig) string {
 	return base64.RawURLEncoding.EncodeToString(body)
 }
 
-func backhaulJoinCommand(token string) string {
-	return "printf '%s\\n' '" + token + "' | sudo backpack backhaul join"
-}
-
-func JoinBackhaul(ctx context.Context, token string) (string, bool, error) {
+func JoinBackhaul(ctx context.Context, token string) (LinkApplied, error) {
 	var link backhaulLink
 	if len(token) > 16<<10 {
-		return "", false, errors.New("Backhaul setup token is too long")
+		return LinkApplied{}, errors.New("Backhaul setup token is too long")
 	}
 	body, err := base64.RawURLEncoding.DecodeString(token)
 	if err != nil || json.Unmarshal(body, &link) != nil || link.Side.Role != "client" || len(link.Side.Ports) != 0 {
-		return "", false, errors.New("invalid Backhaul setup token")
+		return LinkApplied{}, errors.New("invalid Backhaul setup token")
 	}
-	return installBackhaul(ctx, link.Name, link.Side)
+	if err := core.CheckName(link.Name); err != nil {
+		return LinkApplied{}, err
+	}
+	return applyBackhaulPeer(ctx, link.Name, link.Side)
 }
 
 func installBackhaul(ctx context.Context, name string, c config.BackhaulConfig) (string, bool, error) {

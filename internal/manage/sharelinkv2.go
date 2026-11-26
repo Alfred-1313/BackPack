@@ -48,6 +48,7 @@ var shareFieldIDs = []string{
 	"pn", "pm", "pu", "ps", "pw", "pb",
 	"eg",
 	"lt", "lp", "ls", "lr", "en",
+	"ph", "i6", "tp", "bh",
 }
 
 // shareWords are the values a link repeats, each written as its index. Never
@@ -57,6 +58,9 @@ var shareWords = []string{
 	"tcp", "tcpmux", "stealth", "pck", "ws", "wss", "wsmux", "wssmux", "kcp", "quic", "udp",
 	"xdi", "sni", "spoof", "gre", "balance", "turbo", "aggressive", "throughput",
 	"ip6gre", "gretap", "l2tpv3", "easytier",
+	"native-xtcpmux", "native-xwsmux", "native-tun-tcp",
+	"native-dagger-http", "native-dagger-https", "native-dagger-xhttp",
+	"backhaul-xtcpmux", "backhaul-xwsmux", "backhaul-tun-tcp", "backhaul-tun-ipx",
 }
 
 // How a string value is written.
@@ -66,6 +70,7 @@ const (
 	strIPv4   = 2 // four bytes
 	strNumber = 3 // a decimal number, as a varint
 	strBase62 = 4 // length, then the base-62 number the characters spell
+	strKey32  = 5 // 32 bytes, rendered as standard padded base64
 )
 
 // encodeShareLinkV2 renders l in format 2.
@@ -93,6 +98,12 @@ func encodeShareLinkV2(l ShareLink) (string, error) {
 		b = append(b, byte(id))
 		switch f.Kind() {
 		case reflect.String:
+			if tag == "t" && importedLink(l.Tr) && len(l.Tok) == 44 {
+				if key, err := base64.StdEncoding.DecodeString(l.Tok); err == nil && len(key) == 32 && base64.StdEncoding.EncodeToString(key) == l.Tok {
+					b = append(append(b, strKey32), key...)
+					continue
+				}
+			}
 			b = appendShareString(b, f.String())
 		case reflect.Int:
 			b = binary.AppendVarint(b, f.Int())
@@ -290,6 +301,11 @@ func readShareString(b []byte) (string, []byte, error) {
 			return "", nil, errShareDamaged
 		}
 		return s, b[1+width:], nil
+	case strKey32:
+		if len(b) < 32 {
+			return "", nil, errShareDamaged
+		}
+		return base64.StdEncoding.EncodeToString(b[:32]), b[32:], nil
 	case strRaw:
 		n, k := binary.Uvarint(b)
 		if k <= 0 || uint64(len(b)-k) < n {

@@ -115,6 +115,12 @@ type ShareLink struct {
 	L2TPPeerSessionID uint32 `json:"lr,omitempty"`
 	EasyTierNetwork   string `json:"en,omitempty"`
 
+	// Imported transports' extra peer settings.
+	PeerHost   string `json:"ph,omitempty"`
+	IranIPv6   string `json:"i6,omitempty"`
+	TUNPort    uint32 `json:"tp,omitempty"`
+	HealthPort uint32 `json:"bh,omitempty"`
+
 	// The forged-source carrier's paired half. SrcIPs is what the PRODUCER
 	// forges — the receiver turns it into what it expects from its peer, which
 	// is the pairing people get wrong most and the one no wizard question can
@@ -682,6 +688,16 @@ func shareLinkOf(name, host string, cfg config.Config) (string, error) {
 	l := ShareLink{Name: name, Host: strings.TrimSpace(host)}
 
 	switch {
+	case cfg.Backhaul.Present():
+		if cfg.Backhaul.Role != "server" {
+			return "", fmt.Errorf("generate the Backhaul setup link on Iran")
+		}
+		return backhaulShare(name, cfg.Backhaul).Encode()
+	case cfg.Dagger.Present():
+		if cfg.Dagger.Role != "server" {
+			return "", fmt.Errorf("generate the DaggerConnect setup link on Iran")
+		}
+		return daggerShare(name, cfg.Dagger).Encode()
 	case cfg.L3.Enabled():
 		l.Kind = "direct"
 		l.From = "kharej"

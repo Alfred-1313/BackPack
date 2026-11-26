@@ -33,19 +33,24 @@ type LinkApplyOptions struct {
 
 // LinkApplied is what was built.
 type LinkApplied struct {
-	Name, Service  string
-	Kind           string // "reverse" or "direct"
-	Transport      string
-	Dials          string // reverse: the Iran address this side dials
-	Backups        []string
-	Active         bool
-	External       bool
+	Name, Service     string
+	Kind              string // "reverse" or "direct"
+	Transport         string
+	Dials             string // reverse: the Iran address this side dials
+	Backups           []string
+	Active            bool
+	External          bool
+	StatusUnavailable bool
+	// AwaitPeer verifies the data path when it is managed outside the engine.
+	AwaitPeer      func(time.Duration) (bool, string)
 	RestartHours   int
 	RestartMinute  int
 	ScheduleFailed string // why the restart schedule could not be set, if it could not
 	// Updated is a link applied over the tunnel it made before: the Iran side
 	// was edited, and this side was brought back into step with it.
 	Updated bool
+	// Existing means the same configuration was already installed.
+	Existing bool
 }
 
 // ErrLinkNeedsHost is a link that does not say where the Iran server is.
@@ -83,7 +88,7 @@ func FindSetupLink(text string) string {
 	whole := ""
 	for _, p := range pieces {
 		whole += p
-		if _, err := DecodeShareLink(whole); err == nil {
+		if isCompleteSetupLink(whole) {
 			return whole
 		}
 	}
@@ -91,6 +96,15 @@ func FindSetupLink(text string) string {
 		return pieces[0]
 	}
 	return strings.TrimSpace(text)
+}
+
+func isCompleteSetupLink(raw string) bool {
+	if strings.HasPrefix(raw, peerJoinScheme) {
+		_, err := decodePeerJoin(raw)
+		return err == nil
+	}
+	_, err := DecodeShareLink(raw)
+	return err == nil
 }
 
 // ApplySetupLink builds and starts the tunnel a setup link describes, on the
@@ -108,25 +122,29 @@ func ApplySetupLink(raw string, o LinkApplyOptions) (LinkApplied, error) {
 		return LinkApplied{}, fmt.Errorf("this link was made on a kharej server and is for the Iran side: " +
 			"paste it there, under sudo backpack → Setup from a link")
 	}
-	if existing := tunnelWithToken(link.Tok); existing != "" {
-		// The same tunnel, set up again. That is what happens after the Iran
-		// side is edited — its transport, its port — and the kharej has to
-		// follow: the link now describes the tunnel as it is, and applying it
-		// brings this end into step. A second tunnel with the same token would
-		// take the connection from the first, so it is never a new one.
-		if link.Kind == "reverse" {
-			return updateReverseFromLink(link, o, existing)
+	if !importedLink(link.Tr) {
+		if existing := tunnelWithToken(link.Tok); existing != "" {
+			// The same tunnel, set up again. That is what happens after the Iran
+			// side is edited — its transport, its port — and the kharej has to
+			// follow: the link now describes the tunnel as it is, and applying it
+			// brings this end into step. A second tunnel with the same token would
+			// take the connection from the first, so it is never a new one.
+			if link.Kind == "reverse" {
+				return updateReverseFromLink(link, o, existing)
+			}
+			return LinkApplied{}, fmt.Errorf("this link has already been set up here, as tunnel %q — "+
+				"a second tunnel with the same token would take the connection from the first; "+
+				"delete that one first to set it up again", existing)
 		}
-		return LinkApplied{}, fmt.Errorf("this link has already been set up here, as tunnel %q — "+
-			"a second tunnel with the same token would take the connection from the first; "+
-			"delete that one first to set it up again", existing)
 	}
 
 	var out LinkApplied
-	switch link.Kind {
-	case "reverse":
+	switch {
+	case importedLink(link.Tr):
+		out, err = applyImportedLink(link, o)
+	case link.Kind == "reverse":
 		out, err = applyReverseLink(link, o)
-	case "direct":
+	case link.Kind == "direct":
 		out, err = applyDirectLink(link, o)
 	default:
 		return LinkApplied{}, fmt.Errorf("a %q setup link is not one this version can apply", link.Kind)

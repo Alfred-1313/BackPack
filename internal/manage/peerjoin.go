@@ -10,6 +10,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,6 +19,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"os/exec"
 	"strings"
 	"sync"
 	"time"
@@ -71,6 +73,10 @@ func startPeerJoin(parent context.Context, host, name, kind string, setup func(c
 	if parent == nil {
 		parent = context.Background()
 	}
+	ip, err := netip.ParseAddr(host)
+	if err != nil || ip.Zone() != "" {
+		return SetupLinkInfo{}, errors.New("invalid Iran address for the Setup command")
+	}
 	key, err := backhaulToken()
 	if err != nil {
 		return SetupLinkInfo{}, err
@@ -96,8 +102,12 @@ func startPeerJoin(parent context.Context, host, name, kind string, setup func(c
 	}
 	ctx, stop := context.WithTimeout(parent, peerJoinWindow)
 	sum := sha256.Sum256(der)
-	payload, _ := json.Marshal(peerJoinLink{Addr: net.JoinHostPort(host, fmt.Sprint(listener.Addr().(*net.TCPAddr).Port)),
-		Key: key, Pin: base64.RawURLEncoding.EncodeToString(sum[:])})
+	addr := netip.AddrPortFrom(ip.Unmap(), uint16(listener.Addr().(*net.TCPAddr).Port))
+	keyBytes, _ := base64.StdEncoding.DecodeString(key)
+	payload := append([]byte{1}, keyBytes...)
+	payload = append(payload, sum[:]...)
+	payload = binary.BigEndian.AppendUint16(payload, addr.Port())
+	payload = append(payload, addr.Addr().AsSlice()...)
 	raw := peerJoinScheme + base64.RawURLEncoding.EncodeToString(payload)
 	var mu sync.Mutex
 	var peer string
@@ -161,15 +171,36 @@ func startPeerJoin(parent context.Context, host, name, kind string, setup func(c
 		Install: app.SourceInstallCommand("link", "apply", raw), Where: "Kharej terminal", Pending: true}, nil
 }
 
-func fetchPeerJoin(raw string) (peerJoinResult, error) {
+func decodePeerJoin(raw string) (peerJoinLink, error) {
 	var link peerJoinLink
 	encoded := strings.TrimPrefix(raw, peerJoinScheme)
-	if len(encoded) > 2048 {
-		return peerJoinResult{}, errors.New("invalid peer Setup command")
+	if len(encoded) <= 2048 {
+		body, err := base64.RawURLEncoding.DecodeString(encoded)
+		if err == nil && len(body) != 0 {
+			switch body[0] {
+			case 1:
+				if len(body) == 71 || len(body) == 83 {
+					ip, _ := netip.AddrFromSlice(body[67:])
+					return peerJoinLink{
+						Key:  base64.StdEncoding.EncodeToString(body[1:33]),
+						Pin:  base64.RawURLEncoding.EncodeToString(body[33:65]),
+						Addr: netip.AddrPortFrom(ip, binary.BigEndian.Uint16(body[65:67])).String(),
+					}, nil
+				}
+			case '{':
+				if err := json.Unmarshal(body, &link); err == nil {
+					return link, nil
+				}
+			}
+		}
 	}
-	body, err := base64.RawURLEncoding.DecodeString(encoded)
-	if err != nil || json.Unmarshal(body, &link) != nil {
-		return peerJoinResult{}, errors.New("invalid peer Setup command")
+	return peerJoinLink{}, errors.New("invalid peer Setup command")
+}
+
+func fetchPeerJoin(raw string) (peerJoinResult, error) {
+	link, err := decodePeerJoin(raw)
+	if err != nil {
+		return peerJoinResult{}, err
 	}
 	addr, err := netip.ParseAddrPort(link.Addr)
 	pin, pinErr := base64.RawURLEncoding.DecodeString(link.Pin)
@@ -284,12 +315,38 @@ func applyPeerJoin(raw string, options LinkApplyOptions) (LinkApplied, error) {
 				return done, err
 			}
 		}
-		done.Active = err == nil
+		done.Service = "omnitun-" + result.Name + ".service"
+		done.Active = err == nil && IsActive(done.Service)
 		if err != nil && output.Len() != 0 {
 			err = errors.New(ctExtraError(errors.New(output.String())))
+		}
+		if fields, fieldErr := ctOmniTokenFields(result.Token); fieldErr == nil && !strings.HasPrefix(result.Mode, "hysteria") {
+			done.AwaitPeer = routedPeerProbe(fields[6], fields[7])
 		}
 		return done, err
 	default:
 		return LinkApplied{}, errors.New("invalid peer Setup response")
+	}
+}
+
+// routedPeerProbe sends its echo inside the tunnel, bound to the local tunnel
+// address. The public peer answering ICMP cannot satisfy this check.
+func routedPeerProbe(local, peer string) func(time.Duration) (bool, string) {
+	if net.ParseIP(local).To4() == nil || net.ParseIP(peer).To4() == nil || local == peer {
+		return nil
+	}
+	return func(within time.Duration) (bool, string) {
+		ctx, cancel := context.WithTimeout(context.Background(), within)
+		defer cancel()
+		for ctx.Err() == nil {
+			if err := exec.CommandContext(ctx, "ping", "-I", local, "-c", "1", "-W", "1", peer).Run(); err == nil {
+				return true, "peer answered across the tunnel"
+			}
+			select {
+			case <-ctx.Done():
+			case <-time.After(time.Second):
+			}
+		}
+		return false, "no reply across the tunnel"
 	}
 }

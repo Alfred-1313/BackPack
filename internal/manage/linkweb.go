@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/backpack/backpack/config"
-	"github.com/backpack/backpack/internal/app"
 	"github.com/backpack/backpack/internal/tunnel/l3"
 )
 
@@ -54,15 +52,17 @@ func SetupLinkFor(name, host string) (SetupLinkInfo, error) {
 		if cfg.Backhaul.Role != "server" {
 			return SetupLinkInfo{}, fmt.Errorf("open Setup link on Iran to get the Backhaul join command")
 		}
-		return backhaulSetupLink(name, cfg.Backhaul), nil
+		c := cfg.Backhaul
+		if host = strings.Trim(strings.TrimSpace(host), "[]"); host != "" {
+			c.IranHost = host
+		}
+		return importedSetupLink(backhaulShare(name, c))
 	}
 	if cfgErr == nil && cfg.Dagger.Present() {
 		if cfg.Dagger.Role != "server" {
 			return SetupLinkInfo{}, fmt.Errorf("open Setup link on Iran to get the DaggerConnect join command")
 		}
-		token := daggerPeerToken(name, cfg.Dagger)
-		return SetupLinkInfo{Name: name, For: "kharej", Kind: "reverse", Apply: DaggerJoinCommand(token),
-			Install: "printf '%s\\n' '" + token + "' | " + app.SourceInstallCommand("dagger", "join"), Where: "Kharej terminal"}, nil
+		return importedSetupLink(daggerShare(name, cfg.Dagger))
 	}
 	host = strings.Trim(strings.TrimSpace(host), "[]")
 	if dial := LinkDial(name); dial != "" {
@@ -114,12 +114,11 @@ func SetupLinkFor(name, host string) (SetupLinkInfo, error) {
 	return info, nil
 }
 
-func backhaulSetupLink(name string, c config.BackhaulConfig) SetupLinkInfo {
-	kind := "reverse"
-	if c.Mode == "tun-ipx" {
-		kind = "direct"
+func importedSetupLink(l ShareLink) (SetupLinkInfo, error) {
+	raw, err := l.Encode()
+	if err != nil {
+		return SetupLinkInfo{}, err
 	}
-	apply := backhaulJoinCommand(backhaulPeerToken(name, c))
-	return SetupLinkInfo{Name: name, For: "kharej", Kind: kind, Apply: apply, Host: c.IranHost,
-		Install: app.SourceInstallCommand() + " && " + apply, Where: "Kharej terminal"}
+	return SetupLinkInfo{Name: l.Name, Link: raw, For: "kharej", Kind: l.Kind, Host: l.Host,
+		Apply: "sudo backpack link apply '" + raw + "'", Install: InstallCommand(raw), Where: "sudo backpack link apply"}, nil
 }
