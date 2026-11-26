@@ -387,8 +387,10 @@ test_unit_restart() {
 build_execstart() {''')
     def test_unit(match):
         section = match.group()
-        return (section.replace("[Service]\n", '[Service]\n$(test_unit_settings "$1")\n', 1)
-                       .replace("Restart=always", 'Restart=$(test_unit_restart "$1")'))
+        # mux_client_apply shifts away the instance argument before writing the unit.
+        owner = "$inst" if "EnvironmentFile=$dir/mux.env" in section else "$1"
+        return (section.replace("[Service]\n", f'[Service]\n$(test_unit_settings "{owner}")\n', 1)
+                       .replace("Restart=always", f'Restart=$(test_unit_restart "{owner}")'))
     text, units = re.subn(r"(?m)^\[Service\]\n[\s\S]*?(?=^\[Install\]$|^EOF$)", test_unit, text)
     if units != 6:
         raise ValueError(f"expected six OmniTunnel service templates, found {units}")
@@ -420,6 +422,8 @@ build_execstart() {''')
     # Forwarding units also start without enabling them for a future boot.
     text = text.replace('systemctl enable "$u" >/dev/null 2>&1 || true',
                         '[[ "${1:-}" =~ ^bpct[a-f0-9]{12}$ ]] || systemctl enable "$u" >/dev/null 2>&1 || true')
+    mux_client = re.search(r"(?m)^mux_client_apply\(\) \{\n[\s\S]*?^\}\n", text).group()
+    text = replace_once(text, mux_client, replace_once(mux_client, '[[ "${1:-}" =~', '[[ "$inst" =~'))
     return text
 
 
