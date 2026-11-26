@@ -315,7 +315,8 @@ func applyPeerJoin(raw string, options LinkApplyOptions) (LinkApplied, error) {
 				return done, err
 			}
 		}
-		done.Service = "omnitun-" + result.Name + ".service"
+		done.Service = "backpack-omni-" + result.Name + ".service"
+		done.Transport = omni.Label(result.Mode)
 		done.Active = err == nil && IsActive(done.Service)
 		if err != nil && output.Len() != 0 {
 			err = errors.New(ctExtraError(errors.New(output.String())))
