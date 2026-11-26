@@ -24,6 +24,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/backpack/backpack/config"
+	"github.com/backpack/backpack/internal/tunnel/l3"
 	"github.com/backpack/backpack/internal/tunnel/naive"
 )
 
@@ -93,7 +94,7 @@ func TestTheTestSettingsFitOnePacketAndCarryNoToken(t *testing.T) {
 	for _, c := range s.link.Cases {
 		// A kernel GRE link has no token at all (its case is offered only where
 		// this runs as root), so there is nothing to travel or to derive.
-		if c.Tok == "" && l3KernelCase(c.Tr) {
+		if c.Tok == "" && l3.PortlessLinkCarrier(c.Tr) {
 			continue
 		}
 		if strings.Contains(reply, c.Tok) {
@@ -793,5 +794,3 @@ func TestADownPckOrGRERowNamesTheReleaseItNeeds(t *testing.T) {
 		}
 	}
 }
-
-func l3KernelCase(tr string) bool { return tr == "gre" || tr == "ip6gre" }

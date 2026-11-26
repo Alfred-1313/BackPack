@@ -78,10 +78,11 @@ const connTestKind = "test"
 // ConnTestOptions.SpoofSrc); pck, on either side, needs root on both servers.
 var (
 	connTestReverse = []string{"tcp", "tcpmux", "stealth", "pck", "ws", "wss", "wsmux", "wssmux", "kcp", "quic", "udp", "naive", "anytls", "xhttp", "reality"}
-	// The direct tunnel's carriers, all raw since v2.0.0 took udp and quic
-	// out, and kernel GRE — over IPv4 or IPv6, whichever the two servers
-	// reach each other on. Spoof joins them as above.
-	connTestDirect = []string{"pck", "xdi", ctXdiFEC, "sni", "gre"}
+	// GRE follows the address family of the path. Spoof joins these as above.
+	connTestDirect = []string{
+		l3.CarrierPck, l3.CarrierXdi, ctXdiFEC, "sni", l3.CarrierGRE,
+		l3.CarrierGRETAP, l3.CarrierL2TPv3, l3.CarrierEasyTier,
+	}
 )
 
 // ctXdiFEC is xdi with error correction, tested beside plain xdi: on a path
@@ -603,25 +604,19 @@ func StartConnTestIran(o ConnTestOptions) (*ConnTestIran, string, error) {
 			}
 			carrier := ctDirectCarrier(tr)
 			c := &connTestCase{kind: "direct", tr: tr, name: fmt.Sprintf("ct-%s-d%s", id, strings.ReplaceAll(tr, "+", ""))}
-			if l3.KernelCarrier(carrier) {
-				if !s.root {
-					c.skip = "needs root on both servers"
-					s.cases = append(s.cases, c)
-					continue
-				}
-				if err := s.startGRECase(c, i, host, preset); err != nil {
-					return fail(err)
-				}
-				s.cases = append(s.cases, c)
-				continue
-			}
-			if ctFamily(host) == "IPv6" {
-				c.skip = "this raw carrier uses IPv4 packets; IPv6 is not supported"
+			if c.skip = ctDirectPrerequisite(carrier, host); c.skip != "" {
 				s.cases = append(s.cases, c)
 				continue
 			}
 			if !s.root {
 				c.skip = "needs root on both servers"
+				s.cases = append(s.cases, c)
+				continue
+			}
+			if l3.PortlessLinkCarrier(carrier) {
+				if err := s.startPortlessCase(c, i, carrier, host, preset); err != nil {
+					return fail(err)
+				}
 				s.cases = append(s.cases, c)
 				continue
 			}
@@ -646,7 +641,10 @@ func StartConnTestIran(o ConnTestOptions) (*ConnTestIran, string, error) {
 			} else {
 				findL3Preset(preset).apply(&c.l3)
 			}
-			if carrier == "sni" {
+			switch carrier {
+			case l3.CarrierEasyTier:
+				c.l3.EasyTierNetwork = c.name
+			case "sni":
 				c.l3.SNIDomain = sni
 			}
 			if tr == ctXdiFEC {
@@ -1132,8 +1130,8 @@ func (s *ConnTestIran) startDirectTestEngines(ctx context.Context, kharej string
 		if c.kind != "direct" || c.skip != "" || c.extra {
 			continue
 		}
-		if l3.KernelCarrier(c.l3.Carrier) {
-			// A GRE link names the kharej alone; there is no port to agree.
+		if l3.PortlessLinkCarrier(c.l3.Carrier) {
+			// GRE and L2TPv3 use the Kharej address directly.
 			c.l3.Addr = strings.Trim(kharej, "[]")
 		} else {
 			_, port, _ := net.SplitHostPort(c.l3.Addr)
@@ -2304,7 +2302,7 @@ func (c *ctCoordinator) directPort(tr, fallback string) string {
 // ctPortCarrier is a direct carrier the kharej binds a port for, which it
 // checks is free before Iran is told to dial it. xdi and spoof have no port.
 func ctPortCarrier(tr string) bool {
-	return tr == "pck" || tr == "sni"
+	return tr == l3.CarrierPck || tr == "sni" || tr == l3.CarrierEasyTier
 }
 
 func ctSkippableCase(value string) bool {
@@ -2522,11 +2520,13 @@ func runConnTestKharejLink(ctx context.Context, link ConnTestLink, out io.Writer
 			// in it. Everything else keys on the case's own name.
 			built := c
 			built.Tr = ctDirectCarrier(c.Tr)
+			if why := ctDirectPrerequisite(built.Tr, link.Host); why != "" {
+				local[c.Kind+"/"+c.Tr] = why
+				continue
+			}
 			form := MirrorForPeer(built)
 			form.Name = name
-			if l3.KernelCarrier(c.Tr) && form.ServerAddr == "" {
-				// The kharej's GRE link names the Iran server, which is the
-				// coordinator this side already reaches.
+			if l3.PortlessLinkCarrier(built.Tr) && form.ServerAddr == "" {
 				form.ServerAddr = link.Host
 			}
 			if link.DirectPorts && ctPortCarrier(c.Tr) {
@@ -2543,7 +2543,7 @@ func runConnTestKharejLink(ctx context.Context, link ConnTestLink, out io.Writer
 				continue
 			}
 			spec.Name, spec.Iface = name, fmt.Sprintf("bpt%d", i)
-			if ctFamily(link.Host) == "IPv6" && !l3.KernelCarrier(spec.Carrier) {
+			if ctFamily(link.Host) == "IPv6" && !l3.PortlessLinkCarrier(spec.Carrier) {
 				spec.Addr = net.JoinHostPort("::", addrPort(spec.Addr))
 			}
 			if _, body, err = directBodyFromSpec(spec); err != nil {

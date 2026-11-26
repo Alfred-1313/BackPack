@@ -15,6 +15,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/backpack/backpack/internal/tunnel/l3"
 )
 
 func TestConnectionTestSelectionPinsTheRequestedIPFamily(t *testing.T) {
@@ -172,11 +174,13 @@ func TestIPv6RawCarriersAreSkippedBeforeStartingAnEngine(t *testing.T) {
 	}
 	defer s.Close()
 	for _, c := range s.cases {
-		raw := c.kind == "spoof" || c.tr == "pck" || c.tr == "sni" || c.tr == "xdi"
+		raw := c.kind == "spoof" || c.tr == "pck" || c.tr == "sni" ||
+			ctDirectCarrier(c.tr) == l3.CarrierXdi || c.tr == l3.CarrierGRETAP || c.tr == l3.CarrierL2TPv3
 		if raw && !strings.Contains(c.skip, "IPv6 is not supported") {
 			t.Errorf("%s/%s not explicitly unsupported: %s", c.kind, c.tr, c.skip)
 		}
-		if !raw && os.Geteuid() == 0 && c.skip != "" {
+		if !raw && os.Geteuid() == 0 && c.skip != "" &&
+			!(c.tr == l3.CarrierEasyTier && ctDirectPrerequisite(c.tr, "::1") != "") {
 			t.Errorf("supported IPv6 carrier %s skipped: %s", c.tr, c.skip)
 		}
 	}

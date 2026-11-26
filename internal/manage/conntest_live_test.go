@@ -13,6 +13,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/backpack/backpack/internal/tunnel/l3"
 )
 
 // The Connection Test between two network namespaces, as root in a user
@@ -77,7 +79,8 @@ func TestTheConnectionTestAcrossARealPath(t *testing.T) {
 				if r.Phase != "" {
 					t.Errorf("%s %s finished in phase %q", r.Kind, r.Transport, r.Phase)
 				}
-				if managedTransport(r.Transport) && r.Status == ctSkipped {
+				if r.Status == ctSkipped && (managedTransport(r.Transport) ||
+					r.Kind == "direct" && ctDirectPrerequisite(ctDirectCarrier(r.Transport), "127.0.0.1") != "") {
 					t.Logf("optional %s skipped: %s", r.Transport, r.Detail)
 					continue
 				}
@@ -205,12 +208,15 @@ func TestTheConnectionTestAcrossAnIPv6OnlyPath(t *testing.T) {
 		t.Fatalf("missing IPv6 results: %+v", rows)
 	}
 	for _, r := range rows {
-		unsupported := r.Kind == "spoof" || r.Transport == "pck" || ctDirectCarrier(r.Transport) == "xdi" || r.Transport == "sni"
+		unsupported := r.Kind == "spoof" || r.Transport == "pck" ||
+			ctDirectCarrier(r.Transport) == "xdi" || r.Transport == "sni" ||
+			r.Transport == l3.CarrierGRETAP || r.Transport == l3.CarrierL2TPv3
 		if unsupported {
 			if r.Status != ctSkipped || !strings.Contains(r.Detail, "IPv6 is not supported") {
 				t.Errorf("raw IPv6 verdict: %+v", r)
 			}
-		} else if managedTransport(r.Transport) && r.Status == ctSkipped {
+		} else if r.Status == ctSkipped && (managedTransport(r.Transport) ||
+			r.Transport == l3.CarrierEasyTier && ctDirectPrerequisite(r.Transport, "::1") != "") {
 			t.Logf("optional helper %s: %s", r.Transport, r.Detail)
 		} else if r.Status != ctOK {
 			t.Errorf("supported IPv6 path failed: %+v", r)

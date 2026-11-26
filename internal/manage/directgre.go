@@ -561,35 +561,3 @@ func greShareHost(given string, cfg l3Spec) string {
 // greLinkHostFor is greLinkHost; a variable so a test of a link need not ask
 // the network what this machine's public address is.
 var greLinkHostFor = greLinkHost
-
-// startGRECase fills a Connection Test's GRE case on the Iran side: the same
-// tunnel the wizard builds — its key, its MTU taken from the interface, the
-// preset asked for — between the two servers' own addresses, over IPv6 when
-// that is what the kharej reaches this server on. The kharej's address is not
-// known until it joins; Run fills it in.
-func (s *ConnTestIran) startGRECase(c *connTestCase, i int, host, preset string) error {
-	carrier := l3.CarrierGRE
-	if ctFamily(host) == "IPv6" {
-		carrier = l3.CarrierIP6GRE
-	}
-	block := ctFreeL3Block(i)
-	c.peerIP = block + "2"
-	c.l3 = l3Spec{
-		Name: c.name, Side: sideIran, Carrier: carrier, Encap: "gre",
-		// Random, so a test never meets a GRE tunnel that already joins the
-		// two servers; such a tunnel holds a key of its own.
-		GREKey: uint32(1000 + rand.Intn(999000)),
-		Iface:  fmt.Sprintf("bpt%d", i), LocalIP: block + "1/30", PeerIP: block + "2",
-	}
-	findL3Preset(preset).apply(&c.l3)
-	raw := pendingShareLinkFrom(c.l3, host, linkExtras{})
-	link, err := DecodeShareLink(raw)
-	if err != nil {
-		return fmt.Errorf("building the gre test link: %w", err)
-	}
-	// The kharej's link names this server at the address it reaches the
-	// coordinator on, which is the one the test is about.
-	link.Host, link.Name = strings.Trim(host, "[]"), c.name
-	c.link = link
-	return nil
-}
