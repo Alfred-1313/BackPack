@@ -61,6 +61,7 @@ export function addView(ctx) {
       const chosen = { side: 'server', direction: 'reverse', transport: null,
                        carrier: 'pck', preset: null };
       const reverseSetup = () => chosen.direction === 'reverse' && managedReverse.get(chosen.transport);
+      const nativeMuxOptional = () => ['xtcpmux', 'xwsmux'].includes(reverseSetup()?.mode);
       const directSetup = () => chosen.direction === 'direct' && managedDirect.get(chosen.carrier);
       const pairedDirect = () => chosen.side === 'server' && chosen.direction === 'direct' &&
         ['gretap', 'l2tpv3', 'easytier'].includes(chosen.carrier);
@@ -597,7 +598,7 @@ export function addView(ctx) {
         const reversePort = root.querySelector('#aport');
         reversePort.closest('.f3').hidden = !!setup && !setup.port;
         reversePort.placeholder = setup ? '1–65535' : '4443 or 85.10.11.51:4443';
-        show('[data-native-address]', !!setup?.native);
+        show('[data-native-address]', !!setup?.native && !nativeMuxOptional());
         root.querySelector('#aports').closest('.f3').querySelector('label').textContent =
           setup ? 'Forwarded TCP ports' : 'Forwarded ports';
         // The token and the far end's address are the panel's business now.
@@ -1142,6 +1143,65 @@ export function addView(ctx) {
         return { row, title, input };
       }
 
+      function tuningDrawer(title, rows, note = '') {
+        const header = el('button', { type: 'button', class: 'h4b', 'aria-expanded': 'false' }, [
+          title, el('span', { class: 'drawcount', text: note }),
+        ]);
+        header.insertAdjacentHTML('beforeend', '<svg class="cv2" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>');
+        const grid = el('div', { class: 'fgrid' }, rows);
+        const box = el('div', { class: 'dr2b' }, [header, el('div', { class: 'b4b' }, grid)]);
+        header.addEventListener('click', () => header.setAttribute('aria-expanded', String(box.classList.toggle('open'))));
+        return { box, grid };
+      }
+
+      function tuningSwitch(title, hint) {
+        const button = el('button', { type: 'button', class: 'sw3', role: 'switch', 'aria-checked': 'false', 'aria-label': title }, el('i'));
+        button.addEventListener('click', () => button.setAttribute('aria-checked', String(button.classList.toggle('on'))));
+        const row = el('div', { class: 'tg3 full' }, [el('div', { class: 'tx' }, [
+          el('b', { text: title }), el('span', { text: hint }),
+        ]), button]);
+        return { row, checked: () => button.classList.contains('on') };
+      }
+
+      function addMuxOptional(opt) {
+        const address = (name, id) => {
+          const row = opt.querySelector(`[name="${name}"]`).closest('.f3').cloneNode(true);
+          const input = row.querySelector('input');
+          input.removeAttribute('name');
+          input.id = id;
+          row.querySelector('label').htmlFor = id;
+          return { row, input };
+        };
+        const dial = address('kharejDial', 'nativeMuxDial');
+        dial.row.querySelector('.hint').textContent = 'A hostname or an IP address. Empty uses this server’s detected address.';
+        const backups = address('kharejBackups', 'nativeMuxBackups');
+        const field = (id, name, min, max, placeholder) => {
+          const f = tuningField(id, name);
+          f.input.min = min;
+          f.input.max = max;
+          f.input.placeholder = placeholder;
+          return f;
+        };
+        const heartbeat = field('nativeMuxHeartbeat', 'Heartbeat interval (seconds)', 1, 300, '5');
+        const timeout = field('nativeMuxTimeout', 'Heartbeat timeout (seconds)', 1, 900, '16');
+        timeout.row.append(el('div', { class: 'hint', text: 'Must be longer than the heartbeat interval.' }));
+        const conns = field('nativeMuxMaxConnections', 'Maximum simultaneous connections', 0, 65535, '0');
+        const bandwidth = field('nativeMuxBandwidth', 'Bandwidth limit (Mbit/s)', 0, 100000, '0');
+        const fine = tuningDrawer('Fine Tune', [heartbeat.row, timeout.row], 'preset defaults');
+        const limits = tuningDrawer('Connection & limits', [
+          el('div', { class: 'fnote', text: 'Caps for the whole tunnel. 0 means no limit.' }), conns.row, bandwidth.row,
+        ]);
+        const ipv6 = tuningSwitch('Listen on IPv6 as well', 'Bind the v6 address too, where this server has one.');
+        const proxy = tuningSwitch('PROXY protocol', 'Sends the real client IP. Turn on only if the forwarded service accepts PROXY protocol v2.');
+        const group = el('div', { class: 'grp3', hidden: true, 'data-native-mux-optional': '' }, [
+          el('div', { class: 'gl3', text: 'Optional' }),
+          el('div', { class: 'fgrid kharejgrid' }, [dial.row, backups.row]),
+          fine.box, limits.box, ipv6.row, proxy.row,
+        ]);
+        opt.append(group);
+        return { group, fine, limits, dial, backups, heartbeat, timeout, conns, bandwidth, ipv6, proxy };
+      }
+
       function addSetupTuning(perf, opt) {
         const cards = el('div', { class: 'trgrid' });
         const summary = el('div', { class: 'rp-sets' });
@@ -1172,7 +1232,7 @@ export function addView(ctx) {
         }
         perf.append(group);
         opt.append(optional);
-        return { group, cards, summary, optional, value, delay, mtu };
+        return { group, cards, summary, optional, value, delay, mtu, mux: addMuxOptional(opt) };
       }
 
       function currentSetupID() {
@@ -1182,8 +1242,14 @@ export function addView(ctx) {
       function paintSetupTuning() {
         if (!setupGroups) return;
         const profile = setupProfile(), id = currentSetupID();
-        const { group, optional, cards, summary, value, delay, mtu } = setupGroups;
-        group.hidden = optional.hidden = !profile;
+        const { group, optional, cards, summary, value, delay, mtu, mux } = setupGroups;
+        const nativeMux = !!profile && nativeMuxOptional();
+        group.hidden = !profile;
+        optional.hidden = !profile || nativeMux;
+        optional.style.display = '';
+        mux.group.hidden = !nativeMux;
+        const tuneGrid = nativeMux ? mux.fine.grid : optional.querySelector('.fgrid');
+        if (value.row.parentElement !== tuneGrid) tuneGrid.prepend(value.row);
         if (!profile) {
           lastSetupProfile = null;
           return;
@@ -1217,16 +1283,31 @@ export function addView(ctx) {
       function setupTuningPayload() {
         const profile = setupProfile();
         if (!profile) return undefined;
-        const read = ({ input, row, title }) => {
-          if (row.hidden || !input.value) return undefined;
-          if (!input.checkValidity()) throw new Error(`${title.textContent} must be between ${input.min} and ${input.max}.`);
-          return input.valueAsNumber;
-        };
         return {
           preset: setupChoices.get(currentSetupID()) || 'turbo',
-          value: read(setupGroups.value),
-          restartSeconds: read(setupGroups.delay),
-          mtu: read(setupGroups.mtu),
+          value: readTuningField(setupGroups.value),
+          restartSeconds: readTuningField(setupGroups.delay),
+          mtu: readTuningField(setupGroups.mtu),
+        };
+      }
+
+      function readTuningField({ input, row, title }) {
+        if (row.hidden || !input.value) return undefined;
+        if (!input.checkValidity()) throw new Error(`${title.textContent} must be between ${input.min} and ${input.max}.`);
+        return input.valueAsNumber;
+      }
+
+      function backhaulMuxPayload() {
+        if (!nativeMuxOptional()) return undefined;
+        const m = setupGroups.mux;
+        return {
+          kharejDial: m.dial.input.value.trim(),
+          kharejBackups: m.backups.input.value.trim(),
+          heartbeatSeconds: readTuningField(m.heartbeat),
+          timeoutSeconds: readTuningField(m.timeout),
+          ipv6: m.ipv6.checked(),
+          proxyProtocol: m.proxy.checked(),
+          limits: { maxConnections: readTuningField(m.conns), bandwidthMbps: readTuningField(m.bandwidth) },
         };
       }
 
@@ -1429,7 +1510,8 @@ export function addView(ctx) {
           }
           const r = await api.backhaulCreate({
             name: payload.name, transport: setup.mode, port: Number(payload.tunnelPort),
-            ports: payload.ports || '', secret: payload.token || '', iranHost: payload.iranHost || '', tuning,
+            ports: payload.ports || '', secret: payload.token || '', iranHost: payload.iranHost || '',
+            tuning, mux: backhaulMuxPayload(),
           });
           return { r, name: payload.name };
         }

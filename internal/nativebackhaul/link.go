@@ -92,6 +92,9 @@ func Validate(c config.BackhaulConfig) error {
 	if c.Mode == "tun-tcp" && c.Lanes != 0 || c.Mode != "tun-tcp" && (c.PacketQueue != 0 || c.MTU != 0) {
 		return errors.New("native tunnel tuning does not match this transport")
 	}
+	if err := validateMuxOptions(c); err != nil {
+		return err
+	}
 	// Validate the shared reverse-tunnel settings in the same way for every
 	// stream transport. The TUN-specific fields are checked only for TUN.
 	common := c
@@ -117,7 +120,11 @@ func Validate(c config.BackhaulConfig) error {
 }
 
 func listenLanes(ctx context.Context, c config.BackhaulConfig, addr string, t *tls.Config, handle func(net.Conn)) error {
-	listener, err := net.Listen("tcp", addr)
+	network := "tcp"
+	if c.Mux != nil && c.Mux.IPv6 != nil && !*c.Mux.IPv6 {
+		network = "tcp4"
+	}
+	listener, err := net.Listen(network, addr)
 	if err != nil {
 		return err
 	}

@@ -30,12 +30,18 @@ func backhaulShare(name string, c config.BackhaulConfig) ShareLink {
 	if c.Native {
 		prefix = "native-"
 	}
-	return ShareLink{
+	link := ShareLink{
 		Name: name, Kind: kind, From: "iran", Tr: prefix + c.Mode,
 		Host: c.IranHost, Port: linkPort(c.Port), Tok: c.Token, PeerHost: c.KharejIP,
 		LocalIP: c.IranTunnel, PeerIP: c.KharejTunnel, HealthPort: uint32(c.HealthPort), Profile: c.IPXProfile,
 		Preset: c.Preset, TunnelLanes: c.Lanes, PacketQueue: c.PacketQueue, MTU: c.MTU,
 	}
+	if c.Mux != nil {
+		link.Hosts = c.Mux.Backups
+		link.TunnelHeartbeat = c.Mux.HeartbeatSeconds
+		link.TunnelTimeout = c.Mux.TimeoutSeconds
+	}
+	return link
 }
 
 func daggerShare(name string, c config.DaggerConfig) ShareLink {
@@ -87,17 +93,26 @@ func applyImportedLink(l ShareLink, o LinkApplyOptions) (LinkApplied, error) {
 	}
 	mode, native := strings.CutPrefix(l.Tr, "native-")
 	mode = strings.TrimPrefix(mode, "backhaul-")
-	return applyBackhaulPeer(ctx, l.Name, config.BackhaulConfig{
+	c := config.BackhaulConfig{
 		Native: native, Role: "client", Mode: mode, IranHost: l.Host, KharejIP: l.PeerHost,
 		Port: uint16(port), Token: l.Tok, IranTunnel: l.LocalIP, KharejTunnel: l.PeerIP,
 		HealthPort: uint16(l.HealthPort), IPXProfile: l.Profile,
 		Preset: l.Preset, Lanes: l.TunnelLanes, PacketQueue: l.PacketQueue, MTU: l.MTU,
-	})
+	}
+	if native && (len(l.Hosts) != 0 || l.TunnelHeartbeat != 0 || l.TunnelTimeout != 0) {
+		backups, err := nativebackhaul.BackupAddresses(l.Hosts, c.IranHost, c.Port)
+		if err != nil {
+			return LinkApplied{}, err
+		}
+		c.Mux = &config.BackhaulMuxOptions{Backups: backups, HeartbeatSeconds: l.TunnelHeartbeat, TimeoutSeconds: l.TunnelTimeout}
+	}
+	return applyBackhaulPeer(ctx, l.Name, c)
 }
 
 func applyBackhaulPeer(ctx context.Context, name string, c config.BackhaulConfig) (LinkApplied, error) {
 	link := backhaulShare(name, c)
 	out := LinkApplied{Name: name, Kind: link.Kind, Transport: c.Mode, StatusUnavailable: !c.Native}
+	out.Backups = link.Hosts
 	if c.Port != 0 {
 		out.Dials = net.JoinHostPort(c.IranHost, link.Port)
 	}

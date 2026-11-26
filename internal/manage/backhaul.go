@@ -17,17 +17,28 @@ import (
 )
 
 type BackhaulForm struct {
-	Name         string      `json:"name"`
-	Mode         string      `json:"transport"`
-	IranHost     string      `json:"iranHost"`
-	KharejIP     string      `json:"kharejIP"`
-	Port         uint16      `json:"port"`
-	Secret       string      `json:"secret"`
-	Ports        string      `json:"ports"`
-	IranTunnel   string      `json:"iranTunnel"`
-	KharejTunnel string      `json:"kharejTunnel"`
-	IPXProfile   string      `json:"ipxProfile"`
-	Tuning       SetupTuning `json:"tuning"`
+	Name         string           `json:"name"`
+	Mode         string           `json:"transport"`
+	IranHost     string           `json:"iranHost"`
+	KharejIP     string           `json:"kharejIP"`
+	Port         uint16           `json:"port"`
+	Secret       string           `json:"secret"`
+	Ports        string           `json:"ports"`
+	IranTunnel   string           `json:"iranTunnel"`
+	KharejTunnel string           `json:"kharejTunnel"`
+	IPXProfile   string           `json:"ipxProfile"`
+	Tuning       SetupTuning      `json:"tuning"`
+	Mux          *BackhaulMuxForm `json:"mux"`
+}
+
+type BackhaulMuxForm struct {
+	KharejDial       string       `json:"kharejDial"`
+	KharejBackups    string       `json:"kharejBackups"`
+	HeartbeatSeconds int          `json:"heartbeatSeconds"`
+	TimeoutSeconds   int          `json:"timeoutSeconds"`
+	IPv6             bool         `json:"ipv6"`
+	ProxyProtocol    bool         `json:"proxyProtocol"`
+	Limits           TunnelLimits `json:"limits"`
 }
 
 type BackhaulSetup struct {
@@ -56,6 +67,14 @@ func CreateBackhaul(ctx context.Context, f BackhaulForm) (BackhaulSetup, error) 
 		return BackhaulSetup{}, err
 	}
 	host := strings.Trim(strings.TrimSpace(f.IranHost), "[]")
+	if f.Mux != nil {
+		if !nativebackhaul.HasMuxOptions(f.Mode) {
+			return BackhaulSetup{}, errors.New("these options apply to XTcpMux and XWsMux")
+		}
+		if dial := strings.Trim(strings.TrimSpace(f.Mux.KharejDial), "[]"); dial != "" {
+			host = dial
+		}
+	}
 	if host == "" {
 		host = linkHost()
 	}
@@ -78,6 +97,17 @@ func CreateBackhaul(ctx context.Context, f BackhaulForm) (BackhaulSetup, error) 
 		IPXProfile: f.IPXProfile, Ports: strings.FieldsFunc(f.Ports, func(r rune) bool {
 			return r == ',' || r == '\n' || r == '\r' || r == ' ' || r == '\t'
 		}),
+	}
+	if f.Mux != nil {
+		backups, err := nativebackhaul.BackupAddresses(strings.Fields(strings.ReplaceAll(f.Mux.KharejBackups, ",", " ")), host, f.Port)
+		if err != nil {
+			return BackhaulSetup{}, err
+		}
+		c.Mux = &config.BackhaulMuxOptions{
+			Backups: backups, HeartbeatSeconds: f.Mux.HeartbeatSeconds, TimeoutSeconds: f.Mux.TimeoutSeconds,
+			IPv6: &f.Mux.IPv6, ProxyProtocol: f.Mux.ProxyProtocol,
+			MaxConnections: f.Mux.Limits.MaxConnections, BandwidthMbps: f.Mux.Limits.BandwidthMbps,
+		}
 	}
 	c.Preset = strings.ToLower(strings.TrimSpace(f.Tuning.Preset))
 	if c.Mode == "tun-tcp" {
@@ -128,6 +158,9 @@ func backhaulFormToken(secret string) (string, error) {
 
 func backhaulPeerToken(name string, c config.BackhaulConfig) string {
 	c.Role, c.Ports = "client", nil
+	if c.Mux != nil {
+		c.Mux = &config.BackhaulMuxOptions{Backups: c.Mux.Backups, HeartbeatSeconds: c.Mux.HeartbeatSeconds, TimeoutSeconds: c.Mux.TimeoutSeconds}
+	}
 	body, _ := json.Marshal(backhaulLink{Name: name, Side: c})
 	return base64.RawURLEncoding.EncodeToString(body)
 }

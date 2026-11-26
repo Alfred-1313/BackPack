@@ -15,6 +15,7 @@ import (
 	"github.com/backpack/backpack/internal/backhaulpremium"
 	"github.com/backpack/backpack/internal/metrics"
 	"github.com/backpack/backpack/internal/tunnel/l3"
+	"github.com/backpack/backpack/internal/tunnel/limits"
 	"github.com/backpack/backpack/internal/tunnel/portmap"
 	"github.com/backpack/backpack/internal/utils/handlers"
 	"github.com/sirupsen/logrus"
@@ -37,6 +38,14 @@ func Run(ctx context.Context, name string, c config.BackhaulConfig, log *logrus.
 		return runMuxServer(ctx, c, creds, log)
 	}
 	addr := net.JoinHostPort(c.IranHost, strconv.Itoa(int(c.Port)))
+	endpoints := []string{addr}
+	if c.Mux != nil {
+		backups, err := BackupAddresses(c.Mux.Backups, c.IranHost, c.Port)
+		if err != nil {
+			return err
+		}
+		endpoints = append(endpoints, backups...)
+	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	var workers sync.WaitGroup
@@ -47,8 +56,8 @@ func Run(ctx context.Context, name string, c config.BackhaulConfig, log *logrus.
 	}
 	for range lanes {
 		workers.Go(func() {
-			retryLane(ctx, c, addr, creds, func(conn net.Conn) {
-				session, err := smux.Server(conn, muxConfig())
+			retryLane(ctx, c, endpoints, creds, func(conn net.Conn) {
+				session, err := smux.Server(conn, muxConfig(c.Mux))
 				if err != nil {
 					return
 				}
@@ -64,14 +73,6 @@ func Run(ctx context.Context, name string, c config.BackhaulConfig, log *logrus.
 	}
 	workers.Wait()
 	return nil
-}
-
-func muxConfig() *smux.Config {
-	cfg := smux.DefaultConfig()
-	cfg.Version = 2
-	cfg.KeepAliveInterval = 5 * time.Second
-	cfg.KeepAliveTimeout = 16 * time.Second
-	return cfg
 }
 
 type lanePool struct {
@@ -124,6 +125,12 @@ func runMuxServer(ctx context.Context, c config.BackhaulConfig, t *tls.Config, l
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	pool := &lanePool{limit: c.Lanes}
+	var caps *limits.Limiter
+	proxy := false
+	if c.Mux != nil {
+		caps = limits.New(limits.Config{MaxConnections: c.Mux.MaxConnections, BandwidthMbps: c.Mux.BandwidthMbps})
+		proxy = c.Mux.ProxyProtocol
+	}
 	maps, err := portmap.Expand(c.Ports, "127.0.0.1")
 	if err != nil {
 		return err
@@ -145,11 +152,17 @@ func runMuxServer(ctx context.Context, c config.BackhaulConfig, t *tls.Config, l
 		mapping := maps[i]
 		go acceptUsers(l, func(conn net.Conn) {
 			defer conn.Close()
+			if !caps.Acquire() {
+				return
+			}
+			defer caps.Release()
 			for _, session := range pool.candidates() {
 				for _, target := range mapping.Targets {
 					stream, err := openTarget(session, target)
 					if err == nil {
-						handlers.TCPConnectionHandler(ctx, false, metrics.CountedConn(conn), stream, log, nil, 0, false)
+						front := caps.Wrap(ctx, metrics.CountedConn(conn))
+						defer front.Close()
+						handlers.TCPConnectionHandler(ctx, proxy, front, stream, log, nil, 0, false)
 						return
 					}
 					if session.IsClosed() {
@@ -161,7 +174,7 @@ func runMuxServer(ctx context.Context, c config.BackhaulConfig, t *tls.Config, l
 	}
 	return listenLanes(ctx, c, ":"+strconv.Itoa(int(c.Port)), t, func(conn net.Conn) {
 		defer conn.Close()
-		session, err := smux.Client(conn, muxConfig())
+		session, err := smux.Client(conn, muxConfig(c.Mux))
 		if err != nil {
 			return
 		}
@@ -262,12 +275,18 @@ func serveStreams(ctx context.Context, s *smux.Session, log *logrus.Logger) {
 	}
 }
 
-func retryLane(ctx context.Context, c config.BackhaulConfig, addr string, t *tls.Config, handle func(net.Conn)) {
+func retryLane(ctx context.Context, c config.BackhaulConfig, endpoints []string, t *tls.Config, handle func(net.Conn)) {
 	for ctx.Err() == nil {
-		conn, err := dialLane(ctx, c, addr, t)
-		if err == nil {
-			handle(conn)
-			conn.Close()
+		for _, addr := range endpoints {
+			if ctx.Err() != nil {
+				return
+			}
+			conn, err := dialLane(ctx, c, addr, t)
+			if err == nil {
+				handle(conn)
+				conn.Close()
+				break
+			}
 		}
 		timer := time.NewTimer(time.Second)
 		select {
@@ -325,7 +344,7 @@ func runTUN(ctx context.Context, name string, c config.BackhaulConfig, t *tls.Co
 	}
 	addr := strconv.Itoa(int(c.Port))
 	if c.Role == "client" {
-		retryLane(ctx, c, net.JoinHostPort(c.IranHost, addr), t, handle)
+		retryLane(ctx, c, []string{net.JoinHostPort(c.IranHost, addr)}, t, handle)
 		return nil
 	}
 	forward, err := l3.NewForwarder(l3.Config{PeerIP: peerIP.String(), Ports: c.Ports}, log)

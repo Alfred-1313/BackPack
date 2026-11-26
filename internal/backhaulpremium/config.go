@@ -51,6 +51,14 @@ func IsTUN(mode string) bool { return mode == "tun-tcp" || mode == "tun-ipx" }
 var dnsName = regexp.MustCompile("^[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$")
 var portRule = regexp.MustCompile("^[A-Za-z0-9.:[\\]-]+([=:][A-Za-z0-9.:[\\]-]+)*$")
 
+func ValidEndpointHost(value string) bool {
+	host, err := netip.ParseAddr(value)
+	if err != nil {
+		return dnsName.MatchString(value)
+	}
+	return !host.IsUnspecified() && !host.IsMulticast() && host.Zone() == ""
+}
+
 func Validate(c config.BackhaulConfig) error {
 	if _, ok := Find(c.Mode); !ok {
 		return errors.New("unknown Backhaul transport")
@@ -61,14 +69,14 @@ func Validate(c config.BackhaulConfig) error {
 	if c.Token == "" || len(c.Token) > 512 || strings.ContainsAny(c.Token, "\r\n\x00") {
 		return errors.New("a Backhaul tunnel token is required")
 	}
-	host, err := netip.ParseAddr(c.IranHost)
-	if (err != nil && !dnsName.MatchString(c.IranHost)) || (err == nil && (host.IsUnspecified() || host.IsMulticast() || host.Zone() != "")) {
+	if !ValidEndpointHost(c.IranHost) {
 		return errors.New("enter the address of the Iran endpoint")
 	}
 	if c.Mode != "tun-ipx" && c.Port == 0 {
 		return errors.New("enter a nonzero Backhaul listener port")
 	}
 	if c.Mode == "tun-ipx" {
+		host, _ := netip.ParseAddr(c.IranHost)
 		far, err := netip.ParseAddr(c.KharejIP)
 		if err != nil || !host.Is4() || !far.Is4() || host == far || !host.IsGlobalUnicast() || !far.IsGlobalUnicast() {
 			return errors.New("IPX needs two distinct IPv4 endpoints")

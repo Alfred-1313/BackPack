@@ -27,10 +27,23 @@ type BackhaulConfig struct {
 	// IPXProfile selects the IPX outer protocol.
 	IPXProfile string `toml:"ipx_profile,omitempty"`
 	// Native performance settings. Zero keeps the engine defaults.
-	Preset      string `toml:"preset,omitempty"`
-	Lanes       int    `toml:"lanes,omitempty"`
-	PacketQueue int    `toml:"packet_queue,omitempty"`
-	MTU         int    `toml:"mtu,omitempty"`
+	Preset      string              `toml:"preset,omitempty"`
+	Lanes       int                 `toml:"lanes,omitempty"`
+	PacketQueue int                 `toml:"packet_queue,omitempty"`
+	MTU         int                 `toml:"mtu,omitempty"`
+	Mux         *BackhaulMuxOptions `toml:"mux,omitempty"`
 }
 
 func (c BackhaulConfig) Present() bool { return c.Role != "" || c.Mode != "" }
+
+// BackhaulMuxOptions applies to the built-in XTcpMux and XWsMux engines.
+// The server-only listener and forwarding settings stay on Iran.
+type BackhaulMuxOptions struct {
+	Backups          []string `toml:"backups,omitempty"`
+	HeartbeatSeconds int      `toml:"heartbeat_seconds,omitempty"`
+	TimeoutSeconds   int      `toml:"timeout_seconds,omitempty"`
+	IPv6             *bool    `toml:"ipv6,omitempty"`
+	ProxyProtocol    bool     `toml:"proxy_protocol,omitempty"`
+	MaxConnections   int      `toml:"max_connections,omitempty"`
+	BandwidthMbps    int      `toml:"bandwidth_mbps,omitempty"`
+}

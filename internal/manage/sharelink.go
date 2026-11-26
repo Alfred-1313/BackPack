@@ -116,12 +116,14 @@ type ShareLink struct {
 	EasyTierNetwork   string `json:"en,omitempty"`
 
 	// Imported transports' extra peer settings.
-	PeerHost    string `json:"ph,omitempty"`
-	IranIPv6    string `json:"i6,omitempty"`
-	TUNPort     uint32 `json:"tp,omitempty"`
-	HealthPort  uint32 `json:"bh,omitempty"`
-	TunnelLanes int    `json:"bl,omitempty"`
-	PacketQueue int    `json:"bq,omitempty"`
+	PeerHost        string `json:"ph,omitempty"`
+	IranIPv6        string `json:"i6,omitempty"`
+	TUNPort         uint32 `json:"tp,omitempty"`
+	HealthPort      uint32 `json:"bh,omitempty"`
+	TunnelLanes     int    `json:"bl,omitempty"`
+	PacketQueue     int    `json:"bq,omitempty"`
+	TunnelHeartbeat int    `json:"bhi,omitempty"`
+	TunnelTimeout   int    `json:"bto,omitempty"`
 
 	// The forged-source carrier's paired half. SrcIPs is what the PRODUCER
 	// forges — the receiver turns it into what it expects from its peer, which
@@ -671,7 +673,9 @@ func shareLinkWith(name, host string, cfg config.Config, x linkExtras) (string, 
 	if err != nil {
 		return "", err
 	}
-	l.Hosts = x.hosts
+	if len(x.hosts) != 0 {
+		l.Hosts = x.hosts
+	}
 	if isWS(l.Tr) {
 		l.Edge = x.edge
 	}

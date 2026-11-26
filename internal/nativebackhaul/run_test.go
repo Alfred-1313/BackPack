@@ -203,6 +203,78 @@ func echo(s net.Conn, limit time.Duration) bool {
 	return err == nil && string(b[:]) == "ping"
 }
 
+func TestNativeMuxOptionalBackupProxyAndConnectionCap(t *testing.T) {
+	for _, mode := range []string{"xtcpmux", "xwsmux"} {
+		t.Run(mode, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			target := listenTest(t)
+			headers := make(chan []byte, 4)
+			go func() {
+				for {
+					conn, err := target.Accept()
+					if err != nil {
+						return
+					}
+					go func() {
+						defer conn.Close()
+						header := make([]byte, 28)
+						if _, err := io.ReadFull(conn, header); err != nil {
+							return
+						}
+						headers <- header
+						_, _ = io.Copy(conn, conn)
+					}()
+				}
+			}()
+			entry, port := freeTestPort(t), freeTestPort(t)
+			address := net.JoinHostPort("127.0.0.1", strconv.Itoa(entry))
+			ipv6 := false
+			near := config.BackhaulConfig{Native: true, Role: "server", Mode: mode, IranHost: "127.0.0.1",
+				Port: uint16(port), Token: base64.StdEncoding.EncodeToString(make([]byte, 32)),
+				Ports: []string{address + "=" + target.Addr().String()}, Lanes: 1,
+				Mux: &config.BackhaulMuxOptions{IPv6: &ipv6, ProxyProtocol: true, MaxConnections: 1,
+					HeartbeatSeconds: 2, TimeoutSeconds: 8}}
+			far := near
+			far.Role, far.Ports, far.Port = "client", nil, uint16(freeTestPort(t))
+			far.Mux = &config.BackhaulMuxOptions{Backups: []string{net.JoinHostPort(near.IranHost, strconv.Itoa(port))},
+				HeartbeatSeconds: 2, TimeoutSeconds: 8}
+			log := logrus.New()
+			log.SetOutput(io.Discard)
+			go Run(ctx, "near", near, log)
+			go Run(ctx, "far", far, log)
+			var first net.Conn
+			waitFor(t, func() bool {
+				s, err := net.Dial("tcp", address)
+				if err != nil {
+					return false
+				}
+				if echo(s, time.Second) {
+					first = s
+					return true
+				}
+				s.Close()
+				return false
+			})
+			defer first.Close()
+			header := <-headers
+			if !bytes.Equal(header[:16], []byte("\r\n\r\n\x00\r\nQUIT\n\x21\x11\x00\x0c")) ||
+				!bytes.Equal(header[16:20], []byte{127, 0, 0, 1}) ||
+				int(header[24])*256+int(header[25]) != first.LocalAddr().(*net.TCPAddr).Port {
+				t.Fatal("the target did not receive the forwarded client's PROXY v2 address")
+			}
+			second, err := net.Dial("tcp", address)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer second.Close()
+			if echo(second, time.Second) {
+				t.Fatal("a second connection bypassed the configured tunnel cap")
+			}
+		})
+	}
+}
+
 func waitFor(t *testing.T, ready func() bool) {
 	t.Helper()
 	for deadline := time.Now().Add(7 * time.Second); time.Now().Before(deadline); {

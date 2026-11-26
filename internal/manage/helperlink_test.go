@@ -55,3 +55,26 @@ func TestDaggerSetupLinkOnlyCarriesPeerSettings(t *testing.T) {
 		t.Fatalf("Dagger peer link lost settings or copied local settings: %v", err)
 	}
 }
+
+func TestNativeMuxLinkCarriesBackupAndHeartbeat(t *testing.T) {
+	for _, mode := range []string{"xtcpmux", "xwsmux"} {
+		c := config.BackhaulConfig{Native: true, Role: "server", Mode: mode, IranHost: "192.0.2.1", Port: 7280,
+			Token: "fixture", Mux: &config.BackhaulMuxOptions{
+				Backups: []string{"198.51.100.3:8443"}, HeartbeatSeconds: 3, TimeoutSeconds: 12,
+				ProxyProtocol: true, MaxConnections: 4, BandwidthMbps: 15,
+			}}
+		raw, err := shareLinkWith("peer", "", config.Config{Backhaul: c}, linkExtras{restartHours: 6})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := DecodeShareLink(raw)
+		want := backhaulShare("peer", config.BackhaulConfig{Native: true, Mode: mode, IranHost: c.IranHost,
+			Port: c.Port, Token: c.Token, Mux: &config.BackhaulMuxOptions{
+				Backups: c.Mux.Backups, HeartbeatSeconds: 3, TimeoutSeconds: 12,
+			}})
+		want.V, want.RestartHours = 1, 6
+		if err != nil || !reflect.DeepEqual(got, want) {
+			t.Fatalf("%s: the peer link did not carry the intended settings: %v", mode, err)
+		}
+	}
+}

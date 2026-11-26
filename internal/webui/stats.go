@@ -495,6 +495,11 @@ func fillConfig(info *TunnelInfo, t manage.Tunnel) {
 	}
 	if cfg.Backhaul.Native {
 		info.Preset = manage.PresetValueLabel(cfg.Backhaul.Preset)
+		if mux := cfg.Backhaul.Mux; mux != nil {
+			info.ProxyProtocol = mux.ProxyProtocol
+			info.MaxConnections, info.BandwidthMbps = mux.MaxConnections, mux.BandwidthMbps
+			info.FallbackAddrs = mux.Backups
+		}
 		return
 	}
 	// The direct kinds keep their settings in their own tables. Reading
