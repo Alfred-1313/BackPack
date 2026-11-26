@@ -4,13 +4,16 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
 
 	"github.com/backpack/backpack/internal/alerthist"
 	"github.com/backpack/backpack/internal/control"
+	"github.com/backpack/backpack/internal/daggerconnect"
 	"github.com/backpack/backpack/internal/manage"
 	"github.com/backpack/backpack/internal/node"
+	"github.com/backpack/backpack/internal/omni"
 	"github.com/backpack/backpack/internal/tunhist"
 )
 
@@ -22,7 +25,7 @@ import (
 // invoked when the Health modal opens, not on a timer — the pass makes real
 // TCP probes and takes a few seconds.
 func (s *server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	checks := manage.Diagnose()
+	checks := append(manage.Diagnose(), relayEngineChecks()...)
 	out := make([]map[string]string, len(checks))
 	for i, c := range checks {
 		out[i] = map[string]string{
@@ -34,6 +37,39 @@ func (s *server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, out)
+}
+
+func relayEngineChecks() []manage.Check {
+	checks := []manage.Check{
+		{Group: "Tunnel engines", Name: "BackPack", Level: manage.CheckOK, Detail: "Running with native Backhaul transports"},
+	}
+	dagger := manage.Check{Group: "Tunnel engines", Name: "DaggerConnect", Level: manage.CheckOK,
+		Detail: "Official launcher " + daggerconnect.LauncherVersion + " installed. Core " +
+			daggerconnect.CoreVersion + " is fetched for the licensed tunnel"}
+	if err := daggerconnect.LauncherStatus(); err != nil {
+		dagger.Level, dagger.Detail = manage.CheckFail, "Official launcher missing or unusable"
+		if !os.IsNotExist(err) {
+			dagger.Detail += ". " + err.Error()
+		}
+	}
+	checks = append(checks, dagger)
+	for _, helper := range []struct {
+		name      string
+		installed bool
+	}{
+		{"OmniTunnel", omni.Installed()},
+		{"GOST", manage.EngineHelperInstalled("gost")},
+		{"Xray", manage.EngineHelperInstalled("xray")},
+		{"sing-box", manage.EngineHelperInstalled("sing-box")},
+		{"NaiveProxy", manage.EngineHelperInstalled("naive")},
+	} {
+		item := manage.Check{Group: "Tunnel engines", Name: helper.name, Level: manage.CheckOK, Detail: "Installed"}
+		if !helper.installed {
+			item.Level, item.Detail = manage.CheckFail, "Not installed"
+		}
+		checks = append(checks, item)
+	}
+	return checks
 }
 
 func healthLevel(l manage.CheckLevel) string {

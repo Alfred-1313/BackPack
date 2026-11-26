@@ -58,6 +58,10 @@ func beginPeerJoin(parent context.Context, name, kind string, allowIPv6 bool, se
 	if net.ParseIP(host).To4() == nil && !allowIPv6 {
 		return SetupLinkInfo{}, errors.New("could not detect an IPv4 address on Iran for the Setup command")
 	}
+	return beginPeerJoinAt(parent, host, name, kind, setup)
+}
+
+func beginPeerJoinAt(parent context.Context, host, name, kind string, setup func(context.Context, string, string) (peerJoinResult, error)) (SetupLinkInfo, error) {
 	select {
 	case peerJoinSlots <- struct{}{}:
 	default:
@@ -249,35 +253,49 @@ func fetchPeerJoin(raw string) (peerJoinResult, error) {
 // checks in. Both ends are rendered by the regular Direct setup code.
 func StartDirectPeerSetup(ctx context.Context, form NewDirectTunnel) (SetupLinkInfo, error) {
 	switch form.Carrier {
-	case l3.CarrierGRETAP, l3.CarrierL2TPv3, l3.CarrierEasyTier:
+	case l3.CarrierGRETAP, l3.CarrierL2TPv3, l3.CarrierEasyTier, l3.CarrierGRE, l3.CarrierIP6GRE, "pck", "xdi", "sni":
 	default:
 		return SetupLinkInfo{}, errors.New("this transport does not use automatic peer setup")
 	}
 	if form.Side != "iran" {
 		return SetupLinkInfo{}, errors.New("create the Setup command on Iran")
 	}
-	tuning := SetupTuning{Preset: form.Preset}
-	if form.MTU != 0 {
-		tuning.Value = &form.MTU
-	}
-	if _, err := setupTuningValue(form.Carrier, tuning); err != nil {
-		return SetupLinkInfo{}, err
+	if _, hasTuning := SetupPerformanceOptions()[form.Carrier]; hasTuning {
+		tuning := SetupTuning{Preset: form.Preset}
+		if form.MTU != 0 {
+			tuning.Value = &form.MTU
+		}
+		if _, err := setupTuningValue(form.Carrier, tuning); err != nil {
+			return SetupLinkInfo{}, err
+		}
 	}
 	if form.Carrier == l3.CarrierEasyTier && form.Token == "" {
 		form.Token = randomToken(64)
+	}
+	family := form.SetupFamily
+	if family == "" && form.Carrier == l3.CarrierIP6GRE {
+		family = "ipv6"
+	}
+	if family != "" {
+		if err := validateSetupFamily(family, DirectSetupFamilies(form.Carrier)); err != nil {
+			return SetupLinkInfo{}, err
+		}
 	}
 	preview := form
 	form.PeerAddr = strings.TrimSpace(form.PeerAddr)
 	preview.PeerAddr = form.PeerAddr
 	if preview.PeerAddr == "" {
 		preview.PeerAddr = "192.0.2.1"
+		if family == "ipv6" {
+			preview.PeerAddr = "2001:db8::1"
+		}
 	}
 	spec, err := preview.spec()
 	if err != nil {
 		return SetupLinkInfo{}, err
 	}
 	form.Name = spec.Name
-	return beginPeerJoin(ctx, form.Name, "direct", form.Carrier == l3.CarrierEasyTier, func(_ context.Context, host, peer string) (peerJoinResult, error) {
+	setup := func(_ context.Context, host, peer string) (peerJoinResult, error) {
 		if form.PeerAddr == "" {
 			form.PeerAddr = peer
 		}
@@ -288,7 +306,15 @@ func StartDirectPeerSetup(ctx context.Context, form NewDirectTunnel) (SetupLinkI
 		name := strings.TrimSuffix(strings.TrimPrefix(service, app.ServicePrefix), ".service")
 		info, err := SetupLinkFor(name, host)
 		return peerJoinResult{Link: info.Link}, err
-	})
+	}
+	if family == "" {
+		return beginPeerJoin(ctx, form.Name, "direct", form.Carrier == l3.CarrierEasyTier, setup)
+	}
+	host, err := setupPublicAddress(family)
+	if err != nil {
+		return SetupLinkInfo{}, err
+	}
+	return beginPeerJoinAt(ctx, host, form.Name, "direct", setup)
 }
 
 func applyPeerJoin(raw string, options LinkApplyOptions) (LinkApplied, error) {
@@ -300,6 +326,9 @@ func applyPeerJoin(raw string, options LinkApplyOptions) (LinkApplied, error) {
 		link, err := DecodeShareLink(result.Link)
 		if err != nil {
 			return LinkApplied{}, err
+		}
+		if importedLink(link.Tr) {
+			return applyImportedLink(link, options)
 		}
 		return applyDirectLink(link, options)
 	}

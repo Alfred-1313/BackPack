@@ -18,18 +18,35 @@ import (
 )
 
 const (
-	launcherURL  = "https://github.com/itsFLoKi/daggerConnect/releases/download/v1.4.1/DaggerLauncher"
-	launcherSHA  = "0de6ce630b92f06cdb7046561bf328b99d621a4e25cccc014e0552a3139ae929"
-	launcher     = "/usr/local/lib/backpack/helpers/daggerconnect/v1.4.1/DaggerLauncher"
-	launcherSize = 7245948
+	LauncherVersion = "v1.4.1"
+	launcher        = "/usr/local/lib/backpack/helpers/daggerconnect/" + LauncherVersion + "/DaggerLauncher"
 )
 
-func checkLauncher(path string) error {
+type launcherRelease struct {
+	asset, digest string
+	size          int64
+}
+
+var launcherReleases = map[string]launcherRelease{
+	"amd64": {"DaggerLauncher", "0de6ce630b92f06cdb7046561bf328b99d621a4e25cccc014e0552a3139ae929", 7245948},
+	"arm64": {"DaggerLauncher-arm64", "81d41e64a5979e13158bf2fa78229d181e1616f869c72d87bf318675dff21eea", 6684796},
+}
+
+// LauncherStatus verifies the pinned executable without running or downloading it.
+func LauncherStatus() error {
+	release, ok := launcherReleases[runtime.GOARCH]
+	if runtime.GOOS != "linux" || !ok {
+		return fmt.Errorf("official DaggerLauncher requires Linux amd64 or arm64")
+	}
+	return checkLauncher(launcher, release)
+}
+
+func checkLauncher(path string, release launcherRelease) error {
 	st, err := os.Lstat(path)
 	if err != nil {
 		return err
 	}
-	if !st.Mode().IsRegular() || st.Mode().Perm()&0111 == 0 || st.Size() != launcherSize {
+	if !st.Mode().IsRegular() || st.Mode().Perm()&0111 == 0 || st.Size() != release.size {
 		return fmt.Errorf("unexpected DaggerLauncher file")
 	}
 	f, err := os.Open(path)
@@ -41,26 +58,25 @@ func checkLauncher(path string) error {
 	if _, err := io.Copy(digest, f); err != nil {
 		return err
 	}
-	if fmt.Sprintf("%x", digest.Sum(nil)) != launcherSHA {
+	if fmt.Sprintf("%x", digest.Sum(nil)) != release.digest {
 		return fmt.Errorf("DaggerLauncher checksum mismatch")
 	}
 	return nil
 }
 
 func Ensure(ctx context.Context) error {
-	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
-		return fmt.Errorf("DaggerLauncher v1.4.1 requires Linux amd64")
-	}
-	if err := checkLauncher(launcher); err == nil {
+	if err := LauncherStatus(); err == nil {
 		return nil
 	} else if !os.IsNotExist(err) {
 		return err
 	}
+	release := launcherReleases[runtime.GOARCH]
 	dir := filepath.Dir(launcher)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, launcherURL, nil)
+	url := "https://github.com/itsFLoKi/daggerConnect/releases/download/" + LauncherVersion + "/" + release.asset
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return err
 	}
@@ -78,7 +94,7 @@ func Ensure(ctx context.Context) error {
 	}
 	defer os.Remove(f.Name())
 	defer f.Close()
-	if _, err := io.Copy(f, io.LimitReader(res.Body, launcherSize+1)); err != nil {
+	if _, err := io.Copy(f, io.LimitReader(res.Body, release.size+1)); err != nil {
 		return err
 	}
 	if err := f.Chmod(0755); err != nil {
@@ -87,7 +103,7 @@ func Ensure(ctx context.Context) error {
 	if err := f.Close(); err != nil {
 		return err
 	}
-	if err := checkLauncher(f.Name()); err != nil {
+	if err := checkLauncher(f.Name(), release); err != nil {
 		return err
 	}
 	return os.Rename(f.Name(), launcher)

@@ -82,6 +82,32 @@ export function addView(ctx) {
       const setupProfile = () => opts.setupPerformance?.[chosen.direction === 'direct' ? chosen.carrier : chosen.transport];
       const setupChoices = new Map();
       let setupGroups, lastSetupProfile, daggerFields;
+      const addressChoice = el('select', { id: 'setupAddressFamily' }, [
+        el('option', { value: 'ipv4', text: 'IPv4', selected: true }),
+        el('option', { value: 'ipv6', text: 'IPv6' }),
+      ]);
+      const addressHint = el('div', { class: 'hint' });
+      const addressRow = el('div', { class: 'f3 full' },
+        el('label', { for: 'setupAddressFamily', text: 'Tunnel IP family' }), addressChoice, addressHint);
+      const automaticDirect = () => chosen.direction === 'direct' && chosen.carrier !== 'spoof';
+      const setupFamilies = () => {
+        const direct = chosen.direction === 'direct';
+        const setup = direct ? directSetup() : reverseSetup();
+        if (setup) return setup.setupFamilies || (setup.native ? ['ipv4', 'ipv6'] : ['ipv4']);
+        return direct
+          ? opts.directSetupFamilies?.[chosen.carrier] || ['ipv4']
+          : opts.reverseSetupFamilies?.[chosen.transport] || ['ipv4', 'ipv6'];
+      };
+      const familyHint = () => {
+        addressHint.textContent = addressChoice.value === 'ipv6' && officialDagger() === 'dc6'
+          ? 'DC6 uses IPv6 for the tunnel. BackPack detects the IPv4 address used for the license separately.'
+          : 'BackPack detects the address for the Setup command.';
+      };
+      let preferredFamily = 'ipv4';
+      addressChoice.addEventListener('change', () => {
+        preferredFamily = addressChoice.value;
+        familyHint();
+      });
       const randomGreKey = root.querySelector('#randomGreKey');
       const nativeAddress = el('details', { class: 'f3 full', hidden: true });
       nativeAddress.append(el('summary', { text: 'Use a custom Iran address' }),
@@ -609,6 +635,12 @@ export function addView(ctx) {
         });
         paintSetupTuning();
         paintDaggerFields();
+        paintAddressFamily();
+        if (automaticDirect()) {
+          directPeer.closest('.f3').hidden = true;
+          const local = directFields.querySelector('[name="greLocal"]');
+          if (local) local.closest('.f3').hidden = true;
+        }
         const reversePort = root.querySelector('#aport');
         reversePort.closest('.f3').hidden = !!setup && !setup.port;
         reversePort.placeholder = setup ? '1–65535' : '4443 or 85.10.11.51:4443';
@@ -1274,7 +1306,7 @@ export function addView(ctx) {
           value, delay, mtu, httpPath, httpHost, mux } = setupGroups;
         const nativeMux = !!profile && nativeMuxOptional();
         const hasDaggerRoute = daggerRoute();
-        const showAddress = !!reverseSetup()?.native && !nativeMux;
+        const showAddress = !!reverseSetup()?.native && !nativeMux && !hasDaggerRoute;
         const sameKnob = !!profile && profile.label === profile.overrideLabel;
         group.hidden = !profile;
         performanceFields.hidden = !sameKnob;
@@ -1370,11 +1402,18 @@ export function addView(ctx) {
           return input;
         };
         add('name', 'Tunnel name', ['tun']);
-        add('license', 'DaggerConnect license PSK', null, { type: 'password', maxlength: 4096 },
-          'Keep the Setup link private. It carries this license to Kharej.');
-        add('iranIP', 'Iran IPv4', null, { placeholder: 'Automatically detected' });
-        add('iranIPv6', 'Iran IPv6', ['dc6'], { placeholder: 'Automatically detected' });
-        add('kharejIP', 'Kharej IPv4', ['tun'], {}, 'Both endpoints use the real IPv4 addresses for this tunnel.');
+        const license = add('license', 'DaggerConnect license PSK', null, {
+          type: 'password', maxlength: 4096, required: true, spellcheck: 'false', autocomplete: 'new-password',
+        }, 'Enter the license issued by DaggerConnect. The private Setup command pairs the two servers.');
+        const show = el('button', { type: 'button', class: 'mini3', text: 'Show', 'aria-controls': license.id });
+        const secret = el('div', { class: 'withb' });
+        license.before(secret);
+        secret.append(license, show);
+        show.addEventListener('click', () => {
+          const reveal = license.type === 'password';
+          license.type = reveal ? 'text' : 'password';
+          show.textContent = reveal ? 'Hide' : 'Show';
+        });
         add('iranTunnelIP', 'Iran TUN address', ['tun'], { placeholder: '10.201.8.1' });
         add('kharejTunnelIP', 'Kharej TUN address', ['tun'], { placeholder: '10.201.8.2' });
         const profile = add('tunProfile', 'TUN encapsulation', ['tun'], {
@@ -1410,6 +1449,21 @@ export function addView(ctx) {
         for (const { row, modes } of rows.values()) row.hidden = !!modes && !modes.includes(mode);
         const profile = rows.get('tunProfile').input.value;
         rows.get('tunPort').row.hidden = mode !== 'tun' || !['tcp', 'udp'].includes(profile);
+      }
+
+      function paintAddressFamily() {
+        if (!setupGroups) return;
+        const direct = chosen.direction === 'direct';
+        if (direct) {
+          if (addressRow.nextElementSibling !== directFields) directFields.before(addressRow);
+        } else if (addressRow.parentElement !== setupGroups.tunnelFields) {
+          setupGroups.tunnelFields.prepend(addressRow);
+        }
+        const allowed = setupFamilies();
+        for (const option of addressChoice.options) option.disabled = !allowed.includes(option.value);
+        addressChoice.value = allowed.includes(preferredFamily) ? preferredFamily : allowed[0];
+        addressChoice.disabled = allowed.length === 1;
+        familyHint();
       }
 
       function stageSingle() {
@@ -1546,6 +1600,16 @@ export function addView(ctx) {
         if (hint) hint.textContent = 'Made for this tunnel — the setup link carries it to the other server. '
           + 'If that server is already set up, paste its token here instead.';
       });
+      const reverseToken = root.querySelector('#atok');
+      const randomToken = el('button', { type: 'button', class: 'mini3', text: 'Random' });
+      reverseToken.closest('.withb').append(randomToken);
+      randomToken.addEventListener('click', async () => {
+        randomToken.disabled = true;
+        try {
+          reverseToken.value = (await api.tunnelToken()).token || '';
+        } catch (e) { oops(e); }
+        finally { randomToken.disabled = false; }
+      });
       api.tunnelToken()
         .then(r => tokenFields.forEach(i => { if (!i.value || i.defaultValue === i.value) i.value = r.token || ''; }))
         .catch(() => tokenFields.forEach(i => { i.value = ''; i.placeholder = 'type a long random token'; }));
@@ -1607,9 +1671,10 @@ export function addView(ctx) {
         const setup = reverseSetup();
         const tuning = setupTuningPayload();
         const dagger = officialDagger();
+        const setupFamily = addressChoice.value;
         if (dagger) {
           const form = { name: payload.name, port: Number(payload.tunnelPort || 0), ports: payload.ports || '',
-            transport: dagger, tuning };
+            transport: dagger, tuning, setupFamily };
           for (const [name, { row, input }] of daggerFields.rows) {
             if (row.hidden) continue;
             if (!input.checkValidity()) throw new Error('Check ' + row.querySelector('label').textContent + '.');
@@ -1623,7 +1688,7 @@ export function addView(ctx) {
             throw new Error('Enter a tunnel port from 1 to 65535.');
           }
           const r = await api.daggerCreate(form);
-          return { r, name: form.name };
+          return { r: r.setup?.pending ? r.setup : r, name: form.name };
         }
         if (setup?.native) {
           if (!/^\d+$/.test(payload.tunnelPort || '') || Number(payload.tunnelPort) < 1 || Number(payload.tunnelPort) > 65535) {
@@ -1632,7 +1697,7 @@ export function addView(ctx) {
           const r = await api.backhaulCreate({
             name: payload.name, transport: setup.mode, port: Number(payload.tunnelPort),
             ports: payload.ports || '', secret: payload.token || '', iranHost: payload.iranHost || '',
-            tuning, mux: backhaulMuxPayload(),
+            tuning, setupFamily, mux: backhaulMuxPayload(),
             httpPath: daggerRoute() ? setupGroups.httpPath.input.value.trim() : undefined,
             httpHost: daggerUpgrade() ? setupGroups.httpHost.input.value.trim() : undefined,
           });
@@ -1646,14 +1711,18 @@ export function addView(ctx) {
           });
           return { r, name: payload.name };
         }
-        if (pairedDirect()) {
-          for (const key of ['greLocal', 'localIp', 'peerIp']) delete payload[key];
+        if (automaticDirect()) {
+          if (pairedDirect()) {
+            for (const key of ['greLocal', 'localIp', 'peerIp']) delete payload[key];
+          }
           if (tuning) {
             payload.preset = tuning.preset;
             payload.mtu = tuning.value;
           }
+          payload.setupFamily = setupFamily;
           return { r: await api.directPeerSetup(payload), name: payload.name };
         }
+        if (chosen.direction === 'reverse') payload.setupFamily = setupFamily;
         // Only this end: the other is built from its setup link.
         const r = chosen.direction === 'direct'
           ? await api.directCreate(payload)

@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -40,6 +41,7 @@ type DaggerForm struct {
 	QuantumCipher  string      `json:"quantumCipher"`
 	UploadMode     string      `json:"uploadMode"`
 	Tuning         SetupTuning `json:"tuning"`
+	SetupFamily    string      `json:"setupFamily"`
 }
 
 type DaggerSetup struct {
@@ -61,16 +63,23 @@ func daggerPeerToken(name string, c config.DaggerConfig) string {
 }
 
 func CreateDagger(ctx context.Context, f DaggerForm) (DaggerSetup, error) {
+	return CreateDaggerWithSetup(ctx, ctx, f)
+}
+
+func CreateDaggerWithSetup(ctx, lifetime context.Context, f DaggerForm) (DaggerSetup, error) {
 	f.IranIP, f.IranIPv6 = strings.Trim(strings.TrimSpace(f.IranIP), "[]"), strings.Trim(strings.TrimSpace(f.IranIPv6), "[]")
-	if f.IranIP == "" || (f.Transport == "dc6" && f.IranIPv6 == "") {
-		for _, addr := range ConnTestAddresses() {
-			switch {
-			case addr.Family == "IPv4" && f.IranIP == "":
-				f.IranIP = addr.Host
-			case addr.Family == "IPv6" && f.IranIPv6 == "":
-				f.IranIPv6 = addr.Host
-			}
+	if err := validateSetupFamily(f.SetupFamily, DaggerSetupFamilies(f.Transport)); err != nil {
+		return DaggerSetup{}, err
+	}
+	if f.IranIP == "" {
+		f.IranIP = linkHost()
+	}
+	if f.Transport == "dc6" && f.IranIPv6 == "" {
+		addr, err := setupPublicAddress("ipv6")
+		if err != nil {
+			return DaggerSetup{}, err
 		}
+		f.IranIPv6 = addr
 	}
 	if f.Transport == "tun" && f.Port == 0 {
 		f.Port = 8443
@@ -102,6 +111,30 @@ func CreateDagger(ctx context.Context, f DaggerForm) (DaggerSetup, error) {
 		} else {
 			c.ConnectionPool = value
 		}
+	}
+	if c.Flavor == "tun" && c.KharejIP == "" {
+		if err := core.CheckName(f.Name); err != nil {
+			return DaggerSetup{}, err
+		}
+		if net.ParseIP(c.IranIP).To4() == nil {
+			return DaggerSetup{}, fmt.Errorf("could not detect the public IPv4 address on Iran")
+		}
+		preview := c
+		preview.KharejIP = "192.0.2.1"
+		if _, err := daggerconnect.Build(f.Name, preview); err != nil {
+			return DaggerSetup{}, err
+		}
+		setup, err := beginPeerJoinAt(lifetime, c.IranIP, f.Name, "direct", func(ctx context.Context, _, peer string) (peerJoinResult, error) {
+			paired := c
+			paired.KharejIP = peer
+			link, err := daggerShare(f.Name, paired).Encode()
+			if err != nil {
+				return peerJoinResult{}, err
+			}
+			_, _, err = installDagger(ctx, f.Name, paired)
+			return peerJoinResult{Link: link}, err
+		})
+		return DaggerSetup{Apply: setup.Apply, Setup: setup}, err
 	}
 	setup, err := importedSetupLink(daggerShare(f.Name, c))
 	if err != nil {

@@ -161,6 +161,8 @@ helpers_validate() {
 helper_spec() {
   helper_tool="$1"; helper_arch="$2"; helper_extra=""
   case "$helper_tool/$helper_arch" in
+    daggerconnect/amd64) helper_sha=0de6ce630b92f06cdb7046561bf328b99d621a4e25cccc014e0552a3139ae929 ;;
+    daggerconnect/arm64) helper_sha=81d41e64a5979e13158bf2fa78229d181e1616f869c72d87bf318675dff21eea ;;
     naive/amd64) helper_sha=80214dfea1767f6ecf63a3a79dc9f48b203460f51abc609357fff48dd5844c7d; helper_arch=x64 ;;
     naive/arm64) helper_sha=8f4d917fa39a5d8cf1c17fc12ffd99ba84c015b62b43461d09cc074ca4114d8d ;;
     sing-box/amd64) helper_sha=a684484d7477d1437282ee411f4d131d0340aaad60a7868841ebd5d87dd8a0c6 ;;
@@ -172,6 +174,10 @@ helper_spec() {
     *) return 1 ;;
   esac
   case "$helper_tool" in
+    daggerconnect)
+      helper_version=v1.4.1; helper_repo=itsFLoKi/daggerConnect
+      helper_asset=DaggerLauncher; helper_kind=raw
+      [[ "$helper_arch" != arm64 ]] || helper_asset=DaggerLauncher-arm64 ;;
     naive)
       helper_version=v154.0.8037.49-5; helper_repo=klzgrad/naiveproxy
       helper_stem="naiveproxy-$helper_version-linux-$helper_arch"
@@ -195,6 +201,27 @@ install_helper() (
   helper_spec "$1" "$ARCH" || exit 1
   root="/usr/local/lib/backpack/helpers/$helper_tool"
   final="$root/$helper_version-$ARCH"
+  helper_exec="$helper_tool"
+  if [[ "$helper_tool" == daggerconnect ]]; then
+    final="$root/$helper_version"
+    helper_exec=DaggerLauncher
+    if [[ -L "$final" || -L "$final/$helper_exec" ]]; then
+      err "Invalid DaggerConnect helper path: $final"
+      return 1
+    fi
+    if [[ -d "$final" ]]; then
+      existing="$final/$helper_exec"
+      if [[ -f "$existing" && -x "$existing" ]]; then
+        actual="$(helper_sha256 "$existing")"
+        if [[ "$actual" == "$helper_sha" ]]; then
+          info "Verified helper already installed: $existing"
+          return 0
+        fi
+      fi
+      err "DaggerConnect exists but failed validation: $existing"
+      return 1
+    fi
+  fi
   if [[ -e "$final" || -L "$final" ]]; then
     info "Keeping existing helper directory: $final (configure its binary explicitly)"
     exit 0
@@ -204,30 +231,38 @@ install_helper() (
   trap 'rm -rf -- "$stage"' EXIT
   archive="$stage/archive"
   fetch "https://github.com/$helper_repo/releases/download/$helper_version/$helper_asset" "$archive" || exit 1
-  if command -v sha256sum >/dev/null; then
-    actual="$(sha256sum "$archive" | awk '{print $1}')"
-  else
-    actual="$(shasum -a 256 "$archive" | awk '{print $1}')"
-  fi
+  actual="$(helper_sha256 "$archive")"
   [[ "$actual" == "$helper_sha" ]] || { err "CHECKSUM MISMATCH for $helper_asset"; exit 1; }
   mkdir "$stage/payload" || exit 1
   case "$helper_kind" in
+    raw) mv -- "$archive" "$stage/payload/$helper_exec" || exit 1 ;;
     tar-root) tar -xzf "$archive" -C "$stage/payload" "$helper_member" || exit 1 ;;
     zip) unzip -p "$archive" "$helper_member" > "$stage/payload/$helper_tool" || exit 1 ;;
     xz) tar -xJf "$archive" -C "$stage/payload" --strip-components=1 "$helper_member" || exit 1 ;;
     gz) tar -xzf "$archive" -C "$stage/payload" --strip-components=1 "$helper_member" "$helper_extra" || exit 1 ;;
   esac
-  [[ -f "$stage/payload/$helper_tool" && ! -L "$stage/payload/$helper_tool" && -s "$stage/payload/$helper_tool" ]] || exit 1
-  chmod 0755 "$stage/payload" "$stage/payload/$helper_tool" || exit 1
+  [[ -f "$stage/payload/$helper_exec" && ! -L "$stage/payload/$helper_exec" && -s "$stage/payload/$helper_exec" ]] || exit 1
+  chmod 0755 "$stage/payload" "$stage/payload/$helper_exec" || exit 1
   if [[ -f "$stage/payload/libcronet.so" ]]; then chmod 0644 "$stage/payload/libcronet.so" || exit 1; fi
   # GNU mv's no-clobber protects simultaneous installers too. Confirm that the
   # directory really moved: mv -n itself reports success when it skipped it.
   mv -Tn -- "$stage/payload" "$final" || exit 1
   [[ ! -d "$stage/payload" ]] || { err "Helper directory appeared concurrently: $final"; exit 1; }
-  info "Verified helper installed: $final/$helper_tool"
+  info "Verified helper installed: $final/$helper_exec"
 )
 
+helper_sha256() {
+  if command -v sha256sum >/dev/null; then
+    sha256sum "$1" | awk '{print $1}'
+  else
+    shasum -a 256 "$1" | awk '{print $1}'
+  fi
+}
+
 install_helpers() {
+  case "$(uname -s)/$ARCH" in
+    Linux/amd64|Linux/arm64) install_helper daggerconnect || return 1 ;;
+  esac
   [[ -n "${BP_HELPERS:-}" ]] || return 0
   if [[ "$BP_HELPERS" == *naive* ]]; then
     install_helper naive || return 1

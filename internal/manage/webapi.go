@@ -364,14 +364,15 @@ func PresetTune(preset, role, transport string) FineTune {
 // collects it. It is the form's shape, not the config's: Ports and IPv6 are
 // server-only, ServerAddr is client-only, and the rest is common.
 type NewTunnel struct {
-	Role       string `json:"role"` // "server" (Iran) or "client" (kharej)
-	Transport  string `json:"transport"`
-	Name       string `json:"name"`
-	TunnelPort string `json:"tunnelPort"` // server: bind port — client: the server's port
-	ServerAddr string `json:"serverAddr"` // client only: IP or domain of the server
-	Token      string `json:"token"`
-	Ports      string `json:"ports"` // server only: comma-separated forwarded ports
-	Preset     string `json:"preset"`
+	SetupFamily string `json:"setupFamily"`
+	Role        string `json:"role"` // "server" (Iran) or "client" (kharej)
+	Transport   string `json:"transport"`
+	Name        string `json:"name"`
+	TunnelPort  string `json:"tunnelPort"` // server: bind port — client: the server's port
+	ServerAddr  string `json:"serverAddr"` // client only: IP or domain of the server
+	Token       string `json:"token"`
+	Ports       string `json:"ports"` // server only: comma-separated forwarded ports
+	Preset      string `json:"preset"`
 
 	IPv6          bool `json:"ipv6"`          // server only: bind :: instead of 0.0.0.0
 	ProxyProtocol bool `json:"proxyProtocol"` // server only
@@ -420,6 +421,9 @@ func CreateTunnel(n NewTunnel) (service string, active bool, err error) {
 	// that for a tunnel that is about to be refused leaves files behind.
 	if name := strings.TrimSpace(n.Name); validName(name) && fileExists(app.ConfigPath(name)) {
 		return "", false, fmt.Errorf("a tunnel named %q already exists", name)
+	}
+	if err := prepareReverseAddress(&n); err != nil {
+		return "", false, err
 	}
 	s, err := specFromNew(n)
 	if err != nil {

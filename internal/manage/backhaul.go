@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"strings"
 
 	"github.com/backpack/backpack/config"
@@ -31,6 +32,7 @@ type BackhaulForm struct {
 	Mux          *BackhaulMuxForm `json:"mux"`
 	HTTPPath     string           `json:"httpPath"`
 	HTTPHost     string           `json:"httpHost"`
+	SetupFamily  string           `json:"setupFamily"`
 }
 
 type BackhaulMuxForm struct {
@@ -77,6 +79,20 @@ func CreateBackhaul(ctx context.Context, f BackhaulForm) (BackhaulSetup, error) 
 			host = dial
 		}
 	}
+	if f.SetupFamily != "" {
+		if err := validateSetupFamily(f.SetupFamily, dualSetupFamilies); err != nil {
+			return BackhaulSetup{}, err
+		}
+		if host == "" {
+			host, err = setupPublicAddress(f.SetupFamily)
+			if err != nil {
+				return BackhaulSetup{}, err
+			}
+		}
+	}
+	if f.SetupFamily == "ipv6" && net.ParseIP(host).To4() != nil {
+		return BackhaulSetup{}, errors.New("the Kharej dial address must be IPv6 or a DNS name for the IPv6 setup")
+	}
 	if host == "" {
 		host = linkHost()
 	}
@@ -102,6 +118,9 @@ func CreateBackhaul(ctx context.Context, f BackhaulForm) (BackhaulSetup, error) 
 		}),
 	}
 	if f.Mux != nil {
+		if f.SetupFamily == "ipv6" {
+			f.Mux.IPv6 = true
+		}
 		backups, err := nativebackhaul.BackupAddresses(strings.Fields(strings.ReplaceAll(f.Mux.KharejBackups, ",", " ")), host, f.Port)
 		if err != nil {
 			return BackhaulSetup{}, err

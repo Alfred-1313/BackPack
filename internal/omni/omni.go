@@ -217,6 +217,21 @@ func validPortMappings(value string) bool {
 	return true
 }
 
+// Installed reports whether the pinned manager and its transport executables exist.
+func Installed() bool {
+	manager, err := helperPath()
+	if err != nil {
+		return false
+	}
+	for _, name := range []string{"omnitun", "omnistripe", "omniackless", "hysteria", "chisel"} {
+		info, err := os.Stat(filepath.Join(filepath.Dir(manager), "bin", name))
+		if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0111 == 0 {
+			return false
+		}
+	}
+	return true
+}
+
 func helperPath() (string, error) {
 	if runtime.GOOS != "linux" || (runtime.GOARCH != "amd64" && runtime.GOARCH != "arm64") {
 		return "", fmt.Errorf("OmniTunnel requires Linux amd64 or arm64")

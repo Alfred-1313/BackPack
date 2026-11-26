@@ -296,7 +296,11 @@ func applyDirectLink(link ShareLink, o LinkApplyOptions) (LinkApplied, error) {
 		return applyGREPeer(n, true)
 	}
 	form.Name = freeName(form.Name)
-	service, active, err := CreateDirectTunnel(form.ToNewDirectTunnel())
+	n := form.ToNewDirectTunnel()
+	if ip := net.ParseIP(link.Host); ip != nil && ip.To4() == nil {
+		n.SetupFamily = "ipv6"
+	}
+	service, active, err := CreateDirectTunnel(n)
 	if err != nil {
 		return LinkApplied{}, err
 	}

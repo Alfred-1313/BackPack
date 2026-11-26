@@ -37,7 +37,8 @@ type NewDirectTunnel struct {
 	config.RoutedLinkSettings
 	// Side is "iran" or "kharej". Iran dials out and exposes the ports; kharej
 	// waits and holds the real service.
-	Side string `json:"side"`
+	Side        string `json:"side"`
+	SetupFamily string `json:"setupFamily"`
 
 	// Carrier is how the packets travel: "xdi" or "pck" from the panel, and
 	// "sni" or "spoof" from a setup link or the CLI. Empty takes pck.
@@ -493,7 +494,11 @@ func (n NewDirectTunnel) spec() (l3Spec, error) {
 
 	// Iran reaches out; kharej waits. This is the whole of the direct/reverse
 	// difference at this layer.
-	addr := net.JoinHostPort("0.0.0.0", port)
+	listenHost := "0.0.0.0"
+	if n.SetupFamily == "ipv6" {
+		listenHost = "::"
+	}
+	addr := net.JoinHostPort(listenHost, port)
 	if side == sideIran {
 		host := strings.TrimSpace(n.PeerAddr)
 		if host == "" {

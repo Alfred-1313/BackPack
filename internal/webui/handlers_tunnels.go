@@ -45,12 +45,18 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, v any) error {
 // the CLI appears in the panel without touching the HTML.
 func (s *server) handleTunnelOptions(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{
-		"families":         manage.TransportFamilies(),
-		"presets":          manage.Presets(),
-		"setupPerformance": manage.SetupPerformanceOptions(),
-		"spoofProfiles":    manage.SpoofProfiles(),
-		"pckFlags":         manage.PckFlagCycles(),
-		"interfaces":       manage.RoutableInterfaces(),
+		"families":             manage.TransportFamilies(),
+		"presets":              manage.Presets(),
+		"setupPerformance":     manage.SetupPerformanceOptions(),
+		"spoofProfiles":        manage.SpoofProfiles(),
+		"pckFlags":             manage.PckFlagCycles(),
+		"interfaces":           manage.RoutableInterfaces(),
+		"reverseSetupFamilies": map[string][]string{"pck": manage.ReverseSetupFamilies("pck")},
+		"directSetupFamilies": map[string][]string{
+			"gre": manage.DirectSetupFamilies("gre"), "ip6gre": manage.DirectSetupFamilies("ip6gre"),
+			"xdi": manage.DirectSetupFamilies("xdi"), "sni": manage.DirectSetupFamilies("sni"),
+			"easytier": manage.DirectSetupFamilies("easytier"),
+		},
 	})
 }
 

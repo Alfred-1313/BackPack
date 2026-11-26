@@ -62,14 +62,22 @@ func (s *server) handleDagger(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	switch r.Method {
 	case http.MethodGet:
-		writeJSON(w, daggerconnect.Options())
+		type mode struct {
+			daggerconnect.Transport
+			SetupFamilies []string `json:"setupFamilies"`
+		}
+		var options []mode
+		for _, option := range daggerconnect.Options() {
+			options = append(options, mode{option, manage.DaggerSetupFamilies(option.Value)})
+		}
+		writeJSON(w, options)
 	case http.MethodPost:
 		var form manage.DaggerForm
 		if err := decodeJSON(w, r, &form); err != nil {
 			http.Error(w, "invalid DaggerConnect form", http.StatusBadRequest)
 			return
 		}
-		out, err := manage.CreateDagger(r.Context(), form)
+		out, err := manage.CreateDaggerWithSetup(r.Context(), s.ctx, form)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return

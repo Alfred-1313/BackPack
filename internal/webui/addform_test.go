@@ -88,11 +88,10 @@ func jsonTags(prefix string, v any) map[string]string {
 	return out
 }
 
-// chosenInJS are answers the operator gives by pressing something rather than
-// filling something in, and the view writes them onto the payload itself.
+// chosenInJS are answers the view writes onto the payload itself.
 var chosenInJS = map[string]bool{
 	"role": true, "transport": true, "side": true, "carrier": true,
-	"preset": true, "name": true,
+	"preset": true, "name": true, "setupFamily": true,
 }
 
 // fromTheOtherSide are settings a direct tunnel takes only from the other

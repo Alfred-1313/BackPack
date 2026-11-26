@@ -215,6 +215,12 @@ func realityCoverFor(cover, binary string, probe realitySetupProbe) (string, str
 		strings.Join(reasons, "; "))
 }
 
+// EngineHelperInstalled reports whether the panel's pinned helper is executable.
+func EngineHelperInstalled(tool string) bool {
+	_, err := managedHelper(tool)
+	return err == nil
+}
+
 // managedHelper is the installed helper's path, or why it cannot be used.
 func managedHelper(tool string) (string, error) {
 	path := panelHelperPath(tool)
