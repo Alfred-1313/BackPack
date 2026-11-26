@@ -16,6 +16,7 @@ cat > "$scratch/commands/systemctl" <<'EOF'
 #!/usr/bin/env bash
 set -eu
 cd "$OMNI_TEST_UNITS"
+printf '%s\n' "$*" >> calls
 case "$1" in
     restart)
         [[ -f "$2" ]]
@@ -68,8 +69,15 @@ test_inst="$scratch/config/inst/$test_name"
 test_lock="$scratch/run/pf.BPOMNI_BPCT0123456789AB.lock"
 other_lock="$scratch/run/pf.BPOMNI_DEMO.lock"
 printf 'tcp:8000:8080\n' > "$test_inst/pf.conf"
-touch "$test_lock" "$other_lock"
+touch "$test_lock" "$other_lock" "$scratch/units/backpack-omni-$test_name-mux.service" \
+    "$scratch/units/backpack-omni-$test_name-pf-8000.service"
+: > "$scratch/units/calls"
 bash "$scratch/manager" remove "$test_name"
+grep -qxF "stop backpack-omni-$test_name.service backpack-omni-$test_name-mux.service backpack-omni-$test_name-pf-8000.service" "$scratch/units/calls"
+if grep -qE '^(disable|daemon-reload)' "$scratch/units/calls"; then
+    echo 'Removing a temporary instance reloaded systemd' >&2
+    exit 1
+fi
 test ! -e "$test_inst"
 test ! -e "$test_lock"
 test ! -d "$scratch/config/removed"

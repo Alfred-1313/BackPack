@@ -406,10 +406,35 @@ build_execstart() {''')
         return 0
     fi
     load_inst "$1"
+    if [[ "$1" =~ ^bpct[a-f0-9]{12}$ ]]; then
+        test_stop_units "$1" || return
+    fi
     with_pf_lock "$1" _inst_remove_fwd''')
     text = replace_once(text, '''    ok "removed instance '$1'"\n}\n_inst_remove_fwd() {''',
                         r'''    test_remove_pf_lock "$1" || return
     ok "removed instance '$1'"
+}
+
+test_stop_units() {
+    local n="$1" path
+    local -a files=() units=()
+    for path in "/etc/systemd/system/$(svc_name "$n")" \
+                "/etc/systemd/system/$(mux_svc "$n")" \
+                /etc/systemd/system/backpack-omni-"$n"-pf-*.service; do
+        [[ -f "$path" ]] || continue
+        files+=("$path")
+        units+=("${path##*/}")
+    done
+    [[ ${#units[@]} -gt 0 ]] || return 0
+    # ExecStartPost can take the forward lock. Stop before taking that lock,
+    # and avoid reloading systemd for each of the disabled test units.
+    if ! systemctl stop "${units[@]}"; then
+        for path in "${units[@]}"; do
+            systemctl is-active --quiet "$path" && return 1
+        done
+    fi
+    systemctl reset-failed "${units[@]}" 2>/dev/null || true
+    rm -f -- "${files[@]}"
 }
 
 test_remove_pf_lock() {
@@ -419,6 +444,25 @@ test_remove_pf_lock() {
 }
 
 _inst_remove_fwd() {''')
+
+    text = replace_once(text, r"""    type_is_hysteria "$TYPE" && hy_remove_relays "$n"
+    mux_remove "$n"   # tear down any chisel mux server/client for this instance
+    systemctl disable --now "$(svc_name "$n")" >/dev/null 2>&1 || true
+    rm -f "/etc/systemd/system/$(svc_name "$n")"
+    systemctl reset-failed "$(svc_name "$n")" 2>/dev/null || true   # no lingering 'not-found failed' ghost
+    systemctl daemon-reload 2>/dev/null || true
+    _pf_flush_chain "$n" """.rstrip(), r'''    if [[ "$n" =~ ^bpct[a-f0-9]{12}$ ]]; then
+        # With no mappings, this test never installs a forwarding chain.
+        [[ ! -s "$(inst_pf "$n")" ]] || _pf_flush_chain "$n"
+    else
+        type_is_hysteria "$TYPE" && hy_remove_relays "$n"
+        mux_remove "$n"   # tear down any chisel mux server/client for this instance
+        systemctl disable --now "$(svc_name "$n")" >/dev/null 2>&1 || true
+        rm -f "/etc/systemd/system/$(svc_name "$n")"
+        systemctl reset-failed "$(svc_name "$n")" 2>/dev/null || true
+        systemctl daemon-reload 2>/dev/null || true
+        _pf_flush_chain "$n"
+    fi''')
 
     # Test names carry an independent ICMP identifier. Old instances retain
     # the wire identifier they received at initial setup.
