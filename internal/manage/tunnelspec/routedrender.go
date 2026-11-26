@@ -38,6 +38,9 @@ func (s L3Spec) renderRoutedLink() string {
 	if s.Preset != "" {
 		writeKV(&b, "preset", quote(s.Preset))
 	}
+	if s.TxQueueLen > 0 {
+		writeKV(&b, "txqueuelen", fmt.Sprint(s.TxQueueLen))
+	}
 	if s.MSSClamp != 0 {
 		writeKV(&b, "mss_clamp", fmt.Sprint(s.MSSClamp))
 	}

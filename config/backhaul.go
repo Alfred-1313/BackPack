@@ -26,6 +26,11 @@ type BackhaulConfig struct {
 	HealthPort uint16 `toml:"health_port,omitempty"`
 	// IPXProfile selects the IPX outer protocol.
 	IPXProfile string `toml:"ipx_profile,omitempty"`
+	// Native performance settings. Zero keeps the engine defaults.
+	Preset      string `toml:"preset,omitempty"`
+	Lanes       int    `toml:"lanes,omitempty"`
+	PacketQueue int    `toml:"packet_queue,omitempty"`
+	MTU         int    `toml:"mtu,omitempty"`
 }
 
 func (c BackhaulConfig) Present() bool { return c.Role != "" || c.Mode != "" }

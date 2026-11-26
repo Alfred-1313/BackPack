@@ -240,7 +240,7 @@ func RunContext(ctx context.Context, args []string, input io.Reader, stdout, std
 
 // RunConfiguredSetup passes the optional PSK to the manager without adding it
 // to process arguments. An explicitly requested tunnel port is kept exact.
-func RunConfiguredSetup(ctx context.Context, args []string, key string, stdout, stderr io.Writer) error {
+func RunConfiguredSetup(ctx context.Context, args []string, key string, options SetupOptions, stdout, stderr io.Writer) error {
 	if len(args) == 0 || args[0] != "setup" {
 		return fmt.Errorf("expected a setup operation")
 	}
@@ -248,10 +248,14 @@ func RunConfiguredSetup(ctx context.Context, args []string, key string, stdout, 
 	if key != "" {
 		env = append(env, "BACKPACK_OMNI_SETUP_KEY="+key)
 	}
-	return runContext(ctx, args, strings.NewReader(""), stdout, stderr, env)
+	return run(ctx, args, strings.NewReader(""), stdout, stderr, env, options)
 }
 
 func runContext(ctx context.Context, args []string, input io.Reader, stdout, stderr io.Writer, env []string) error {
+	return run(ctx, args, input, stdout, stderr, env, SetupOptions{})
+}
+
+func run(ctx context.Context, args []string, input io.Reader, stdout, stderr io.Writer, env []string, options SetupOptions) error {
 	if len(args) == 0 || args[0] == "help" || args[0] == "--help" {
 		fmt.Fprint(stdout, usage)
 		return nil
@@ -264,6 +268,14 @@ func runContext(ctx context.Context, args []string, input io.Reader, stdout, std
 	op, err := parse(args, input)
 	if err != nil {
 		return err
+	}
+	if op.args[0] == "add-manual" {
+		if options.Connections > 0 {
+			op.args[4] = strconv.Itoa(options.Connections)
+		}
+		if options.BandwidthMbps > 0 {
+			op.args[5] = strconv.Itoa(options.BandwidthMbps)
+		}
 	}
 	path, err := helperPath()
 	if err != nil {
@@ -278,7 +290,13 @@ func runContext(ctx context.Context, args []string, input io.Reader, stdout, std
 	} else {
 		cmd.Stdin = input
 	}
-	return cmd.Run()
+	if err := cmd.Run(); err != nil {
+		return err
+	}
+	if op.args[0] == "remove" {
+		return removeServiceTuning(ctx, op.args[1])
+	}
+	return nil
 }
 
 // Menu keeps the original Setup, Manage and Connection Test numbering intact.

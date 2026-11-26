@@ -16,6 +16,7 @@ func TestGRETAPPanelCreateAndPeer(t *testing.T) {
 		Side: "iran", Carrier: l3.CarrierGRETAP, Name: "gretap-panel-fixture",
 		PeerAddr: "203.0.113.44", GRELocal: "198.51.100.31",
 		LocalIP: "10.212.237.1/30", PeerIP: "10.212.237.2",
+		Preset: PresetAggressive, MTU: 1320,
 	}
 	spec, err := n.spec()
 	if err != nil {
@@ -28,6 +29,9 @@ func TestGRETAPPanelCreateAndPeer(t *testing.T) {
 	cfg := decode(t, body)
 	if cfg.L3.Carrier != l3.CarrierGRETAP || cfg.L3.GREKey != 0 || len(cfg.L3.Ports) != 0 {
 		t.Fatalf("the unkeyed, routed GRETAP link did not round trip: %+v", cfg.L3)
+	}
+	if cfg.L3.TxQueueLen != 16384 || cfg.L3.MTU != 1320 {
+		t.Fatal("GRETAP lost the preset or optional MTU in its config")
 	}
 	link, err := shareLinkOf(spec.Name, n.GRELocal, cfg)
 	if err != nil {
@@ -45,6 +49,9 @@ func TestGRETAPPanelCreateAndPeer(t *testing.T) {
 	}
 	if peer.Carrier != l3.CarrierGRETAP || peer.Addr != n.GRELocal || peer.LocalIP != n.PeerIP+"/30" || peer.PeerIP != "10.212.237.1" {
 		t.Fatalf("the peer did not get the mirrored GRETAP link: %+v", peer)
+	}
+	if peer.TxQueueLen != cfg.L3.TxQueueLen || peer.MTU != cfg.L3.MTU {
+		t.Fatal("GRETAP lost the performance settings on the peer")
 	}
 	settings := directSettingsFrom(n.Name, cfg.L3)
 	if len(settings.Carriers) != 1 || settings.Carriers[0]["value"] != l3.CarrierGRETAP {

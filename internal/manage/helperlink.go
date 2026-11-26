@@ -34,6 +34,7 @@ func backhaulShare(name string, c config.BackhaulConfig) ShareLink {
 		Name: name, Kind: kind, From: "iran", Tr: prefix + c.Mode,
 		Host: c.IranHost, Port: linkPort(c.Port), Tok: c.Token, PeerHost: c.KharejIP,
 		LocalIP: c.IranTunnel, PeerIP: c.KharejTunnel, HealthPort: uint32(c.HealthPort), Profile: c.IPXProfile,
+		Preset: c.Preset, TunnelLanes: c.Lanes, PacketQueue: c.PacketQueue, MTU: c.MTU,
 	}
 }
 
@@ -90,6 +91,7 @@ func applyImportedLink(l ShareLink, o LinkApplyOptions) (LinkApplied, error) {
 		Native: native, Role: "client", Mode: mode, IranHost: l.Host, KharejIP: l.PeerHost,
 		Port: uint16(port), Token: l.Tok, IranTunnel: l.LocalIP, KharejTunnel: l.PeerIP,
 		HealthPort: uint16(l.HealthPort), IPXProfile: l.Profile,
+		Preset: l.Preset, Lanes: l.TunnelLanes, PacketQueue: l.PacketQueue, MTU: l.MTU,
 	})
 }
 

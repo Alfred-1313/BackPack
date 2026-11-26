@@ -41,6 +41,10 @@ def install(form):
         raise ValueError("use 1-32 letters, digits, underscores or hyphens for the name")
     host = str(ipaddress.IPv4Address(form["peer"]))
     endpoint, target = port(form["port"]), port(form["target"])
+    weight = int(form.get("cpuWeight", 0))
+    restart = int(form.get("restartSeconds", 0))
+    if not 0 <= weight <= 10000 or not 0 <= restart <= 60:
+        raise ValueError("invalid GOST CPU weight or restart delay")
     arch = {"x86_64":"amd64","aarch64":"arm64"}[platform.machine()]
     binary = Path("/usr/local/lib/backpack/helpers/gost") / ("v3.3.3-"+arch) / "gost"
     if not os.access(binary, os.X_OK):
@@ -77,7 +81,7 @@ def install(form):
             run("openssl","req","-x509","-newkey","ec","-pkeyopt","ec_paramgen_curve:P-256","-nodes",
                 "-days","365","-subj","/CN="+host,"-addext","subjectAltName=IP:"+host,"-keyout",key,"-out",cert)
             payload = dict(name=name,peer=host,port=endpoint,target=target,password=password,
-                           certificate=cert.read_text(),key=key.read_text())
+                           certificate=cert.read_text(),key=key.read_text(),cpuWeight=weight,restartSeconds=restart)
             token = "bpgost1."+base64.b64encode(json.dumps(payload).encode()).decode()
             key.unlink()
             node = {"name":"kharej","addr":host+":"+str(endpoint),
@@ -99,7 +103,9 @@ def install(form):
                 out.write("Restart=no\nTimeoutStopSec=5\nRuntimeMaxSec=90min\n"
                           "LogRateLimitIntervalSec=1min\nLogRateLimitBurst=10\n")
             else:
-                out.write("Restart=on-failure\nRestartSec=3\n")
+                out.write("Restart=on-failure\nRestartSec="+str(restart or 3)+"\n")
+                if weight:
+                    out.write("CPUWeight="+str(weight)+"\n")
             out.write("[Install]\nWantedBy=multi-user.target\n")
         run("systemctl","daemon-reload")
         if temporary:

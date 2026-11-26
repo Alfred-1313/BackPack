@@ -22,6 +22,8 @@ import (
 )
 
 const laneCount = 4
+const tunQueue = 64
+const tunMTU = 1400
 
 func Run(ctx context.Context, name string, c config.BackhaulConfig, log *logrus.Logger) error {
 	creds, err := linkTLS(c)
@@ -38,8 +40,12 @@ func Run(ctx context.Context, name string, c config.BackhaulConfig, log *logrus.
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	var workers sync.WaitGroup
-	peers := &lanePool{}
-	for range laneCount {
+	peers := &lanePool{limit: c.Lanes}
+	lanes := c.Lanes
+	if lanes == 0 {
+		lanes = laneCount
+	}
+	for range lanes {
 		workers.Go(func() {
 			retryLane(ctx, c, addr, creds, func(conn net.Conn) {
 				session, err := smux.Server(conn, muxConfig())
@@ -69,15 +75,20 @@ func muxConfig() *smux.Config {
 }
 
 type lanePool struct {
-	mu   sync.Mutex
-	live []*smux.Session
-	next int
+	mu    sync.Mutex
+	live  []*smux.Session
+	next  int
+	limit int
 }
 
 func (p *lanePool) add(s *smux.Session, peer net.Addr) (func(), bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if len(p.live) >= laneCount*2 {
+	limit := p.limit
+	if limit == 0 {
+		limit = laneCount
+	}
+	if len(p.live) >= limit*2 {
 		return nil, false
 	}
 	p.live = append(p.live, s)
@@ -112,7 +123,7 @@ func (p *lanePool) candidates() []*smux.Session {
 func runMuxServer(ctx context.Context, c config.BackhaulConfig, t *tls.Config, log *logrus.Logger) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	pool := &lanePool{}
+	pool := &lanePool{limit: c.Lanes}
 	maps, err := portmap.Expand(c.Ports, "127.0.0.1")
 	if err != nil {
 		return err
@@ -275,7 +286,13 @@ type packetLink interface {
 }
 
 func runTUN(ctx context.Context, name string, c config.BackhaulConfig, t *tls.Config, log *logrus.Logger) error {
-	const mtu = 1400
+	mtu, queue := c.MTU, c.PacketQueue
+	if mtu == 0 {
+		mtu = tunMTU
+	}
+	if queue == 0 {
+		queue = tunQueue
+	}
 	local, peer := c.IranTunnel, c.KharejTunnel
 	if c.Role == "client" {
 		local, peer = peer, local
@@ -293,7 +310,7 @@ func runTUN(ctx context.Context, name string, c config.BackhaulConfig, t *tls.Co
 	stopDevice := context.AfterFunc(ctx, closeDevice)
 	defer stopDevice()
 	defer closeDevice()
-	outgoing := make(chan []byte, 64)
+	outgoing := make(chan []byte, queue)
 	go readPackets(ctx, dev, outgoing)
 	var one sync.Mutex
 	handle := func(conn net.Conn) {

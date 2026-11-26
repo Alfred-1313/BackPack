@@ -13,6 +13,7 @@ func TestRoutedLinkSetupFromPeer(t *testing.T) {
 			f := NewDirectTunnel{
 				Name: "vortex-setup-fixture", Side: "kharej", Carrier: carrier,
 				LocalIP: "10.209.140.2/30", PeerIP: "10.209.140.1",
+				Preset: PresetAggressive, MTU: 1320,
 			}
 			switch carrier {
 			case l3.CarrierL2TPv3:
@@ -53,6 +54,9 @@ func TestRoutedLinkSetupFromPeer(t *testing.T) {
 			got := decode(t, peerBody).L3
 			if got.Mode != "dial" || got.Carrier != carrier || got.LocalIP != "10.209.140.1/30" || got.PeerIP != "10.209.140.2" {
 				t.Fatalf("unexpected peer: %s %s %s to %s", got.Mode, got.Carrier, got.LocalIP, got.PeerIP)
+			}
+			if cfg.L3.TxQueueLen != 16384 || got.TxQueueLen != cfg.L3.TxQueueLen || got.MTU != cfg.L3.MTU || got.MTU != 1320 {
+				t.Fatal("the preset's transmit queue or the optional MTU did not reach both configs")
 			}
 			switch carrier {
 			case l3.CarrierL2TPv3:

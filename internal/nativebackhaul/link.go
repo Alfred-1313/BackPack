@@ -85,6 +85,13 @@ func Validate(c config.BackhaulConfig) error {
 	if _, ok := Find(c.Mode); !ok {
 		return errors.New("unknown native BackPack tunnel mode")
 	}
+	if c.Lanes < 0 || c.Lanes > 16 || c.PacketQueue < 0 || c.PacketQueue > 1024 ||
+		c.MTU != 0 && (c.MTU < 576 || c.MTU > tunMTU) {
+		return errors.New("native tunnel tuning is outside its supported range")
+	}
+	if c.Mode == "tun-tcp" && c.Lanes != 0 || c.Mode != "tun-tcp" && (c.PacketQueue != 0 || c.MTU != 0) {
+		return errors.New("native tunnel tuning does not match this transport")
+	}
 	// Validate the shared reverse-tunnel settings in the same way for every
 	// stream transport. The TUN-specific fields are checked only for TUN.
 	common := c

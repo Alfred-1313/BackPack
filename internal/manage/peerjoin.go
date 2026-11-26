@@ -42,6 +42,7 @@ type peerJoinLink struct {
 type peerJoinResult struct {
 	Link, Driver, Token, Mode, Name string
 	MuxToken                        string
+	OmniOptions                     omni.SetupOptions
 }
 
 // beginPeerJoin lets the Kharej operator supply the peer via an authenticated
@@ -255,6 +256,13 @@ func StartDirectPeerSetup(ctx context.Context, form NewDirectTunnel) (SetupLinkI
 	if form.Side != "iran" {
 		return SetupLinkInfo{}, errors.New("create the Setup command on Iran")
 	}
+	tuning := SetupTuning{Preset: form.Preset}
+	if form.MTU != 0 {
+		tuning.Value = &form.MTU
+	}
+	if _, err := setupTuningValue(form.Carrier, tuning); err != nil {
+		return SetupLinkInfo{}, err
+	}
 	if form.Carrier == l3.CarrierEasyTier && form.Token == "" {
 		form.Token = randomToken(64)
 	}
@@ -308,14 +316,26 @@ func applyPeerJoin(raw string, options LinkApplyOptions) (LinkApplied, error) {
 			done.Kind = "reverse"
 		}
 		var output bytes.Buffer
+		done.Service = omni.ServiceName(result.Name)
+		hadUnit := fileExists(app.ServiceDir + "/" + done.Service)
 		err := omni.RunContext(ctx, []string{"join", result.Mode}, strings.NewReader(result.Token), &output, &output)
+		if err == nil {
+			if err = omni.ConfigureService(ctx, result.Name, result.OmniOptions); err != nil {
+				if !hadUnit {
+					cleanup, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+					defer cancel()
+					_, cleanupErr := ctOmniRun(cleanup, "", "remove", result.Name)
+					err = errors.Join(err, cleanupErr)
+				}
+				return done, err
+			}
+		}
 		if err == nil && result.MuxToken != "" {
 			_, err = ctOmniRun(ctx, result.MuxToken, "mux-join")
 			if err != nil {
 				return done, err
 			}
 		}
-		done.Service = "backpack-omni-" + result.Name + ".service"
 		done.Transport = omni.Label(result.Mode)
 		done.Active = err == nil && IsActive(done.Service)
 		if err != nil && output.Len() != 0 {

@@ -15,14 +15,16 @@ import (
 var script string
 
 type Form struct {
-	Action  string `json:"action"`
-	Name    string `json:"name"`
-	Peer    string `json:"peer"`
-	Port    string `json:"port"`
-	Target  string `json:"target"`
-	Ingress string `json:"ingress"`
-	Token   string `json:"token"`
-	Secret  string `json:"secret,omitempty"`
+	Action         string `json:"action"`
+	Name           string `json:"name"`
+	Peer           string `json:"peer"`
+	Port           string `json:"port"`
+	Target         string `json:"target"`
+	Ingress        string `json:"ingress"`
+	Token          string `json:"token"`
+	Secret         string `json:"secret,omitempty"`
+	CPUWeight      int    `json:"cpuWeight,omitempty"`
+	RestartSeconds int    `json:"restartSeconds,omitempty"`
 }
 type Result struct {
 	Token string `json:"token"`

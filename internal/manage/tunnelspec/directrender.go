@@ -364,6 +364,9 @@ func (s L3Spec) renderGRE() string {
 		b.WriteString("# a GRE link never holds packets, the interface it leaves by does.\n")
 		writeKV(&b, "preset", quote(s.Preset))
 	}
+	if s.Carrier == l3.CarrierGRETAP && s.TxQueueLen > 0 {
+		writeKV(&b, "txqueuelen", fmt.Sprint(s.TxQueueLen))
+	}
 	if s.MSSClamp != 0 {
 		b.WriteString("\n# Caps the segment size of TCP crossing the tunnel. 0 derives it from\n")
 		b.WriteString("# the MTU, which is almost always right; -1 turns it off.\n")

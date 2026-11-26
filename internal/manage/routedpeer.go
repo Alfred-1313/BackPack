@@ -19,15 +19,16 @@ import (
 )
 
 type RoutedPeerForm struct {
-	Transport string `json:"transport"`
-	Name      string `json:"name"`
-	PeerAddr  string `json:"peerAddr"`
-	Port      string `json:"port"`
-	Secret    string `json:"secret"`
-	Ports     string `json:"ports"`
-	AcceptUDP bool   `json:"acceptUdp"`
-	Ingress   string `json:"ingress"`
-	Target    string `json:"target"`
+	Transport string      `json:"transport"`
+	Name      string      `json:"name"`
+	PeerAddr  string      `json:"peerAddr"`
+	Port      string      `json:"port"`
+	Secret    string      `json:"secret"`
+	Ports     string      `json:"ports"`
+	AcceptUDP bool        `json:"acceptUdp"`
+	Ingress   string      `json:"ingress"`
+	Target    string      `json:"target"`
+	Tuning    SetupTuning `json:"tuning"`
 }
 
 var routedSetupName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$`)
@@ -75,11 +76,16 @@ func StartRoutedPeerSetup(ctx context.Context, form RoutedPeerForm) (SetupLinkIn
 		if form.Port == "" || len(ports) != 1 || form.AcceptUDP {
 			return SetupLinkInfo{}, errors.New("GOST Direct needs a tunnel port and one TCP forward")
 		}
+		weight, err := setupTuningValue(form.Transport, form.Tuning)
+		if err != nil {
+			return SetupLinkInfo{}, err
+		}
 		return beginPeerJoin(ctx, form.Name, "direct", false, func(ctx context.Context, _, peer string) (peerJoinResult, error) {
 			ingress, target, _ := strings.Cut(ports[0], ":")
 			peer = orDefault(form.PeerAddr, peer)
 			result, err := gostdirect.Install(ctx, gostdirect.Form{Action: "setup", Name: form.Name, Peer: peer,
-				Port: form.Port, Ingress: ingress, Target: target, Secret: routedKey(form.Secret)})
+				Port: form.Port, Ingress: ingress, Target: target, Secret: routedKey(form.Secret),
+				CPUWeight: weight, RestartSeconds: presetOverride(form.Tuning.RestartSeconds)})
 			return peerJoinResult{Driver: "gost", Token: result.Token, Mode: form.Transport, Name: form.Name}, err
 		})
 	}
@@ -96,11 +102,36 @@ func StartRoutedPeerSetup(ctx context.Context, form RoutedPeerForm) (SetupLinkIn
 		if form.AcceptUDP && option["udp"] == "" {
 			return SetupLinkInfo{}, errors.New("this carrier forwards TCP only")
 		}
+		options, err := omniSetupOptions(form.Transport, form.Tuning)
+		if err != nil {
+			return SetupLinkInfo{}, err
+		}
 		return beginPeerJoin(ctx, form.Name, option["direction"], false, func(ctx context.Context, host, peer string) (peerJoinResult, error) {
-			return setupRoutedOmni(ctx, form, host, orDefault(form.PeerAddr, peer), ports)
+			return setupRoutedOmni(ctx, form, host, orDefault(form.PeerAddr, peer), ports, options)
 		})
 	}
 	return SetupLinkInfo{}, errors.New("unknown routed transport")
+}
+
+func presetOverride(v *int) int {
+	if v == nil {
+		return 0
+	}
+	return *v
+}
+
+func omniSetupOptions(mode string, tuning SetupTuning) (omni.SetupOptions, error) {
+	v, err := setupTuningValue("omni-"+mode, tuning)
+	options := omni.SetupOptions{RestartSeconds: presetOverride(tuning.RestartSeconds)}
+	switch mode {
+	case "mux", "ws", "stripe":
+		options.Connections = v
+	case "hysteria":
+		options.BandwidthMbps = v
+	default:
+		options.Queue = v
+	}
+	return options, err
 }
 
 func validateRoutedSecret(secret string) error {
@@ -145,7 +176,7 @@ func routedForwardPorts(raw string) ([]string, error) {
 	return out, nil
 }
 
-func setupRoutedOmni(ctx context.Context, form RoutedPeerForm, host, peer string, ports []string) (peerJoinResult, error) {
+func setupRoutedOmni(ctx context.Context, form RoutedPeerForm, host, peer string, ports []string, options omni.SetupOptions) (peerJoinResult, error) {
 	if busy := busyForwardPorts(parsePorts(form.Ports), "127.0.0.1"); len(busy) != 0 {
 		return peerJoinResult{}, fmt.Errorf("forwarded ports already in use on Iran: %s", strings.Join(busy, ", "))
 	}
@@ -155,7 +186,7 @@ func setupRoutedOmni(ctx context.Context, form RoutedPeerForm, host, peer string
 	}
 	key := routedKey(form.Secret)
 	var out bytes.Buffer
-	if err := omni.RunConfiguredSetup(ctx, args, key, &out, &out); err != nil {
+	if err := omni.RunConfiguredSetup(ctx, args, key, options, &out, &out); err != nil {
 		if out.Len() != 0 {
 			err = errors.New(ctExtraError(errors.New(out.String())))
 		}
@@ -181,7 +212,14 @@ func setupRoutedOmni(ctx context.Context, form RoutedPeerForm, host, peer string
 	if key != "" && fields[5] != key {
 		return rollback(errors.New("the OmniTunnel helper needs the BackPack update for a custom secret"))
 	}
-	result := peerJoinResult{Driver: "omni", Token: token, Mode: form.Transport, Name: form.Name}
+	if options.Connections > 0 && (len(fields) < 10 || fields[9] != strconv.Itoa(options.Connections)) ||
+		options.BandwidthMbps > 0 && fields[8] != strconv.Itoa(options.BandwidthMbps) {
+		return rollback(errors.New("the OmniTunnel helper did not use the requested performance settings"))
+	}
+	if err := omni.ConfigureService(ctx, form.Name, options); err != nil {
+		return rollback(err)
+	}
+	result := peerJoinResult{Driver: "omni", Token: token, Mode: form.Transport, Name: form.Name, OmniOptions: options}
 	if len(ports) == 0 {
 		return result, nil
 	}

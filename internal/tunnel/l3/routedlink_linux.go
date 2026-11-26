@@ -187,6 +187,11 @@ func (t *Tunnel) runEasyTier(ctx context.Context) error {
 		case <-time.After(100 * time.Millisecond):
 		}
 	}
+	if c.TxQueueLen > 0 {
+		if err := run("ip", "link", "set", "dev", c.Iface, "txqueuelen", strconv.Itoa(c.TxQueueLen)); err != nil {
+			return fmt.Errorf("l3: set EasyTier transmit queue: %w", err)
+		}
+	}
 	mssclamp.Apply("l3", c.Iface, c.MTU, c.MSSClamp, t.log)
 	link := &greLink{name: c.Iface, mssClamp: c.MSSClamp, mtu: c.MTU, log: t.log,
 		cleanup: func() {}} // EasyTier owns the TUN device

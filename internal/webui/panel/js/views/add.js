@@ -64,6 +64,9 @@ export function addView(ctx) {
       const directSetup = () => chosen.direction === 'direct' && managedDirect.get(chosen.carrier);
       const pairedDirect = () => chosen.side === 'server' && chosen.direction === 'direct' &&
         ['gretap', 'l2tpv3', 'easytier'].includes(chosen.carrier);
+      const setupProfile = () => opts.setupPerformance?.[chosen.direction === 'direct' ? chosen.carrier : chosen.transport];
+      const setupChoices = new Map();
+      let setupGroups, lastSetupProfile;
       const randomGreKey = root.querySelector('#randomGreKey');
       const nativeAddress = el('details', { class: 'f3 full', hidden: true });
       nativeAddress.dataset.nativeAddress = '';
@@ -71,7 +74,6 @@ export function addView(ctx) {
         el('label', { text: 'Iran IP or hostname' }, [
           el('input', { name: 'iranHost', type: 'text', autocomplete: 'off', placeholder: 'Automatically detected' }),
         ]));
-      root.querySelector('#atok').closest('.f3').after(nativeAddress);
 
       const directArea = root.querySelector('.step3direct');
       const directChoices = directArea.querySelector('.trgrid').closest('.grp3');
@@ -591,6 +593,7 @@ export function addView(ctx) {
           // its own settings when the operator switched away and back.
           if (g.hidden) g.classList.remove('open');
         });
+        paintSetupTuning();
         const reversePort = root.querySelector('#aport');
         reversePort.closest('.f3').hidden = !!setup && !setup.port;
         reversePort.placeholder = setup ? '1–65535' : '4443 or 85.10.11.51:4443';
@@ -856,6 +859,7 @@ export function addView(ctx) {
       };
       function paintPresetSets(d) {
         root.querySelectorAll('.rpgrid').forEach(grid => {
+          if (grid.closest('[data-setup-performance]')) return;
           let box = grid.nextElementSibling;
           if (!box || !box.classList.contains('rp-sets')) {
             box = el('div', { class: 'rp-sets' });
@@ -1131,6 +1135,101 @@ export function addView(ctx) {
         root.querySelectorAll('.rp2').forEach(b => b.parentElement?.classList.add('rpgrid'));
       }
 
+      function tuningField(id, label) {
+        const input = el('input', { id, type: 'number', step: '1' });
+        const title = el('label', { for: id, text: label });
+        const row = el('div', { class: 'f3' }, [title, input]);
+        return { row, title, input };
+      }
+
+      function addSetupTuning(perf, opt) {
+        const cards = el('div', { class: 'trgrid' });
+        const summary = el('div', { class: 'rp-sets' });
+        const group = el('div', { class: 'grp3', hidden: true, 'data-setup-performance': '' }, [
+          el('div', { class: 'gl3', text: 'Performance' }), cards, summary,
+        ]);
+        const value = tuningField('setupTuningValue', '');
+        const delay = tuningField('setupRestartSeconds', 'Restart delay after failure (seconds)');
+        delay.input.min = 1;
+        delay.input.max = 60;
+        const mtu = tuningField('setupTunnelMTU', 'MTU (bytes)');
+        mtu.input.min = 576;
+        mtu.input.max = 1400;
+        mtu.input.placeholder = '1400';
+        const optional = el('div', { class: 'grp3', hidden: true }, [
+          el('div', { class: 'gl3', text: 'Fine Tune' }),
+          el('div', { class: 'fgrid' }, [value.row, mtu.row, delay.row, nativeAddress]),
+        ]);
+        for (const preset of ['balance', 'turbo', 'aggressive']) {
+          const card = el('button', { type: 'button', class: 'rp', 'data-pre': preset });
+          card.addEventListener('click', () => {
+            const id = currentSetupID();
+            setupChoices.set(id, preset);
+            value.input.value = '';
+            paintSetupTuning();
+          });
+          cards.append(card);
+        }
+        perf.append(group);
+        opt.append(optional);
+        return { group, cards, summary, optional, value, delay, mtu };
+      }
+
+      function currentSetupID() {
+        return chosen.direction === 'direct' ? chosen.carrier : chosen.transport;
+      }
+
+      function paintSetupTuning() {
+        if (!setupGroups) return;
+        const profile = setupProfile(), id = currentSetupID();
+        const { group, optional, cards, summary, value, delay, mtu } = setupGroups;
+        group.hidden = optional.hidden = !profile;
+        if (!profile) {
+          lastSetupProfile = null;
+          return;
+        }
+        if (pairedDirect()) {
+          const standard = group.parentElement.querySelector('[data-mode="dir"]');
+          if (standard) standard.hidden = true;
+        }
+        if (id !== lastSetupProfile) {
+          value.input.value = delay.input.value = mtu.input.value = '';
+          lastSetupProfile = id;
+        }
+        const preset = setupChoices.get(id) || 'turbo';
+        const applies = profile.values[preset];
+        for (const card of cards.children) {
+          const selected = card.dataset.pre === preset;
+          card.classList.toggle('on', selected);
+          card.setAttribute('aria-pressed', String(selected));
+        }
+        summary.innerHTML = `<div class="rp-sets-h"><b>What ${preset[0].toUpperCase() + preset.slice(1)} sets</b></div>
+          <div class="rp-sets-g"><div><span>${esc(profile.label)}</span><b>${esc(String(applies))}</b></div></div>`;
+        value.title.textContent = profile.overrideLabel;
+        value.input.min = profile.min;
+        value.input.max = profile.max;
+        value.input.placeholder = profile.label === profile.overrideLabel ? applies : 'Automatic';
+        delay.row.hidden = !profile.restart;
+        delay.input.placeholder = id === 'gost-direct' || id === 'omni-hysteria' ? '3' : '2';
+        mtu.row.hidden = !profile.mtu;
+      }
+
+      function setupTuningPayload() {
+        const profile = setupProfile();
+        if (!profile) return undefined;
+        const read = ({ input, row, title }) => {
+          if (row.hidden || !input.value) return undefined;
+          if (!input.checkValidity()) throw new Error(`${title.textContent} must be between ${input.min} and ${input.max}.`);
+          return input.valueAsNumber;
+        };
+        return {
+          preset: setupChoices.get(currentSetupID()) || 'turbo',
+          value: read(setupGroups.value),
+          restartSeconds: read(setupGroups.delay),
+          mtu: read(setupGroups.mtu),
+        };
+      }
+
       function stageSingle() {
         const body = root.querySelector('.body5');
         const side = root.querySelector('.step[data-s="0"]');
@@ -1191,8 +1290,6 @@ export function addView(ctx) {
         });
         if (swap) swap.hidden = true;
         markKind();
-        dressPresets();
-
         const pane = () => el('div', { class: 'step', hidden: true });
         const perf = pane(), opt = pane();
         root.querySelectorAll('.grp3').forEach(g => {
@@ -1200,6 +1297,13 @@ export function addView(ctx) {
           if (head === 'Performance') perf.append(g);
           if (head === 'Optional') opt.append(g);
         });
+        const directPerformance = perf.querySelector('[data-mode="dir"]');
+        const directLimits = directPerformance?.querySelector(':scope > .fgrid');
+        if (directLimits) opt.append(el('div', { class: 'grp3', 'data-mode': 'dir' }, [
+          el('div', { class: 'gl3', text: 'Forwarding limits' }), directLimits,
+        ]));
+        setupGroups = addSetupTuning(perf, opt);
+        dressPresets();
         /* PCK's fine-tuning goes with the presets it overrides, on the same
            step, rather than among the fields that name the tunnel. */
         const pckDrawer = root.querySelector('#dw-pck');
@@ -1318,13 +1422,14 @@ export function addView(ctx) {
         }
 
         const setup = reverseSetup();
+        const tuning = setupTuningPayload();
         if (setup?.native) {
           if (!/^\d+$/.test(payload.tunnelPort || '') || Number(payload.tunnelPort) < 1 || Number(payload.tunnelPort) > 65535) {
             throw new Error('Enter a tunnel port from 1 to 65535.');
           }
           const r = await api.backhaulCreate({
             name: payload.name, transport: setup.mode, port: Number(payload.tunnelPort),
-            ports: payload.ports || '', secret: payload.token || '', iranHost: payload.iranHost || '',
+            ports: payload.ports || '', secret: payload.token || '', iranHost: payload.iranHost || '', tuning,
           });
           return { r, name: payload.name };
         }
@@ -1332,12 +1437,16 @@ export function addView(ctx) {
         if (routed) {
           const r = await api.routedPeerSetup({
             name: payload.name, transport: routed.mode, ports: payload.ports || '', secret: payload.token || '',
-            peerAddr: payload.peerAddr || '', port: payload.tunnelPort || '', acceptUdp: !!payload.routedAcceptUdp,
+            peerAddr: payload.peerAddr || '', port: payload.tunnelPort || '', acceptUdp: !!payload.routedAcceptUdp, tuning,
           });
           return { r, name: payload.name };
         }
         if (pairedDirect()) {
           for (const key of ['greLocal', 'localIp', 'peerIp']) delete payload[key];
+          if (tuning) {
+            payload.preset = tuning.preset;
+            payload.mtu = tuning.value;
+          }
           return { r: await api.directPeerSetup(payload), name: payload.name };
         }
         // Only this end: the other is built from its setup link.

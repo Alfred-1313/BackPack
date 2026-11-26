@@ -493,6 +493,10 @@ func fillConfig(info *TunnelInfo, t manage.Tunnel) {
 	if err != nil {
 		return
 	}
+	if cfg.Backhaul.Native {
+		info.Preset = manage.PresetValueLabel(cfg.Backhaul.Preset)
+		return
+	}
 	// The direct kinds keep their settings in their own tables. Reading
 	// [server] or [client] for one of them would not be wrong so much as
 	// empty, and would quietly report a preset and limits it does not have.

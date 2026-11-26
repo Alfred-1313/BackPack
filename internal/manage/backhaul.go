@@ -17,16 +17,17 @@ import (
 )
 
 type BackhaulForm struct {
-	Name         string `json:"name"`
-	Mode         string `json:"transport"`
-	IranHost     string `json:"iranHost"`
-	KharejIP     string `json:"kharejIP"`
-	Port         uint16 `json:"port"`
-	Secret       string `json:"secret"`
-	Ports        string `json:"ports"`
-	IranTunnel   string `json:"iranTunnel"`
-	KharejTunnel string `json:"kharejTunnel"`
-	IPXProfile   string `json:"ipxProfile"`
+	Name         string      `json:"name"`
+	Mode         string      `json:"transport"`
+	IranHost     string      `json:"iranHost"`
+	KharejIP     string      `json:"kharejIP"`
+	Port         uint16      `json:"port"`
+	Secret       string      `json:"secret"`
+	Ports        string      `json:"ports"`
+	IranTunnel   string      `json:"iranTunnel"`
+	KharejTunnel string      `json:"kharejTunnel"`
+	IPXProfile   string      `json:"ipxProfile"`
+	Tuning       SetupTuning `json:"tuning"`
 }
 
 type BackhaulSetup struct {
@@ -50,6 +51,10 @@ func backhaulToken() (string, error) {
 }
 
 func CreateBackhaul(ctx context.Context, f BackhaulForm) (BackhaulSetup, error) {
+	value, err := setupTuningValue("native-"+f.Mode, f.Tuning)
+	if err != nil {
+		return BackhaulSetup{}, err
+	}
 	host := strings.Trim(strings.TrimSpace(f.IranHost), "[]")
 	if host == "" {
 		host = linkHost()
@@ -73,6 +78,15 @@ func CreateBackhaul(ctx context.Context, f BackhaulForm) (BackhaulSetup, error) 
 		IPXProfile: f.IPXProfile, Ports: strings.FieldsFunc(f.Ports, func(r rune) bool {
 			return r == ',' || r == '\n' || r == '\r' || r == ' ' || r == '\t'
 		}),
+	}
+	c.Preset = strings.ToLower(strings.TrimSpace(f.Tuning.Preset))
+	if c.Mode == "tun-tcp" {
+		c.PacketQueue = value
+		if f.Tuning.MTU != nil {
+			c.MTU = *f.Tuning.MTU
+		}
+	} else {
+		c.Lanes = value
 	}
 	if c.Mode == "tun-tcp" && c.IranTunnel == "" && c.KharejTunnel == "" {
 		for i := range 16 {
