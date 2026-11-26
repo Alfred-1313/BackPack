@@ -108,7 +108,7 @@ function startPane(v) {
   return `<div class="ct-l-in fade">
     <span class="ct-kick">New test</span>
     <div class="tl-lede"><b>Every transport, tried for real between this server and one kharej.</b>
-      <span>Stability checks run in order: Reverse, Direct, then Spoof. Each transport starts as soon as it is ready within its stage. Speed testing follows the stability checks.
+      <span>Reverse, Direct and Spoof stability checks start together. Each transport is measured as soon as its tunnel is ready. Speed testing follows the stability checks.
         Download and upload are measured with four connections and again with sixteen, one tunnel at a time;
         the max is the best second the tunnel carried. The test tunnels run on free ports and are
         removed when it ends — nothing is left behind on either server.</span></div>
@@ -286,8 +286,11 @@ const rate = (avg, peak) => `<b>${mbps(Math.max(avg, peak || 0))}</b> Mb/s${peak
    list does not flicker every two seconds. */
 function fillRow(n, r) {
   const total = r.total || 60;
-  const done = (r.status === 'testing' ? r.tried : r.ok) ?? 0;
-  const waiting = ['stage-queued', 'transport-queued', 'transport-initial', 'transport-verified', 'transport-retry'].includes(r.phase);
+  const received = r.ok || 0;
+  const attempts = r.tried || 0;
+  const done = r.status === 'testing' ? attempts : received;
+  const waiting = ['stage-queued', 'transport-queued', 'transport-initial', 'transport-verified',
+    'transport-retry', 'transport-setup', 'transport-connect'].includes(r.phase);
   const share = Math.max(0, Math.min(1, done / total));
   n.className = `ct-row ${waiting ? "queued" : tone(r.status)}${r.uploadMbps ? ' has-speed' : ''}`;
   const nb = n.querySelector('.nm b');
@@ -301,9 +304,10 @@ function fillRow(n, r) {
   sm.textContent = r.detail || (r.uploadMbps ? 'max: best second of both passes' : '');
   sm.title = r.detail || '';
   n.querySelector('.bar i').style.setProperty('--w', (share * 100).toFixed(1) + '%');
-  const skipped = r.status === 'skipped';
-  n.querySelector('.ec-count').textContent = skipped ? '—' : `${done}/${total}`;
-  n.querySelector('.ec-percent').textContent = skipped ? '' : `${Math.round(share * 100)}%`;
+  const showCount = r.status !== 'skipped' && (!waiting || attempts > 0);
+  n.querySelector('.ec-count').textContent = showCount ? `${received}/${total}` : '—';
+  n.querySelector('.ec-percent').textContent = showCount ? `${Math.round(share * 100)}%` : '';
+  n.querySelector('.ec').title = showCount ? `${received} verified replies · ${attempts}/${total} attempted` : '';
   n.querySelector('.fg').innerHTML = [
     r.rtt ? `<span><b>${r.rtt}</b> ms</span>` : '',
     r.mbps ? `<span>↓ ${rate(r.mbps, r.peakMbps)}</span>` : '',

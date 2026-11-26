@@ -24,11 +24,10 @@ func TestTheBarIsFilledByTheRealShare(t *testing.T) {
 	}
 }
 
-// While a tunnel runs, its row counts the echoes sent — progress; once it has
-// a verdict, the echoes that came back.
+// The progress bar advances through attempts; the echo count is the replies.
 func TestARowShowsProgressWhileTestingAndTheVerdictAfter(t *testing.T) {
 	running := ConnTestResult{Kind: "reverse", Transport: "stealth", Status: ctTesting, Tried: 30, OK: 20, Total: 60}
-	if row := ctRow(running); !strings.Contains(row, "Testing") || !strings.Contains(row, "30/60") ||
+	if row := ctRow(running); !strings.Contains(row, "Testing") || !strings.Contains(row, "20/60") ||
 		!strings.Contains(row, "▰▰▰▰▱▱▱▱  50%") || !strings.HasPrefix(row, "Reverse") {
 		t.Errorf("running row: %q", row)
 	}
@@ -94,8 +93,8 @@ func TestTheLiveTableRewritesOnlyWhatChanged(t *testing.T) {
 	if !strings.Contains(out.String(), "CONNECTION TEST — 1.2.3.4") {
 		t.Fatalf("first draw: %q", out.String())
 	}
-	if !strings.Contains(out.String(), "DIRECT  ·  Waiting") {
-		t.Fatalf("summary missing: %q", out.String())
+	if !strings.Contains(out.String(), "DIRECT\nDirect") {
+		t.Fatalf("waiting row missing: %q", out.String())
 	}
 	out.Reset()
 	b.draw()
@@ -109,7 +108,7 @@ func TestTheLiveTableRewritesOnlyWhatChanged(t *testing.T) {
 	}
 }
 
-func TestConnTestBoardShowsTheActiveStageAndEarlierResults(t *testing.T) {
+func TestConnTestBoardKeepsEveryRowVisible(t *testing.T) {
 	b := &ctBoard{}
 	b.setAll([]ConnTestResult{
 		{Kind: "spoof", Transport: ctSpoofToIran, Status: ctTesting, Phase: ctPhaseStageQueued},
@@ -118,12 +117,12 @@ func TestConnTestBoardShowsTheActiveStageAndEarlierResults(t *testing.T) {
 		{Kind: "reverse", Transport: "reality", Status: ctSkipped},
 	})
 	board := strings.Join(b.lines(), "\n")
-	reverse := strings.Index(board, "REVERSE  ·  Finished  ·  1 OK / 1 Skipped")
-	direct := strings.Index(board, "DIRECT  ·  Testing")
-	spoof := strings.Index(board, "SPOOF  ·  Waiting")
+	reverse := strings.Index(board, "REVERSE\n")
+	direct := strings.Index(board, "DIRECT\n")
+	spoof := strings.Index(board, "SPOOF\n")
 	if reverse < 0 || direct <= reverse || spoof <= direct || !strings.Contains(board, "22/60") ||
-		strings.Contains(board, "REALITY") || strings.Contains(board, "SPEED") {
-		t.Fatalf("wrong stage layout:\n%s", board)
+		!strings.Contains(board, "REALITY") || !strings.Contains(board, "Kharej→Iran") {
+		t.Fatalf("wrong live table:\n%s", board)
 	}
 }
 

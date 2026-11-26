@@ -5,21 +5,21 @@ import (
 	"io"
 	"math"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/backpack/backpack/internal/omni"
+	"golang.org/x/sys/unix"
 )
 
 // The Connection Test's table, drawn while the test runs.
 //
 // Each tunnel is one row, and a row changes as its echoes come back: STATUS
-// reads Testing, ECHOES counts the echoes sent so far, and the bar fills with
-// them — progress = sent / total, from the test itself, not an animation. Only
-// rows that changed are rewritten, in place, so the screen does not flicker
-// with seventeen tunnels reporting at once. When the test ends the table is
+// reads Testing, ECHOES counts the verified replies, and the progress bar
+// fills with the attempts made. When the test ends the table is
 // set out once more as the verdict: the rows grouped OK, UNSTABLE, DOWN, each
 // bar filled by the echoes that came back, and under it the tunnels that
 // carried everything, with their round trip and speed.
@@ -90,8 +90,7 @@ func ctTableHeader(meter string) string {
 	return fmt.Sprintf(ctRowFormat, "KIND", "TRANSPORT", "STATUS", "ECHOES", meter)
 }
 
-// ctRow is one tunnel's line. While it runs, ECHOES and the bar are the echoes
-// sent; once it has a verdict, the echoes that came back.
+// ctRow shows verified replies and, while running, progress through the attempts.
 func ctRow(r ConnTestResult) string {
 	echoes, progress := "—", ""
 	if ctHasEchoCount(r) {
@@ -103,7 +102,7 @@ func ctRow(r ConnTestResult) string {
 		if r.Status == ctTesting {
 			done = r.Tried
 		}
-		echoes = fmt.Sprintf("%d/%d", done, total)
+		echoes = fmt.Sprintf("%d/%d", r.OK, total)
 		progress = ctBar(float64(done) / float64(total))
 	}
 	return strings.TrimRight(fmt.Sprintf(ctRowFormat, ctKind(r.Kind), ctName(r.Transport),
@@ -161,10 +160,10 @@ func ctStatusLabel(r ConnTestResult) string {
 
 func ctRule() string { return strings.Repeat("─", 63) }
 
-// ConnTestTable is the verdict as text, with each stage's results together.
+// ConnTestTable is the verdict as text, grouped by transport kind.
 func ConnTestTable(results []ConnTestResult) string {
 	var b strings.Builder
-	for _, kind := range ctTestStages {
+	for _, kind := range ctTestKinds {
 		rows := ctStageRows(results, kind)
 		if len(rows) == 0 {
 			continue
@@ -244,24 +243,6 @@ func ctSpeedPhase(phase string) bool {
 	return false
 }
 
-func ctStageSummary(rows []ConnTestResult) string {
-	counts := make(map[string]int)
-	for _, r := range rows {
-		status := r.Status
-		if ctSpeedPhase(r.Phase) {
-			status = ctOK
-		}
-		counts[status]++
-	}
-	var parts []string
-	for _, status := range []string{ctOK, ctUnstable, ctDown, ctSkipped, ctStopped} {
-		if n := counts[status]; n > 0 {
-			parts = append(parts, fmt.Sprintf("%d %s", n, ctStatusLabel(ConnTestResult{Status: status})))
-		}
-	}
-	return strings.Join(parts, " / ")
-}
-
 func ctHTTPSNotes(out io.Writer, results []ConnTestResult) {
 	shown := false
 	for _, r := range results {
@@ -326,11 +307,13 @@ type ctBoard struct {
 	title string
 	tty   bool
 
-	mu    sync.Mutex
-	rows  []ConnTestResult
-	shown []string // what each line of the drawn region reads now
-	stop  chan struct{}
-	done  chan struct{}
+	mu         sync.Mutex
+	rows       []ConnTestResult
+	shown      []string
+	inPlace    bool
+	snapshotAt time.Time
+	stop       chan struct{}
+	done       chan struct{}
 }
 
 // newCTBoard starts a board under title. On a terminal it redraws changed
@@ -375,78 +358,68 @@ func (b *ctBoard) loop() {
 	}
 }
 
-// lines keeps the current stability stage open. Completed stages collapse
-// into a summary and later stages stay in the Waiting state.
 func (b *ctBoard) lines() []string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if len(b.rows) == 0 {
 		return nil
 	}
-	out := []string{"CONNECTION TEST — " + b.title, ctRule()}
-	var stabilityPending bool
-	var speed, cleanup []ConnTestResult
-	speedQueued := 0
-	for _, kind := range ctTestStages {
+	out := []string{"CONNECTION TEST — " + b.title, ctRule(), ctTableHeader("PROGRESS")}
+	for _, kind := range ctTestKinds {
 		rows := ctStageRows(b.rows, kind)
 		if len(rows) == 0 {
 			continue
 		}
-		var testing, waiting bool
+		out = append(out, strings.ToUpper(kind))
 		for _, r := range rows {
-			switch r.Phase {
-			case ctPhaseStageQueued:
-				waiting = true
-			case "speed-queued", ctPhaseAgain:
-				speedQueued++
-			case "speed", ctPhaseSecond:
-				speed = append(speed, r)
-			case ctPhaseTransportCleanup:
-				cleanup = append(cleanup, r)
-				testing = testing || r.Status == ctTesting
-			default:
-				testing = testing || r.Status == ctTesting
-			}
-		}
-		title := strings.ToUpper(kind)
-		switch {
-		case testing:
-			out = append(out, title+"  ·  Testing", ctTableHeader("PROGRESS"))
-			for _, r := range rows {
-				out = append(out, ctRow(r))
-			}
-		case waiting:
-			out = append(out, title+"  ·  Waiting")
-		default:
-			out = append(out, title+"  ·  Finished  ·  "+ctStageSummary(rows))
-		}
-		stabilityPending = stabilityPending || testing || waiting
-	}
-	if !stabilityPending && (speedQueued > 0 || len(speed) > 0) {
-		out = append(out, fmt.Sprintf("SPEED  ·  %d queued", speedQueued))
-		for _, r := range speed {
-			out = append(out, ctRow(r))
-		}
-	}
-	if !stabilityPending && len(cleanup) > 0 {
-		out = append(out, "CLEANUP")
-		for _, r := range cleanup {
 			out = append(out, ctRow(r))
 		}
 	}
 	return append(out, ctRule())
 }
 
-// draw rewrites the lines that changed since the last draw, and nothing else.
+func ctBoardFits(out io.Writer, lines []string) bool {
+	f, ok := out.(*os.File)
+	if !ok {
+		return true
+	}
+	size, err := unix.IoctlGetWinsize(int(f.Fd()), unix.TIOCGWINSZ)
+	if err != nil || size.Row == 0 || size.Col == 0 {
+		return false
+	}
+	if len(lines) >= int(size.Row) {
+		return false
+	}
+	for _, line := range lines {
+		if len([]rune(line)) > int(size.Col) {
+			return false
+		}
+	}
+	return true
+}
+
+// Use complete snapshots if some rows have scrolled outside the screen.
+// Moving the cursor up in that case would overwrite unrelated rows.
 func (b *ctBoard) draw() {
 	lines := b.lines()
 	if len(lines) == 0 {
 		return
 	}
+	fits := ctBoardFits(b.out, lines)
+	if !fits {
+		b.inPlace = false
+		if slices.Equal(lines, b.shown) || time.Since(b.snapshotAt) < 5*time.Second {
+			return
+		}
+		b.snapshotAt = time.Now()
+		b.shown = lines
+		_, _ = io.WriteString(b.out, strings.Join(lines, "\n")+"\n")
+		return
+	}
 	var w strings.Builder
-	if len(b.shown) != len(lines) {
+	if !b.inPlace || len(b.shown) != len(lines) {
 		// First draw, or the row count changed: the region is written out.
-		if n := len(b.shown); n > 0 {
+		if n := len(b.shown); b.inPlace && n > 0 {
 			fmt.Fprintf(&w, "\033[%dF\033[J", n)
 		}
 		for _, l := range lines {
@@ -464,6 +437,7 @@ func (b *ctBoard) draw() {
 		}
 	}
 	b.shown = lines
+	b.inPlace = true
 	if w.Len() > 0 {
 		_, _ = io.WriteString(b.out, w.String())
 	}
@@ -475,7 +449,7 @@ func (b *ctBoard) finish(results []ConnTestResult, best ConnTestBest) {
 	close(b.stop)
 	<-b.done
 	var w strings.Builder
-	if b.tty && len(b.shown) > 0 {
+	if b.tty && b.inPlace && ctBoardFits(b.out, b.shown) && len(b.shown) > 0 {
 		fmt.Fprintf(&w, "\033[%dF\033[J", len(b.shown))
 	}
 	w.WriteString("CONNECTION TEST — " + b.title + "\n" + ctRule() + "\n\n")

@@ -14,13 +14,12 @@ import (
 func ConnTestJoinWait() time.Duration { return connTestJoinWait }
 
 // ConnTestRunTime is about how long the tunnels take to be judged once the
-// kharej has joined: each stability stage gets its connection and echo window,
-// followed by the serial speed runs.
+// kharej has joined, including helper setup and the serial speed runs.
 // It is what the panel counts down from, so it errs a little long rather than
 // reaching zero with rows still filling.
 func ConnTestRunTime() time.Duration {
 	soak := time.Duration(connTestSoak) * time.Second
-	return 2*(connTestConnectWait+soak) + soak + 80*time.Second +
+	return connTestConnectWait + soak + 80*time.Second +
 		ConnTestSpeedTime(len(connTestReverse)-1+len(connTestDirect)) +
 		time.Duration(len(ctExtraCases()))*ctExtraTime()
 }
@@ -72,7 +71,7 @@ func ConnTestTimeLeft(rows []ConnTestResult) time.Duration {
 		}
 		if row.Transport != ctGostDirect && !strings.HasPrefix(row.Transport, ctOmniPrefix) {
 			native = append(native, row.Phase)
-			nativeProbing = nativeProbing || (row.Status == ctTesting && (row.Phase == "" || row.Phase == ctPhaseStabilityReady))
+			nativeProbing = nativeProbing || (row.Status == ctTesting && !ctSpeedPhase(row.Phase))
 			continue
 		}
 		switch row.Phase {

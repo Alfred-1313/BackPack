@@ -394,7 +394,7 @@ const (
 
 const ctPhaseStageQueued = "stage-queued"
 
-var ctTestStages = [...]string{"reverse", "direct", "spoof"}
+var ctTestKinds = [...]string{"reverse", "direct", "spoof"}
 
 // ctNeedsV2Note is what a direct PCK or GRE row that never came up adds: both
 // are new in v2.0.0 (PCK's wire changed then, GRE did not exist), and a kharej
@@ -419,6 +419,7 @@ type connTestCase struct {
 	extra                     bool
 	extraWorker               int
 	helper                    *ctHelperProcess
+	engine                    *ctEngine
 	localStarted, peerStarted bool
 	kind, tr                  string
 	name                      string
@@ -591,6 +592,7 @@ func StartConnTestIran(o ConnTestOptions) (*ConnTestIran, string, error) {
 			return fail(err)
 		}
 		s.engines = append(s.engines, e)
+		c.engine = e
 		s.cases = append(s.cases, c)
 	}
 
@@ -1049,6 +1051,7 @@ func (s *ConnTestIran) startManagedCase(c *connTestCase, used map[int]bool, o Co
 		return
 	}
 	s.engines = append(s.engines, engine)
+	c.engine = engine
 	if c.tr == "reality" {
 		s.realityTarget = coverTarget
 	}
@@ -1143,6 +1146,7 @@ func (s *ConnTestIran) startDirectTestEngines(ctx context.Context, kharej string
 		if err == nil {
 			var e *ctEngine
 			if e, err = startCTEngine(s.dir, c.name, body); err == nil {
+				c.engine = e
 				s.mu.Lock()
 				s.engines = append(s.engines, e)
 				s.mu.Unlock()
@@ -1154,9 +1158,9 @@ func (s *ConnTestIran) startDirectTestEngines(ctx context.Context, kharej string
 	}
 }
 
-// Run tests each stage once the kharej has joined and publishes the verdict.
+// Run starts stability checks when the kharej joins and publishes the verdict.
 // progress receives every initial row and may be called concurrently as the
-// checks in a stage complete. It may be nil.
+// checks run. It may be nil.
 func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResult)) []ConnTestResult {
 	stopWatcher := context.AfterFunc(ctx, s.coord.stop)
 	defer stopWatcher()
@@ -1196,8 +1200,12 @@ func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResul
 		results[i] = ctHTTPSResult(results[i], c)
 		if c.skip != "" {
 			results[i].Status, results[i].Detail = ctSkipped, c.skip
+		} else if c.extra {
+			results[i].Phase, results[i].Detail = ctPhaseTransportQueued, "waiting for temporary tunnel setup"
+		} else if c.kind == "reverse" {
+			results[i].Phase, results[i].Detail = ctPhaseTransportConnect, "waiting for the first verified echo"
 		} else {
-			results[i].Phase, results[i].Detail = ctPhaseStageQueued, "waiting for the "+ctKind(c.kind)+" stage"
+			results[i].Phase, results[i].Detail = ctPhaseTransportSetup, "preparing the test"
 		}
 	}
 	// The kharej sees the same rows, a question at a time.
@@ -1212,7 +1220,7 @@ func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResul
 		}
 	}
 
-	s.runStabilityStages(ctx, kharej, setupWorkers, parallelExtra, results, reportRow)
+	s.runStability(ctx, kharej, setupWorkers, parallelExtra, results, reportRow)
 	if parallelExtra && ctx.Err() == nil {
 		s.cleanupExtraCases(ctx, setupWorkers, results, reportRow, false)
 	}
@@ -1322,59 +1330,57 @@ func (s *ConnTestIran) Run(ctx context.Context, progress func(int, ConnTestResul
 	return results
 }
 
-func (s *ConnTestIran) runStabilityStages(ctx context.Context, kharej string, workers int, retainHelpers bool, rows []ConnTestResult, report func(int, ConnTestResult)) {
-	for _, kind := range ctTestStages {
-		if kind == "direct" {
-			s.startDirectTestEngines(ctx, kharej)
-		}
-		var native, helpers []int
-		for i, c := range s.cases {
-			if c.kind != kind || rows[i].Status == ctSkipped {
-				continue
-			}
-			r := rows[i]
-			if ctx.Err() != nil {
-				r.Status, r.Phase, r.Detail = ctStopped, "", "stopped before the "+ctKind(kind)+" stage"
-			} else if c.skip != "" {
-				r.Status, r.Phase, r.Detail = ctSkipped, "", c.skip
-			} else if c.extra {
-				r.Phase, r.Detail = ctPhaseTransportQueued, "waiting for temporary tunnel setup"
-				helpers = append(helpers, i)
-			} else {
-				r.Phase, r.Detail = "", ""
-				native = append(native, i)
-				if kind == "spoof" {
-					r.Phase, r.Detail = ctPhaseTransportSetup, "waiting for the Kharej receiver"
-				}
-			}
-			report(i, r)
-		}
-		if kind == "spoof" && len(native) > 0 && !s.coord.awaitSpoofReceiver(ctx) {
-			for _, i := range native {
-				r := rows[i]
-				r.Status, r.Phase, r.Detail = ctSkipped, "", "Kharej did not confirm its spoof receiver was ready"
-				if ctx.Err() != nil {
-					r.Status, r.Detail = ctStopped, "stopped before the spoofing checks began"
-				}
-				report(i, r)
-			}
+func (s *ConnTestIran) runStability(ctx context.Context, kharej string, workers int, retainHelpers bool, rows []ConnTestResult, report func(int, ConnTestResult)) {
+	s.startDirectTestEngines(ctx, kharej)
+	var running sync.WaitGroup
+	var helpers, spoof []int
+	for i, c := range s.cases {
+		r := rows[i]
+		if r.Status == ctSkipped {
 			continue
 		}
-		var running sync.WaitGroup
-		for _, i := range native {
-			c := s.cases[i]
+		switch {
+		case ctx.Err() != nil:
+			r.Status, r.Phase, r.Detail = ctStopped, "", "stopped before testing"
+			report(i, r)
+		case c.skip != "":
+			r.Status, r.Phase, r.Detail = ctSkipped, "", c.skip
+			report(i, r)
+		case c.extra:
+			helpers = append(helpers, i)
+		case c.kind == "spoof":
+			r.Detail = "waiting for the Kharej receiver"
+			report(i, r)
+			spoof = append(spoof, i)
+		default:
 			running.Go(func() {
-				update := func(r ConnTestResult) { report(i, r) }
-				if kind == "spoof" {
-					s.spoofProbe(ctx, c, kharej, update)
-				} else {
-					ctProbe(ctx, c, s.link.L3, update)
-				}
+				ctProbe(ctx, c, s.link.L3, func(r ConnTestResult) { report(i, r) })
 			})
 		}
-		s.probeStageExtras(ctx, helpers, workers, retainHelpers, report)
-		running.Wait()
 	}
+	if len(spoof) > 0 {
+		running.Go(func() {
+			if !s.coord.awaitSpoofReceiver(ctx) {
+				for _, i := range spoof {
+					r := rows[i]
+					r.Status, r.Phase, r.Detail = ctSkipped, "", "Kharej did not confirm its spoof receiver was ready"
+					if ctx.Err() != nil {
+						r.Status, r.Detail = ctStopped, "stopped before the spoofing checks began"
+					}
+					report(i, r)
+				}
+				return
+			}
+			var probes sync.WaitGroup
+			for _, i := range spoof {
+				probes.Go(func() { s.spoofProbe(ctx, s.cases[i], kharej, func(r ConnTestResult) { report(i, r) }) })
+			}
+			probes.Wait()
+		})
+	}
+	// A single queue keeps the worker IDs shared by Direct and Reverse unique.
+	s.probeStageExtras(ctx, helpers, workers, retainHelpers, report)
+	running.Wait()
 }
 
 // A row's phases in the second speed pass: measured once and waiting for it,
@@ -1633,29 +1639,36 @@ func ctProbe(ctx context.Context, c *connTestCase, l3Echo int, report func(ConnT
 		return ctDial(ctx, c, l3Echo)
 	}
 
-	if c.extra {
-		r.Phase, r.Detail = ctPhaseTransportConnect, "waiting for the first verified echo"
-		say("")
-		r.Phase, r.Detail = "", ""
-	}
+	r.Phase, r.Detail = ctPhaseTransportConnect, "waiting for the first verified echo"
+	say("")
 	// Up: the first echo that comes back.
 	start := time.Now()
 	var conn net.Conn
 	for conn == nil {
 		if ctx.Err() != nil {
-			r.Status, r.Detail = ctStopped, "stopped before the first echo"
+			r.Status, r.Phase, r.Detail = ctStopped, "", "stopped before the first echo"
 			say("")
 			return r
 		}
 		if c.helper != nil {
 			if exited, detail := c.helper.startupFailure(); exited {
-				r.Status, r.Detail = ctSkipped, detail
+				r.Status, r.Phase, r.Detail = ctSkipped, "", detail
+				say("")
+				return r
+			}
+		}
+		if c.engine != nil {
+			if exited, detail := c.engine.exited(); exited {
+				r.Status, r.Phase, r.Detail = ctSkipped, "", "test engine exited before carrying traffic"
+				if detail != "" {
+					r.Detail += ": " + ctExtraError(errors.New(detail))
+				}
 				say("")
 				return r
 			}
 		}
 		if time.Since(start) > connectWaitFor(c) {
-			r.Status, r.Detail = ctDown, fmt.Sprintf("never carried traffic in %s", connectWaitFor(c))
+			r.Status, r.Phase, r.Detail = ctDown, "", fmt.Sprintf("never carried traffic in %s", connectWaitFor(c))
 			if c.tr == "spoof" {
 				r.Detail += " — the forged source was dropped: by the provider on the way out, " +
 					"or by a strict rp_filter on the kharej"
@@ -1677,6 +1690,7 @@ func ctProbe(ctx context.Context, c *connTestCase, l3Echo int, report func(ConnT
 		ctSleep(ctx, time.Second)
 	}
 	r.Connect = time.Since(start).Seconds()
+	r.Phase, r.Detail = "", ""
 	say(fmt.Sprintf("up after %.0fs", r.Connect))
 
 	// Staying up: an echo a second over the same connection, and a new one
