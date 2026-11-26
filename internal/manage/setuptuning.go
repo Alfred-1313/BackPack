@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/backpack/backpack/internal/easytier"
 	"github.com/backpack/backpack/internal/nativebackhaul"
 	"github.com/backpack/backpack/internal/omni"
 )
@@ -66,6 +67,10 @@ func buildSetupPerformance() map[string]SetupPerformance {
 	for _, carrier := range []string{"gretap", "l2tpv3", "easytier"} {
 		p := performance("Interface transmit queue (packets)", 1024, 4096, 16384, 576, 1450)
 		p.OverrideLabel = "MTU (bytes)"
+		if carrier == "easytier" {
+			p.OverrideLabel = "MTU before EasyTier encryption (bytes)"
+			p.Min += easytier.EncryptedMTUOverhead
+		}
 		m[carrier] = p
 	}
 	return m

@@ -1303,13 +1303,13 @@ export function addView(ctx) {
           el('div', { class: 'gl3', text: 'Forwarding limits' }), directLimits,
         ]));
         setupGroups = addSetupTuning(perf, opt);
-        dressPresets();
         /* PCK's fine-tuning goes with the presets it overrides, on the same
            step, rather than among the fields that name the tunnel. */
         const pckDrawer = root.querySelector('#dw-pck');
         if (pckDrawer) perf.append(pckDrawer);
         details.after(perf);
         perf.after(opt);
+        dressPresets();
 
         [...body.querySelectorAll('.step')].forEach((x, i) => {
           x.dataset.s = String(i);

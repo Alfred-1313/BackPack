@@ -17,6 +17,10 @@ import (
 
 const release = "v2.6.4"
 
+// EncryptedMTUOverhead is what the pinned helper reserves from --mtu when
+// creating its encrypted TUN interface.
+const EncryptedMTUOverhead = 20
+
 var installMu sync.Mutex
 
 func releaseAsset() (dir, digest string, err error) {

@@ -192,9 +192,10 @@ func (t *Tunnel) runEasyTier(ctx context.Context) error {
 			return fmt.Errorf("l3: set EasyTier transmit queue: %w", err)
 		}
 	}
-	mssclamp.Apply("l3", c.Iface, c.MTU, c.MSSClamp, t.log)
-	link := &greLink{name: c.Iface, mssClamp: c.MSSClamp, mtu: c.MTU, log: t.log,
+	mtu := c.MTU - easytier.EncryptedMTUOverhead
+	mssclamp.Apply("l3", c.Iface, mtu, c.MSSClamp, t.log)
+	link := &greLink{name: c.Iface, mssClamp: c.MSSClamp, mtu: mtu, log: t.log,
 		cleanup: func() {}} // EasyTier owns the TUN device
-	t.log.Infof("l3: EasyTier up on %s, mtu %d", c.Iface, c.MTU)
+	t.log.Infof("l3: EasyTier up on %s, mtu %d", c.Iface, mtu)
 	return t.watchRoutedLink(ctx, link, peer, "EasyTier TCP", ended)
 }
