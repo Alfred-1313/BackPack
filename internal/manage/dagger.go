@@ -3,6 +3,7 @@ package manage
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -18,22 +19,27 @@ import (
 )
 
 type DaggerForm struct {
-	Name           string `json:"name"`
-	Transport      string `json:"transport"`
-	IranIP         string `json:"iranIP"`
-	KharejIP       string `json:"kharejIP"`
-	IranIPv6       string `json:"iranIPv6"`
-	Port           uint16 `json:"port"`
-	License        string `json:"license"`
-	Ports          string `json:"ports"`
-	HTTPHost       string `json:"httpHost"`
-	HTTPPath       string `json:"httpPath"`
-	CertFile       string `json:"certFile"`
-	KeyFile        string `json:"keyFile"`
-	TUNProfile     string `json:"tunProfile"`
-	TUNPort        uint16 `json:"tunPort"`
-	IranTunnelIP   string `json:"iranTunnelIP"`
-	KharejTunnelIP string `json:"kharejTunnelIP"`
+	Name           string      `json:"name"`
+	Transport      string      `json:"transport"`
+	IranIP         string      `json:"iranIP"`
+	KharejIP       string      `json:"kharejIP"`
+	IranIPv6       string      `json:"iranIPv6"`
+	Port           uint16      `json:"port"`
+	License        string      `json:"license"`
+	Ports          string      `json:"ports"`
+	HTTPHost       string      `json:"httpHost"`
+	HTTPPath       string      `json:"httpPath"`
+	CertFile       string      `json:"certFile"`
+	KeyFile        string      `json:"keyFile"`
+	TUNProfile     string      `json:"tunProfile"`
+	TUNPort        uint16      `json:"tunPort"`
+	IranTunnelIP   string      `json:"iranTunnelIP"`
+	KharejTunnelIP string      `json:"kharejTunnelIP"`
+	QuantumProfile string      `json:"quantumProfile"`
+	QuantumMTU     int         `json:"quantumMTU"`
+	QuantumCipher  string      `json:"quantumCipher"`
+	UploadMode     string      `json:"uploadMode"`
+	Tuning         SetupTuning `json:"tuning"`
 }
 
 type DaggerSetup struct {
@@ -55,12 +61,47 @@ func daggerPeerToken(name string, c config.DaggerConfig) string {
 }
 
 func CreateDagger(ctx context.Context, f DaggerForm) (DaggerSetup, error) {
+	f.IranIP, f.IranIPv6 = strings.Trim(strings.TrimSpace(f.IranIP), "[]"), strings.Trim(strings.TrimSpace(f.IranIPv6), "[]")
+	if f.IranIP == "" || (f.Transport == "dc6" && f.IranIPv6 == "") {
+		for _, addr := range ConnTestAddresses() {
+			switch {
+			case addr.Family == "IPv4" && f.IranIP == "":
+				f.IranIP = addr.Host
+			case addr.Family == "IPv6" && f.IranIPv6 == "":
+				f.IranIPv6 = addr.Host
+			}
+		}
+	}
+	if f.Transport == "tun" && f.Port == 0 {
+		f.Port = 8443
+	}
+	if f.Transport == "xhttps" && f.HTTPPath == "" {
+		f.HTTPPath = "/api/v2"
+	}
 	c := config.DaggerConfig{
 		Role: "server", Flavor: f.Transport, IranIP: f.IranIP, KharejIP: f.KharejIP,
 		IranIPv6: f.IranIPv6, Port: f.Port, License: strings.TrimSpace(f.License), Ports: f.Ports,
 		HTTPHost: f.HTTPHost, HTTPPath: f.HTTPPath, CertFile: f.CertFile, KeyFile: f.KeyFile,
 		TUNProfile: f.TUNProfile, TUNPort: f.TUNPort,
 		IranTunnelIP: f.IranTunnelIP, KharejTunnelIP: f.KharejTunnelIP,
+		QuantumMTU: f.QuantumMTU, QuantumCipher: f.QuantumCipher, UploadMode: f.UploadMode,
+	}
+	if f.QuantumProfile != "" {
+		if f.Transport != "quantum" || f.QuantumProfile != "gaming" {
+			return DaggerSetup{}, fmt.Errorf("Gaming is a Quantum profile")
+		}
+		c.Flavor = "quantum-gaming"
+	}
+	if f.Tuning != (SetupTuning{}) {
+		value, err := setupTuningValue("dagger-"+f.Transport, f.Tuning)
+		if err != nil {
+			return DaggerSetup{}, err
+		}
+		if f.Transport == "tun" {
+			c.HeartbeatSeconds = value
+		} else {
+			c.ConnectionPool = value
+		}
 	}
 	setup, err := importedSetupLink(daggerShare(f.Name, c))
 	if err != nil {
@@ -96,11 +137,14 @@ func installDagger(ctx context.Context, name string, c config.DaggerConfig) (str
 	if _, err := daggerconnect.Build(name, c); err != nil {
 		return "", false, err
 	}
-	if c.Flavor == "https" && c.Role == "server" {
+	if daggerconnect.UsesTLSFiles(c.Flavor) && c.Role == "server" {
 		for _, path := range []string{c.CertFile, c.KeyFile} {
 			if st, err := os.Stat(path); err != nil || !st.Mode().IsRegular() {
-				return "", false, fmt.Errorf("the HTTPS certificate and private key must exist on Iran")
+				return "", false, fmt.Errorf("the TLS certificate and private key must be regular files on Iran")
 			}
+		}
+		if _, err := tls.LoadX509KeyPair(c.CertFile, c.KeyFile); err != nil {
+			return "", false, fmt.Errorf("the TLS certificate and private key must be a matching PEM pair")
 		}
 	}
 	return installHelperTunnel(ctx, name, struct {

@@ -42,11 +42,17 @@ func ctDaggerCases() []*connTestCase {
 			continue
 		}
 		cases = append(cases, &connTestCase{kind: option.Direction, tr: ctDaggerPrefix + option.Value, extra: true})
+		if option.Value == "quantum" {
+			cases = append(cases, &connTestCase{kind: option.Direction, tr: ctDaggerPrefix + "quantum-gaming", extra: true})
+		}
 	}
 	return cases
 }
 
 func ctDaggerLabel(mode string) string {
+	if mode == ctDaggerPrefix+"quantum-gaming" {
+		return "quantum / gaming"
+	}
 	if profile, ok := strings.CutPrefix(mode, ctDaggerTUNPrefix); ok {
 		return "tun / " + profile
 	}
@@ -129,7 +135,7 @@ func (p *ctHelperProcess) start(ctx context.Context, name string, job ctDaggerJo
 		return err
 	}
 	p.label, p.secret = "DaggerConnect", c.License
-	var env []string
+	env := []string{"TMPDIR=" + p.dir}
 	if job.CA != "" {
 		roots := x509.NewCertPool()
 		if !roots.AppendCertsFromPEM([]byte(job.CA)) {
@@ -206,6 +212,7 @@ func (s *ConnTestIran) setupDagger(ctx context.Context, c *connTestCase, mode st
 
 	if profile, ok := strings.CutPrefix(mode, ctDaggerTUNPrefix); ok {
 		cfg.Flavor, cfg.TUNProfile, cfg.TUNPort = "tun", profile, cfg.Port
+		cfg.HeartbeatSeconds, _ = setupTuningValue("dagger-tun", SetupTuning{Preset: s.link.Preset})
 		cfg.KharejIP = ctIPv4Context(ctx, s.Kharej())
 		cfg.IranTunnelIP, cfg.KharejTunnelIP = ctDaggerTUNPair(c.name)
 		if err := ctDaggerTUNAvailable(cfg.IranTunnelIP); err != nil {
@@ -213,6 +220,10 @@ func (s *ConnTestIran) setupDagger(ctx context.Context, c *connTestCase, mode st
 		}
 		c.peerIP = cfg.KharejTunnelIP
 	} else {
+		tuningMode := strings.TrimSuffix(flavor, "-gaming")
+		if value, err := setupTuningValue("dagger-"+tuningMode, SetupTuning{Preset: s.link.Preset}); err == nil {
+			cfg.ConnectionPool = value
+		}
 		cfg.LoopbackOnly = true
 		cfg.Ports = fmt.Sprintf("tcp:%d=%d", c.entry, s.link.TCP)
 	}
@@ -224,7 +235,7 @@ func (s *ConnTestIran) setupDagger(ctx context.Context, c *connTestCase, mode st
 	c.helper, c.localStarted = p, true
 	peer := ctDaggerJob{Config: cfg}
 	peer.Config.Role, peer.Config.Ports, peer.Config.LoopbackOnly = "client", "", false
-	if flavor == "https" {
+	if daggerconnect.UsesTLSFiles(flavor) {
 		cfg.CertFile, cfg.KeyFile, peer.CA, err = ctCertificate(dir, c.name, cfg.IranIP)
 		if err != nil {
 			return err
@@ -257,7 +268,7 @@ func (w *ctExtraInstance) joinDagger(ctx context.Context, link ConnTestLink, job
 	}
 	c := peer.Config
 	if c.Role != "client" || c.Ports != "" || c.LoopbackOnly || c.CertFile != "" || c.KeyFile != "" ||
-		(c.Flavor == "https") != (peer.CA != "") || !ctDaggerTestEndpoint(link.Host, job, c) {
+		daggerconnect.UsesTLSFiles(c.Flavor) != (peer.CA != "") || !ctDaggerTestEndpoint(link.Host, job, c) {
 		return errors.New("unexpected DaggerConnect test settings")
 	}
 	if c.Flavor == "tun" {

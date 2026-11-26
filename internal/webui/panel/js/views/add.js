@@ -30,22 +30,30 @@ export function addView(ctx) {
       let opts = { families: [], presets: [] };
       try { opts = await api.tunnelOptions(); } catch (e) { oops(e); }
 
-      const [omniChoices, backhaulChoices] = await Promise.all([
+      const [omniChoices, backhaulChoices, daggerChoices] = await Promise.all([
         api.omniOptions().catch(e => { oops(e); return []; }),
         api.backhaulOptions().catch(e => { oops(e); return []; }),
+        api.daggerOptions().catch(e => { oops(e); return []; }),
       ]);
       const omniEntries = direction => omniChoices.filter(item => item.direction === direction).map(item => {
         const value = 'omni-' + item.value;
         return [value, { ...item, value, mode: item.value }];
       });
+      const daggerEntries = direction => daggerChoices
+        .filter(item => item.direction === direction && !backhaulChoices.some(native => native.value === 'dagger-' + item.value))
+        .map(item => ['dagger-' + item.value, {
+          ...item, dagger: true, mode: item.value, value: 'dagger-' + item.value, port: item.value !== 'tun',
+        }]);
       const managedReverse = new Map([
         ...backhaulChoices.map(item => ['native-' + item.value, {
           ...item, native: true, port: true, value: 'native-' + item.value, mode: item.value,
         }]),
         ...omniEntries('reverse'),
+        ...daggerEntries('reverse'),
       ]);
       const managedDirect = new Map([
         ...omniEntries('direct'),
+        ...daggerEntries('direct'),
         ['gost-direct', { value: 'gost-direct', mode: 'gost-direct', label: 'GOST Direct (Relay + TLS)',
           port: true, secret: true, forward: true }],
       ]);
@@ -65,11 +73,15 @@ export function addView(ctx) {
       const daggerUpgrade = () => ['dagger-http', 'dagger-https'].includes(reverseSetup()?.mode);
       const daggerRoute = () => daggerUpgrade() || reverseSetup()?.mode === 'dagger-xhttp';
       const directSetup = () => chosen.direction === 'direct' && managedDirect.get(chosen.carrier);
+      const officialDagger = () => {
+        const setup = reverseSetup() || directSetup();
+        return setup?.dagger ? setup.mode : '';
+      };
       const pairedDirect = () => chosen.side === 'server' && chosen.direction === 'direct' &&
         ['gretap', 'l2tpv3', 'easytier'].includes(chosen.carrier);
       const setupProfile = () => opts.setupPerformance?.[chosen.direction === 'direct' ? chosen.carrier : chosen.transport];
       const setupChoices = new Map();
-      let setupGroups, lastSetupProfile;
+      let setupGroups, lastSetupProfile, daggerFields;
       const randomGreKey = root.querySelector('#randomGreKey');
       const nativeAddress = el('details', { class: 'f3 full', hidden: true });
       nativeAddress.append(el('summary', { text: 'Use a custom Iran address' }),
@@ -596,11 +608,13 @@ export function addView(ctx) {
           if (g.hidden) g.classList.remove('open');
         });
         paintSetupTuning();
+        paintDaggerFields();
         const reversePort = root.querySelector('#aport');
         reversePort.closest('.f3').hidden = !!setup && !setup.port;
         reversePort.placeholder = setup ? '1–65535' : '4443 or 85.10.11.51:4443';
         root.querySelector('#aports').closest('.f3').querySelector('label').textContent =
-          setup ? 'Forwarded TCP ports' : 'Forwarded ports';
+          setup && !setup.dagger ? 'Forwarded TCP ports' : 'Forwarded ports';
+        if (routed?.dagger) directFields.hidden = true;
         // The token and the far end's address are the panel's business now.
         root.querySelectorAll('.tokgone, .addrgone').forEach(n => { n.hidden = true; });
         if (!direct) transportRows();
@@ -1277,7 +1291,7 @@ export function addView(ctx) {
           lastSetupProfile = null;
           return;
         }
-        if (pairedDirect()) {
+        if (pairedDirect() || officialDagger() === 'tun') {
           const standard = group.parentElement.querySelector('[data-mode="dir"]');
           if (standard) standard.hidden = true;
         }
@@ -1334,6 +1348,68 @@ export function addView(ctx) {
           proxyProtocol: m.proxy.checked(),
           limits: { maxConnections: readTuningField(m.conns), bandwidthMbps: readTuningField(m.bandwidth) },
         };
+      }
+
+      function addDaggerFields(details) {
+        const reverse = details.querySelector('#atok').closest('.grp3');
+        const group = el('div', { class: 'grp3', hidden: true });
+        const title = el('div', { class: 'gl3', text: 'Dagger settings' });
+        const grid = el('div', { class: 'fgrid' });
+        const rows = new Map();
+        const add = (name, label, modes, attrs = {}, hint = '') => {
+          const id = 'dagger-' + name;
+          const row = el('div', { class: 'f3' }, el('label', { for: id, text: label }));
+          const { choices, ...inputAttrs } = attrs;
+          const input = choices
+            ? el('select', { id }, choices.map(([v, text]) => el('option', { value: v, text })))
+            : el('input', { id, type: 'text', autocomplete: 'off', ...inputAttrs });
+          row.append(input);
+          if (hint) row.append(el('div', { class: 'hint', text: hint }));
+          grid.append(row);
+          rows.set(name, { row, input, modes });
+          return input;
+        };
+        add('name', 'Tunnel name', ['tun']);
+        add('license', 'DaggerConnect license PSK', null, { type: 'password', maxlength: 4096 },
+          'Keep the Setup link private. It carries this license to Kharej.');
+        add('iranIP', 'Iran IPv4', null, { placeholder: 'Automatically detected' });
+        add('iranIPv6', 'Iran IPv6', ['dc6'], { placeholder: 'Automatically detected' });
+        add('kharejIP', 'Kharej IPv4', ['tun'], {}, 'Both endpoints use the real IPv4 addresses for this tunnel.');
+        add('iranTunnelIP', 'Iran TUN address', ['tun'], { placeholder: '10.201.8.1' });
+        add('kharejTunnelIP', 'Kharej TUN address', ['tun'], { placeholder: '10.201.8.2' });
+        const profile = add('tunProfile', 'TUN encapsulation', ['tun'], {
+          choices: ['tcp', 'udp', 'icmp', 'gre', 'ipip', 'bip'].map(name => [name, name.toUpperCase()]),
+        });
+        profile.addEventListener('change', paintDaggerFields);
+        add('tunPort', 'TUN service port', ['tun'], { type: 'number', min: 1, max: 65535, value: 443 });
+        add('ports', 'Forwarded ports (optional)', ['tun'], { placeholder: 'tcp:443=8443, udp:53' });
+        add('quantumProfile', 'Quantum profile', ['quantum'], { choices: [['', 'Standard'], ['gaming', 'Gaming']] });
+        add('quantumMTU', 'Quantum MTU', ['quantum'], { type: 'number', min: 512, max: 9000, placeholder: '1350' });
+        add('quantumCipher', 'Quantum header cipher', ['quantum'], { choices: [['aes', 'AES'], ['salsa20', 'Salsa20'], ['none', 'None']] });
+        add('httpPath', 'HTTP path', ['xhttps'], { placeholder: '/api/v2', maxlength: 512 });
+        add('uploadMode', 'Upload mode', ['xhttps'], {
+          choices: [['auto', 'Auto'], ['stream-up', 'Streaming'], ['packet-up', 'Sequenced']],
+        });
+        add('certFile', 'TLS certificate path on Iran', ['xhttps'], { placeholder: '/etc/ssl/certs/tunnel.pem' },
+          'The official core reads this PEM certificate from the Iran server.');
+        add('keyFile', 'TLS private key path on Iran', ['xhttps'], { placeholder: '/etc/ssl/private/tunnel.key' });
+        group.append(title, grid);
+        reverse.after(group);
+        return { group, reverse, rows };
+      }
+
+      function paintDaggerFields() {
+        if (!daggerFields) return;
+        const mode = officialDagger();
+        const { group, reverse, rows } = daggerFields;
+        group.hidden = !mode;
+        if (!mode) return;
+        const anchor = mode === 'tun' ? directFields : reverse;
+        if (group.previousElementSibling !== anchor) anchor.after(group);
+        group.style.display = '';
+        for (const { row, modes } of rows.values()) row.hidden = !!modes && !modes.includes(mode);
+        const profile = rows.get('tunProfile').input.value;
+        rows.get('tunPort').row.hidden = mode !== 'tun' || !['tcp', 'udp'].includes(profile);
       }
 
       function stageSingle() {
@@ -1409,6 +1485,7 @@ export function addView(ctx) {
           el('div', { class: 'gl3', text: 'Forwarding limits' }), directLimits,
         ]));
         setupGroups = addSetupTuning(details.querySelector('#atok').closest('.fgrid'), perf, opt);
+        daggerFields = addDaggerFields(details);
         /* PCK's fine-tuning goes with the presets it overrides, on the same
            step, rather than among the fields that name the tunnel. */
         const pckDrawer = root.querySelector('#dw-pck');
@@ -1529,6 +1606,25 @@ export function addView(ctx) {
 
         const setup = reverseSetup();
         const tuning = setupTuningPayload();
+        const dagger = officialDagger();
+        if (dagger) {
+          const form = { name: payload.name, port: Number(payload.tunnelPort || 0), ports: payload.ports || '',
+            transport: dagger, tuning };
+          for (const [name, { row, input }] of daggerFields.rows) {
+            if (row.hidden) continue;
+            if (!input.checkValidity()) throw new Error('Check ' + row.querySelector('label').textContent + '.');
+            if (input.type === 'number') {
+              if (input.value) form[name] = input.valueAsNumber;
+            } else {
+              form[name] = input.value.trim();
+            }
+          }
+          if (dagger !== 'tun' && (!/^\d+$/.test(payload.tunnelPort || '') || form.port < 1 || form.port > 65535)) {
+            throw new Error('Enter a tunnel port from 1 to 65535.');
+          }
+          const r = await api.daggerCreate(form);
+          return { r, name: form.name };
+        }
         if (setup?.native) {
           if (!/^\d+$/.test(payload.tunnelPort || '') || Number(payload.tunnelPort) < 1 || Number(payload.tunnelPort) > 65535) {
             throw new Error('Enter a tunnel port from 1 to 65535.');

@@ -13,8 +13,11 @@ const sources = new Map([
 
 export function transportDisplay(id, label) {
   // Use the original transport name even for results saved by an older panel.
-  const dagger = id?.replace(/^native-/, '').match(/^dagger-(http|https|xhttp|quantum\+?|nova|dc6|tun(?:-(tcp|udp|icmp|gre|ipip|bip))?)$/);
-  if (dagger) return { name: dagger[2] ? 'tun / ' + dagger[2] : dagger[1], source: 'Dagger' };
+  const dagger = id?.replace(/^native-/, '').match(/^dagger-(http|https|xhttp|xhttps|quantum-gaming|quantum\+?|nova|dc6|tun(?:-(tcp|udp|icmp|gre|ipip|bip))?)$/);
+  if (dagger) {
+    const names = { 'quantum-gaming': 'quantum / gaming' };
+    return { name: dagger[2] ? 'tun / ' + dagger[2] : names[dagger[1]] || dagger[1], source: 'Dagger' };
+  }
   if (id?.startsWith('native-dagger-')) return { name: label, source: 'Dagger' };
   if (id?.startsWith('native-')) return { name: label, source: sources.get(id) || 'BackPack' };
   if (id?.startsWith('backhaul-')) return { name: label, source: 'Backhaul' };

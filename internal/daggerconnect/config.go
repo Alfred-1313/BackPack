@@ -14,7 +14,7 @@ import (
 	"github.com/backpack/backpack/config"
 )
 
-const CoreVersion = "v4.3.1"
+const CoreVersion = "v5.0.0"
 
 type Transport struct {
 	Value     string `json:"value"`
@@ -27,6 +27,7 @@ func Options() []Transport {
 		{"http", "http", "reverse"},
 		{"https", "https", "reverse"},
 		{"xhttp", "xhttp", "reverse"},
+		{"xhttps", "xhttps", "reverse"},
 		{"quantum", "quantum", "reverse"},
 		{"quantum+", "quantum+", "reverse"},
 		{"nova", "nova", "reverse"},
@@ -36,6 +37,9 @@ func Options() []Transport {
 }
 
 var domainPattern = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$`)
+
+// UsesTLSFiles identifies modes whose listener reads a TLS certificate and key.
+func UsesTLSFiles(flavor string) bool { return flavor == "https" || flavor == "xhttps" }
 
 func checkIP(input string, version int, field string) error {
 	ip, err := netip.ParseAddr(input)
@@ -116,6 +120,12 @@ func Build(name string, c config.DaggerConfig) ([]byte, error) {
 	if err := checkIP(c.IranIP, 4, "Iran"); err != nil {
 		return nil, err
 	}
+	if c.ConnectionPool < 0 || c.ConnectionPool > 64 || (c.Flavor == "tun" && c.ConnectionPool != 0) {
+		return nil, fmt.Errorf("connection pool must be between 1 and 64 and requires a stream transport")
+	}
+	if c.HeartbeatSeconds < 0 || c.HeartbeatSeconds > 60 || (c.Flavor != "tun" && c.HeartbeatSeconds != 0) {
+		return nil, fmt.Errorf("heartbeat must be between 1 and 60 seconds and requires TUN")
+	}
 	port := strconv.Itoa(int(c.Port))
 	server := c.Role == "server"
 	tr := c.Flavor
@@ -130,7 +140,17 @@ func Build(name string, c config.DaggerConfig) ([]byte, error) {
 	doc := map[string]any{"mode": c.Role, "transport": tr, "psk": c.License, "log_level": "info", "profile_id": profile}
 	switch tr {
 	case "quantum":
-		tuning := map[string]any{"mtu": 1350, "block": "aes"}
+		mtu, cipher := c.QuantumMTU, c.QuantumCipher
+		if mtu == 0 {
+			mtu = 1350
+		}
+		if cipher == "" {
+			cipher = "aes"
+		}
+		if mtu < 512 || mtu > 9000 || (cipher != "aes" && cipher != "salsa20" && cipher != "none") {
+			return nil, fmt.Errorf("choose a Quantum MTU from 512 to 9000 and a valid header cipher")
+		}
+		tuning := map[string]any{"mtu": mtu, "block": cipher}
 		if c.Flavor == "quantum-gaming" {
 			tuning["profile"] = "gaming"
 		}
@@ -143,14 +163,31 @@ func Build(name string, c config.DaggerConfig) ([]byte, error) {
 		if !server {
 			entry["ipv6_addr"] = listen
 		}
-	case "xhttp":
+	case "xhttp", "xhttps":
 		if !validHTTPPath(c.HTTPPath) {
 			return nil, fmt.Errorf("enter an HTTP path starting with /")
 		}
+		upload := c.UploadMode
+		if upload == "" {
+			upload = "auto"
+		}
+		if upload != "auto" && upload != "stream-up" && upload != "packet-up" {
+			return nil, fmt.Errorf("choose a valid upload mode")
+		}
 		delete(entry, "transport")
-		doc["xhttp"] = map[string]any{"path": c.HTTPPath, "mode": "auto",
+		xhttp := map[string]any{"path": c.HTTPPath, "mode": upload,
 			"up_max_bytes": 65536, "up_concurrency": 2, "buffer_bytes": 32768,
 			"separate_conns": true, "probe_ms": 8000, "socket_buf_bytes": 131072}
+		if server {
+			xhttp["mode"] = "auto"
+			if tr == "xhttps" {
+				if !path.IsAbs(c.CertFile) || !path.IsAbs(c.KeyFile) {
+					return nil, fmt.Errorf("enter absolute paths to the XHTTPS certificate and private key")
+				}
+				doc["cert_file"], doc["key_file"] = c.CertFile, c.KeyFile
+			}
+		}
+		doc["xhttp"] = xhttp
 	case "http", "https":
 		if !domainPattern.MatchString(c.HTTPHost) {
 			return nil, fmt.Errorf("enter the HTTP host name")
@@ -187,7 +224,11 @@ func Build(name string, c config.DaggerConfig) ([]byte, error) {
 		if tr == "tun" {
 			entry["dial_timeout"] = 30
 		} else {
-			entry["connection_pool"] = 6
+			pool := c.ConnectionPool
+			if pool == 0 {
+				pool = 6
+			}
+			entry["connection_pool"] = pool
 		}
 		doc["paths"] = []map[string]any{entry}
 	}
@@ -230,7 +271,12 @@ func setTUN(doc map[string]any, name string, c config.DaggerConfig, server bool)
 		return fmt.Errorf("choose a TUN encapsulation")
 	}
 	doc["ipx"] = ipx
+	heartbeat := c.HeartbeatSeconds
+	if heartbeat == 0 {
+		heartbeat = 10
+	}
 	doc["tun"] = map[string]any{"encapsulation": "ipx", "name": "d" + name[3:15],
-		"local_addr": inner, "remote_addr": other, "encrypt": true, "heartbeat_sec": 10, "idle_timeout_sec": 90}
+		"local_addr": inner, "remote_addr": other, "encrypt": true,
+		"heartbeat_sec": heartbeat, "idle_timeout_sec": max(90, heartbeat*3)}
 	return nil
 }

@@ -51,6 +51,7 @@ var shareFieldIDs = []string{
 	"ph", "i6", "tp", "bh",
 	"bl", "bq",
 	"bhi", "bto",
+	"dci", "dum",
 }
 
 // shareWords are the values a link repeats, each written as its index. Never

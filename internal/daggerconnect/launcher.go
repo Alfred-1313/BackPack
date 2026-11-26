@@ -18,10 +18,10 @@ import (
 )
 
 const (
-	launcherURL  = "https://github.com/itsFLoKi/daggerConnect/releases/download/v1.4/DaggerLauncher"
-	launcherSHA  = "aaf8cb90088313c64adffa0bc21578557f37ae00548af1dbd0b47fe4e9018dcf"
-	launcher     = "/usr/local/lib/backpack/helpers/daggerconnect/v1.4/DaggerLauncher"
-	launcherSize = 6988005
+	launcherURL  = "https://github.com/itsFLoKi/daggerConnect/releases/download/v1.4.1/DaggerLauncher"
+	launcherSHA  = "0de6ce630b92f06cdb7046561bf328b99d621a4e25cccc014e0552a3139ae929"
+	launcher     = "/usr/local/lib/backpack/helpers/daggerconnect/v1.4.1/DaggerLauncher"
+	launcherSize = 7245948
 )
 
 func checkLauncher(path string) error {
@@ -49,7 +49,7 @@ func checkLauncher(path string) error {
 
 func Ensure(ctx context.Context) error {
 	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
-		return fmt.Errorf("DaggerLauncher v1.4 requires Linux amd64")
+		return fmt.Errorf("DaggerLauncher v1.4.1 requires Linux amd64")
 	}
 	if err := checkLauncher(launcher); err == nil {
 		return nil
@@ -98,7 +98,7 @@ func Run(ctx context.Context, name string, c config.DaggerConfig) error {
 	if err != nil {
 		return err
 	}
-	if err := checkLauncher(launcher); err != nil {
+	if err := Ensure(ctx); err != nil {
 		return fmt.Errorf("official DaggerLauncher is unavailable: %w", err)
 	}
 	f, err := os.CreateTemp("", "backpack-dagger-*.json")

@@ -10,13 +10,13 @@ import (
 func TestSetupPerformancePresets(t *testing.T) {
 	for id, profile := range SetupPerformanceOptions() {
 		t.Run(id, func(t *testing.T) {
-			last := 0
+			values := map[int]bool{}
 			for _, preset := range []string{PresetBalance, PresetTurbo, PresetAggressive} {
 				got, err := setupTuningValue(id, SetupTuning{Preset: preset})
-				if err != nil || got != profile.Values[preset] || got <= last {
-					t.Fatalf("%s: got %d, previous %d, error %v", preset, got, last, err)
+				if err != nil || got != profile.Values[preset] || got <= 0 || values[got] {
+					t.Fatalf("%s: got %d instead of a distinct positive value, error %v", preset, got, err)
 				}
-				last = got
+				values[got] = true
 			}
 			override := profile.Max
 			if n, err := setupTuningValue(id, SetupTuning{Preset: PresetBalance, Value: &override}); n != override || err != nil {

@@ -83,6 +83,8 @@ export const tunnelSettings = name =>
 export const tunnelEdit  = payload => post('/api/tunnel/edit', payload);
 export const transportProbe = form => post('/api/conntest/transport', form);
 export const omniOptions = () => get('/api/omni');
+export const daggerOptions = () => get('/api/dagger');
+export const daggerCreate = body => post('/api/dagger', body);
 export const backhaulOptions = () => get('/api/backhaul');
 export const backhaulCreate = body => post('/api/backhaul', body);
 export const omniRun = (args, token = '') => post('/api/omni', { args, token });

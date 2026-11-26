@@ -43,7 +43,8 @@ func TestImportedSetupLinksAreCompact(t *testing.T) {
 func TestDaggerSetupLinkOnlyCarriesPeerSettings(t *testing.T) {
 	cfg := config.DaggerConfig{Role: "server", Flavor: "https", IranIP: "192.0.2.1", Port: 443,
 		License: "test-license", HTTPHost: "example.net", HTTPPath: "/tunnel",
-		CertFile: "/local/cert.pem", KeyFile: "/local/key.pem", Ports: "4242=443"}
+		ConnectionPool: 12,
+		CertFile:       "/local/cert.pem", KeyFile: "/local/key.pem", Ports: "4242=443"}
 	raw, err := shareLinkOf("dagger", "", config.Config{Dagger: cfg})
 	if err != nil {
 		t.Fatal(err)
@@ -51,7 +52,7 @@ func TestDaggerSetupLinkOnlyCarriesPeerSettings(t *testing.T) {
 	got, err := DecodeShareLink(raw)
 	want := daggerShare("dagger", cfg)
 	want.V = 1
-	if err != nil || !reflect.DeepEqual(got, want) || got.Ports != "" {
+	if err != nil || !reflect.DeepEqual(got, want) || got.Ports != "" || got.TunnelLanes != 12 {
 		t.Fatalf("Dagger peer link lost settings or copied local settings: %v", err)
 	}
 }

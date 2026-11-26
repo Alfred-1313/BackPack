@@ -46,11 +46,17 @@ func backhaulShare(name string, c config.BackhaulConfig) ShareLink {
 }
 
 func daggerShare(name string, c config.DaggerConfig) ShareLink {
+	kind := "reverse"
+	if c.Flavor == "tun" {
+		kind = "direct"
+	}
 	return ShareLink{
-		Name: name, Kind: "reverse", From: "iran", Tr: "dagger-" + c.Flavor,
+		Name: name, Kind: kind, From: "iran", Tr: "dagger-" + c.Flavor,
 		Host: c.IranIP, Port: linkPort(c.Port), Tok: c.License, PeerHost: c.KharejIP, IranIPv6: c.IranIPv6,
 		HelperHost: c.HTTPHost, HelperPath: c.HTTPPath, Profile: c.TUNProfile, TUNPort: uint32(c.TUNPort),
 		LocalIP: c.IranTunnelIP, PeerIP: c.KharejTunnelIP,
+		TunnelLanes: c.ConnectionPool, TunnelHeartbeat: c.HeartbeatSeconds,
+		MTU: c.QuantumMTU, DaggerCipher: c.QuantumCipher, DaggerUpload: c.UploadMode,
 	}
 }
 
@@ -90,6 +96,8 @@ func applyImportedLink(l ShareLink, o LinkApplyOptions) (LinkApplied, error) {
 			Role: "client", Flavor: mode, IranIP: l.Host, IranIPv6: l.IranIPv6, KharejIP: l.PeerHost,
 			Port: uint16(port), License: l.Tok, HTTPHost: l.HelperHost, HTTPPath: l.HelperPath,
 			TUNProfile: l.Profile, TUNPort: uint16(l.TUNPort), IranTunnelIP: l.LocalIP, KharejTunnelIP: l.PeerIP,
+			ConnectionPool: l.TunnelLanes, HeartbeatSeconds: l.TunnelHeartbeat,
+			QuantumMTU: l.MTU, QuantumCipher: l.DaggerCipher, UploadMode: l.DaggerUpload,
 		})
 	}
 	mode, native := strings.CutPrefix(l.Tr, "native-")
@@ -132,7 +140,8 @@ func applyBackhaulPeer(ctx context.Context, name string, c config.BackhaulConfig
 }
 
 func applyDaggerPeer(ctx context.Context, name string, c config.DaggerConfig) (LinkApplied, error) {
-	out := LinkApplied{Name: name, Kind: "reverse", Transport: c.Flavor, StatusUnavailable: true}
+	link := daggerShare(name, c)
+	out := LinkApplied{Name: name, Kind: link.Kind, Transport: c.Flavor, StatusUnavailable: true}
 	if c.Port != 0 {
 		host := c.IranIP
 		if c.Flavor == "dc6" {
@@ -143,7 +152,6 @@ func applyDaggerPeer(ctx context.Context, name string, c config.DaggerConfig) (L
 	if c.Flavor == "tun" {
 		out.AwaitPeer = routedPeerProbe(c.KharejTunnelIP, c.IranTunnelIP)
 	}
-	link := daggerShare(name, c)
 	return installLinkedHelper(out, func(cfg config.Config) bool {
 		return cfg.Dagger.Role == "client" && reflect.DeepEqual(daggerShare(name, cfg.Dagger), link)
 	}, func() (string, bool, error) { return installDagger(ctx, name, c) })

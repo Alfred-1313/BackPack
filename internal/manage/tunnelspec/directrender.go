@@ -508,7 +508,7 @@ func IsDirectKind(t Tunnel) bool {
 // TunnelDirection reports whether a tunnel is dialled from Iran or waits for
 // kharej to dial in — "direct" or "reverse".
 func TunnelDirection(t Tunnel) string {
-	if IsDirectKind(t) {
+	if IsDirectKind(t) || t.Transport == "dagger/tun" {
 		return "direct"
 	}
 	return "reverse"

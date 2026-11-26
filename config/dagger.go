@@ -16,6 +16,15 @@ type DaggerConfig struct {
 	Port uint16 `toml:"port"`
 	// License is the DaggerConnect PSK issued for the two endpoints.
 	License string `toml:"license"`
+	// ConnectionPool applies to the dialing side of stream transports.
+	ConnectionPool int `toml:"connection_pool,omitempty"`
+	// HeartbeatSeconds applies to both ends of a TUN tunnel.
+	HeartbeatSeconds int `toml:"heartbeat_seconds,omitempty"`
+	// QuantumMTU and QuantumCipher are shared on both ends of Quantum.
+	QuantumMTU    int    `toml:"quantum_mtu,omitempty"`
+	QuantumCipher string `toml:"quantum_cipher,omitempty"`
+	// UploadMode is the streaming mode used by the split HTTP client.
+	UploadMode string `toml:"upload_mode,omitempty"`
 	// Ports are comma-separated mappings, optionally prefixed by tcp: or udp:.
 	Ports string `toml:"ports"`
 	// LoopbackOnly keeps temporary forwarded listeners private.

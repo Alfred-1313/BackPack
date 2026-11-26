@@ -118,6 +118,8 @@ type ShareLink struct {
 	// Imported transports' extra peer settings.
 	PeerHost        string `json:"ph,omitempty"`
 	IranIPv6        string `json:"i6,omitempty"`
+	DaggerCipher    string `json:"dci,omitempty"`
+	DaggerUpload    string `json:"dum,omitempty"`
 	TUNPort         uint32 `json:"tp,omitempty"`
 	HealthPort      uint32 `json:"bh,omitempty"`
 	TunnelLanes     int    `json:"bl,omitempty"`
