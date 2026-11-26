@@ -89,8 +89,13 @@ func connTestIranMenu() {
 
 	ctx, stop := connTestContext()
 	defer stop()
+	daggerLicense := strings.TrimSpace(os.Getenv("BACKPACK_DAGGER_TEST_PSK"))
+	_ = os.Unsetenv("BACKPACK_DAGGER_TEST_PSK")
 	ctMenuStage(os.Stdout, "1", "Preparing test tunnels", "Checking listeners, helpers and REALITY cover compatibility.")
-	suite, link, err := StartConnTestSuite(ConnTestOptions{Context: ctx, Direct: direct, ExtraTransports: true, Preset: preset, SpoofSrc: spoof}, hosts)
+	suite, link, err := StartConnTestSuite(ConnTestOptions{
+		Context: ctx, Direct: direct, ExtraTransports: true, Preset: preset, SpoofSrc: spoof,
+		DaggerLicense: daggerLicense,
+	}, hosts)
 	if err != nil {
 		tui.Error(err.Error())
 		tui.PressEnter()

@@ -696,10 +696,7 @@ func StartConnTestIran(o ConnTestOptions) (*ConnTestIran, string, error) {
 	if o.ExtraTransports {
 		s.daggerLicense, s.daggerIPv4, s.helperPorts = strings.TrimSpace(o.DaggerLicense), o.DaggerIPv4, used
 		useExtraChannel := false
-		cases := ctExtraCases()
-		if s.daggerLicense != "" {
-			cases = append(cases, ctDaggerCases()...)
-		}
+		cases := append(ctExtraCases(), ctDaggerCases()...)
 		for _, c := range cases {
 			if !s.root {
 				c.skip = "needs root on both servers"

@@ -124,6 +124,11 @@ function startPane(v) {
       <div class="tl-seg" id="ctPreset">${PRESETS.map(p =>
         `<button type="button" data-p="${p.v}" class="${p.v === preset ? 'on' : ''}">
            ${p.label}<small>${p.note}</small></button>`).join('')}</div></div>
+    <label class="tl-f ct-field"><span>DaggerConnect license PSK (optional)</span>
+      <input id="ctDaggerLicense" type="password" maxlength="4096" autocomplete="off" spellcheck="false"
+        aria-describedby="ctDaggerLicenseHint">
+      <small id="ctDaggerLicenseHint">Used for Quantum, Quantum+, Nova, DC6 and Dagger TUN in this test.</small>
+    </label>
     ${v.root ? '' : `<div class="tl-note wr">The panel is not running as root, so the direct tunnels, PCK and the IP-spoofing check are left out.</div>`}
     <span class="sp"></span>
     <button class="tl-btn solid ct-go" id="ctStart">${ICON.play}Start the test</button>
@@ -603,6 +608,7 @@ export function connTestView(ctx) {
       const host = $('#ctHost', view)?.value.trim();
       const ipv4 = $('#ctIPv4',view)?.value.trim() || '';
       const ipv6 = $('#ctIPv6',view)?.value.trim() || '';
+      const daggerLicense = $('#ctDaggerLicense',view)?.value.trim() || '';
       if ((pathMode === 'manual' && !host) || (['ipv4','both'].includes(pathMode) && !ipv4) || (['ipv6','both'].includes(pathMode) && !ipv6)) {
         toast('Enter an address for each selected IP path.',true); return;
       }
@@ -610,7 +616,7 @@ export function connTestView(ctx) {
       b.innerHTML = `${ICON.play}Starting…`;
       try {
         fresh = false; selectedPath = -1;
-        paint(await api.connTestStart({ host, preset, path: pathMode, ipv4, ipv6 }));
+        paint(await api.connTestStart({ host, preset, path: pathMode, ipv4, ipv6, daggerLicense }));
         schedule();
       } catch (e) { oops(e); b.disabled = false; b.innerHTML = `${ICON.play}Start the test`; }
       return;

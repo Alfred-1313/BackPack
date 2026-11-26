@@ -263,7 +263,7 @@ func (w *ctExtraWorker) perform(ctx context.Context, link ConnTestLink, job ctEx
 				}
 			}
 		}
-		if w.instances[job.Name] != nil || len(w.instances) >= len(ctExtraCases()) {
+		if w.instances[job.Name] != nil || len(w.instances) >= len(ctExtraCases())+len(ctDaggerCases()) {
 			return 0, errors.New("no slot for this temporary test tunnel")
 		}
 		instance := &ctExtraInstance{dir: w.dir}

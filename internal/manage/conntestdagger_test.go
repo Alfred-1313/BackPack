@@ -31,6 +31,12 @@ func TestDaggerLegacyTestModes(t *testing.T) {
 		rows[c.tr] = c
 	}
 	for _, option := range daggerconnect.Options() {
+		if _, builtIn := nativebackhaul.Find("dagger-" + option.Value); builtIn {
+			if rows[ctDaggerPrefix+option.Value] != nil {
+				t.Errorf("%s is already represented by its native BackPack test", option.Label)
+			}
+			continue
+		}
 		if option.Value == "tun" {
 			for _, profile := range ctDaggerTUNProfiles {
 				c := rows[ctDaggerTUNPrefix+profile]
@@ -40,6 +46,49 @@ func TestDaggerLegacyTestModes(t *testing.T) {
 			}
 		} else if c := rows[ctDaggerPrefix+option.Value]; c == nil || c.kind != "reverse" {
 			t.Errorf("%s has no reverse Connection Test", option.Label)
+		}
+	}
+}
+
+func TestConnectionTestListsQuantumWithOrWithoutLicense(t *testing.T) {
+	reverse, direct := connTestReverse, connTestDirect
+	connTestReverse, connTestDirect = nil, nil
+	defer func() { connTestReverse, connTestDirect = reverse, direct }()
+
+	for _, license := range []string{"", "fixture-psk"} {
+		s, _, err := StartConnTestIran(ConnTestOptions{
+			Host: "127.0.0.1", ExtraTransports: true, DaggerLicense: license,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		rows := map[string]string{}
+		for _, c := range s.cases {
+			rows[c.tr] = c.skip
+		}
+		for _, tr := range []string{"dagger-quantum", "dagger-quantum+", "dagger-nova"} {
+			reason, listed := rows[tr]
+			switch {
+			case !listed:
+				t.Errorf("%s disappeared from the test list", tr)
+			case !s.root:
+				if !strings.Contains(reason, "root") {
+					t.Errorf("%s should explain its root requirement: %q", tr, reason)
+				}
+			case license == "":
+				if !strings.Contains(reason, "license") {
+					t.Errorf("%s should ask for a license: %q", tr, reason)
+				}
+			default:
+				if reason != "" {
+					t.Errorf("%s should be eligible for real tests: %q", tr, reason)
+				}
+			}
+		}
+		settings, err := unGzipB64(ctConfig(s.link))
+		s.Close()
+		if err != nil || (license != "" && strings.Contains(string(settings), license)) {
+			t.Fatal("the public test settings should not contain the DaggerConnect PSK")
 		}
 	}
 }
