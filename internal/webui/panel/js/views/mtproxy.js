@@ -12,7 +12,7 @@ export function mtProxyView(ctx) {
       const result = field('mtpResult');
       const status = field('mtpStatus');
       const submit = field('mtpSubmit');
-      const back = field('mtpBack');
+      const savedActions = field('mtpSavedActions');
       const newSetup = field('mtpNew');
       const removal = field('mtpRemoval');
       const publicPort = field('mtpPort');
@@ -37,13 +37,23 @@ export function mtProxyView(ctx) {
       });
 
       const validPort = port => Number.isInteger(port) && port > 0 && port < 65536;
-      const portValue = input => validPort(input.valueAsNumber) ? input.valueAsNumber : 0;
+      const portValue = input => {
+        const { value } = input;
+        const port = Number(value);
+        return /^[0-9]{1,5}$/.test(value) && validPort(port) ? port : 0;
+      };
       const portError = (input, id, message) => {
         const error = field(id);
         error.textContent = message || '';
         error.hidden = !message;
         if (message) input.setAttribute('aria-invalid', 'true');
         else input.removeAttribute('aria-invalid');
+      };
+      const validatePortField = (input, id) => {
+        const error = input.value && !portValue(input) ? 'Enter a port from 1 to 65535.' : '';
+        input.setCustomValidity(error);
+        portError(input, id, error);
+        return !error;
       };
       const address = (bind, port) => (bind.includes(':') ? '[' + bind + ']' : bind) + ':' + port;
       function updatePortCommand() {
@@ -72,8 +82,9 @@ export function mtProxyView(ctx) {
         clearTimeout(checkTimer);
         checkRequest?.abort();
         if (!settings || !root.isConnected || form.hidden) return false;
-        portError(publicPort, 'mtpPublicError', '');
-        portError(destination, 'mtpDestinationError', '');
+        const validPublic = validatePortField(publicPort, 'mtpPublicError');
+        const validDestination = validatePortField(destination, 'mtpDestinationError');
+        if (!validPublic || !validDestination) return false;
         const confirmed = settings.managed || manualResult();
         if (proxy) return true;
         const thisCheck = new AbortController();
@@ -93,26 +104,22 @@ export function mtProxyView(ctx) {
         checkTimer = setTimeout(() => checkPorts().catch(e => setStatus(e.message, true)), 350);
       };
 
-      const show = info => {
+      const show = (info, values = { ...info, host: info.address, port: info.public }) => {
         proxy = info;
         replacement = null;
         field('mtpCommand').value = info.command;
         field('mtpLink').value = info.link;
         field('mtpRemove').value = info.remove;
-        removal.hidden = true;
-        submit.hidden = back.hidden = true;
-        newSetup.hidden = false;
         field('mtpFrontendRow').hidden = !info.frontend;
         field('mtpFrontend').value = info.frontend || '';
         field('mtpSponsorRow').hidden = isWeb();
         field('mtpRegister').value = info.registrationSecret || '';
         field('mtpSponsor').value = info.sponsor || '';
-        form.hidden = true;
-        result.hidden = false;
+        openForm(values);
         subtitle.textContent = name + ' \u00b7 ' + (info.engine || 'MTProxy');
         const ingress = isWeb() ? 'HTTPS ' + address(info.address, 443) + ' \u2192 TCP ' + info.public
           : 'TCP ' + address(info.address, info.public);
-        setStatus(ingress + ' \u2192 ' + address(info.bind, info.destination) + ' on Kharej');
+        setStatus(settings.note || ingress + ' \u2192 ' + address(info.bind, info.destination) + ' on Kharej');
       };
       const formValues = () => ({
         host: field('mtpHost').value.trim(),
@@ -126,7 +133,8 @@ export function mtProxyView(ctx) {
 
       const openForm = (values = {}) => {
         const web = isWeb();
-        result.hidden = removal.hidden = newSetup.hidden = true;
+        result.hidden = savedActions.hidden = !proxy;
+        removal.hidden = true;
         field('mtpHost').value = values.host ?? (web ? '' : settings.host || '');
         field('mtpDomain').value = values.domain || '';
         field('mtpWebIP').value = values.webIp ?? (web && /^(?:\d+\.){3}\d+$/.test(settings.host) ? settings.host : '');
@@ -138,13 +146,13 @@ export function mtProxyView(ctx) {
         sponsor = values.sponsor || '';
         portResult.value = values.portResult || '';
         randomOnKharej = false;
-        portError(publicPort, 'mtpPublicError', '');
-        portError(destination, 'mtpDestinationError', '');
-        field('mtpManual').hidden = settings.managed;
-        field('mtpReplaceNotice').hidden = !proxy;
+        validatePortField(publicPort, 'mtpPublicError');
+        validatePortField(destination, 'mtpDestinationError');
+        field('mtpManual').hidden = settings.managed || (proxy && !values.portResult);
+        field('mtpReplaceNotice').hidden = !proxy || !!settings.note;
         updatePortCommand();
-        form.hidden = submit.hidden = false;
-        back.hidden = !proxy;
+        form.hidden = false;
+        submit.hidden = newSetup.hidden = !!settings.note;
         submit.textContent = proxy ? 'Replace proxy' : 'Create proxy';
         setStatus('');
       };
@@ -155,7 +163,7 @@ export function mtProxyView(ctx) {
         const web = isWeb();
         clearTimeout(checkTimer);
         checkRequest?.abort();
-        form.hidden = result.hidden = removal.hidden = submit.hidden = back.hidden = newSetup.hidden = true;
+        form.hidden = result.hidden = removal.hidden = submit.hidden = savedActions.hidden = true;
         setStatus('Reading tunnel settings\u2026');
         const info = await api.mtProxySetup(name, requested);
         if (sequence !== loading || !root.isConnected) return;
@@ -190,7 +198,7 @@ export function mtProxyView(ctx) {
       };
       const openRemoval = values => {
         replacement = values;
-        form.hidden = result.hidden = submit.hidden = back.hidden = newSetup.hidden = true;
+        form.hidden = result.hidden = submit.hidden = savedActions.hidden = true;
         removal.hidden = false;
         field('mtpRemoveTitle').textContent = replacement ? 'Remove the current proxy to change ports' : 'Delete proxy';
         field('mtpRemoteRemoval').hidden = settings.managed;
@@ -213,6 +221,7 @@ export function mtProxyView(ctx) {
       });
       mode.addEventListener('change', () => load().catch(e => setStatus(e.message, true)));
       publicPort.addEventListener('input', () => {
+        validatePortField(publicPort, 'mtpPublicError');
         const current = settings?.ports?.find(p => p.public === portValue(publicPort));
         if (current && !destination.value) {
           destination.value = current.destination;
@@ -221,6 +230,7 @@ export function mtProxyView(ctx) {
         scheduleCheck();
       });
       destination.addEventListener('input', () => {
+        validatePortField(destination, 'mtpDestinationError');
         randomOnKharej = false;
         portResult.value = '';
         updatePortCommand();
@@ -240,9 +250,10 @@ export function mtProxyView(ctx) {
           return;
         }
         randomOnKharej = true;
+        field('mtpManual').hidden = false;
         destination.value = '';
         portResult.value = '';
-        portError(destination, 'mtpDestinationError', '');
+        validatePortField(destination, 'mtpDestinationError');
         updatePortCommand();
         field('mtpPortCommand').focus();
         field('mtpPortCommand').select();
@@ -268,6 +279,7 @@ export function mtProxyView(ctx) {
             action: 'create',
             ...formValues(),
           }));
+          field('mtpCommand').focus();
         });
       });
       field('mtpCheck').addEventListener('click', event => work(event.currentTarget, async () => {
@@ -286,19 +298,13 @@ export function mtProxyView(ctx) {
         show(await action({ action: 'sponsor', sponsor: field('mtpSponsor').value.trim() }));
         setStatus('Run the updated setup command on Kharej to apply the sponsor tag.');
       }));
-      field('mtpEditPorts').addEventListener('click', () => {
-        openForm({ ...proxy, host: proxy.address, port: proxy.public });
-        publicPort.focus();
-      });
       newSetup.addEventListener('click', () => {
         openForm({ host: proxy.address, domain: proxy.domain, webIp: proxy.webIp });
         publicPort.focus();
       });
-      back.addEventListener('click', () => show(proxy));
       field('mtpDelete').addEventListener('click', () => openRemoval(null));
       field('mtpCancelRemove').addEventListener('click', () => {
-        if (replacement) openForm(replacement);
-        else show(proxy);
+        show(proxy, replacement || undefined);
       });
       field('mtpClear').addEventListener('click', event => remove(event.currentTarget));
       field('mtpDiscard').addEventListener('click', event => remove(event.currentTarget, true));

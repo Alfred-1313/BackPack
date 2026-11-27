@@ -22,24 +22,26 @@
           <input type="text" id="mtpHost" name="host" required maxlength="253" autocomplete="off">
           <div class="hint">The address Telegram connects to on this side of the tunnel.</div>
         </div>
-        <div class="f">
-          <label id="mtpPortLabel" for="mtpPort">Port on Iran</label>
-          <div class="withbtn">
-            <input type="number" id="mtpPort" name="port" min="1" max="65535" list="mtpExisting" required aria-describedby="mtpPublicError">
-            <button id="mtpRandomPublic" type="button" aria-label="Choose a random port on Iran">Random</button>
+        <div class="mtp-ports">
+          <div class="f">
+            <label id="mtpPortLabel" for="mtpPort">Port on Iran</label>
+            <div class="withbtn">
+              <input type="text" id="mtpPort" name="port" inputmode="numeric" pattern="[0-9]{1,5}" maxlength="5" autocomplete="off" list="mtpExisting" required aria-describedby="mtpPublicError">
+              <button id="mtpRandomPublic" type="button" aria-label="Choose a random port on Iran">Random</button>
+            </div>
+            <datalist id="mtpExisting"></datalist>
+            <div id="mtpPublicError" class="mtp-field-error" aria-live="polite" hidden></div>
+            <div class="hint">An unused port adds a forward and reloads the tunnel. Existing forwards keep their destinations.</div>
           </div>
-          <datalist id="mtpExisting"></datalist>
-          <div id="mtpPublicError" class="mtp-field-error" aria-live="polite" hidden></div>
-          <div class="hint">An unused port adds a forward and reloads the tunnel. Existing forwards keep their destinations.</div>
-        </div>
-        <div class="f">
-          <label for="mtpDestination">Port on Kharej</label>
-          <div class="withbtn">
-            <input type="number" id="mtpDestination" name="destination" min="1" max="65535" required aria-describedby="mtpDestinationError">
-            <button id="mtpRandomDestination" type="button" aria-label="Choose a random port on Kharej">Random</button>
+          <div class="f">
+            <label for="mtpDestination">Port on Kharej</label>
+            <div class="withbtn">
+              <input type="text" id="mtpDestination" name="destination" inputmode="numeric" pattern="[0-9]{1,5}" maxlength="5" autocomplete="off" required aria-describedby="mtpDestinationError">
+              <button id="mtpRandomDestination" type="button" aria-label="Choose a random port on Kharej">Random</button>
+            </div>
+            <div id="mtpDestinationError" class="mtp-field-error" aria-live="polite" hidden></div>
+            <div class="hint">The proxy process listens on this port on Kharej.</div>
           </div>
-          <div id="mtpDestinationError" class="mtp-field-error" aria-live="polite" hidden></div>
-          <div class="hint">The proxy process listens on this port on Kharej.</div>
         </div>
         <div class="f" id="mtpManual" hidden>
           <label for="mtpPortCommand">Check the port on Kharej</label>
@@ -65,6 +67,11 @@
           The new setup replaces the current proxy. Remove the current setup before creating it.
         </div>
       </form>
+      <div id="mtpSavedActions" class="mtp-actions" hidden>
+        <button id="mtpNew" type="button" class="bt">Create new setup</button>
+        <button id="mtpCheck" type="button" class="bt">Test proxy</button>
+        <button id="mtpDelete" type="button" class="bt mtp-danger">Delete proxy</button>
+      </div>
       <section id="mtpResult" hidden>
         <div class="f">
           <label for="mtpCommand">1 · Run on Kharej</label>
@@ -87,11 +94,6 @@
             <button type="button" data-copy="mtpLink" data-copy-own="1">Copy link</button>
           </div>
           <div class="hint">The link contains the proxy secret. Share it with intended users.</div>
-        </div>
-        <div class="mtp-actions">
-          <button id="mtpCheck" type="button" class="bt">Test proxy</button>
-          <button id="mtpEditPorts" type="button" class="bt">Change ports</button>
-          <button id="mtpDelete" type="button" class="bt mtp-danger">Delete proxy</button>
         </div>
         <details id="mtpSponsorRow" class="mtp-remove">
           <summary>Sponsor channel</summary>
@@ -127,9 +129,7 @@
   </div>
   <div class="df">
     <span class="sp"></span>
-    <button id="mtpBack" class="bt" type="button" hidden>Back to proxy</button>
     <button class="bt" type="button" data-close>Close</button>
-    <button id="mtpNew" type="button" class="bt primary" hidden>Create new setup</button>
     <button id="mtpSubmit" type="submit" class="bt primary" form="mtpCreate" hidden>Create proxy</button>
   </div>
 </div>
