@@ -14,13 +14,17 @@ func TestMTProxyUsesOnlyExistingLoopbackMappings(t *testing.T) {
 	if !mtProxyEligible(tunnel) {
 		t.Fatal("reverse WSS tunnel did not offer MTProxy")
 	}
-	ports := mtProxyPorts(tunnel)
+	ports := mtProxyPorts(tunnel, "127.0.0.1", "native")
 	port, err := chooseMTProxyPort(ports, 443)
 	if err != nil || len(ports) != 3 || port.Destination != 8443 || port.listen != "127.0.0.1:443" {
 		t.Fatalf("unexpected MTProxy routes: %+v, %v", ports, err)
 	}
 	if _, err := chooseMTProxyPort(ports, 8444); err == nil {
 		t.Fatal("accepted a mapping to an external host")
+	}
+	web := mtProxyPorts(tunnel, "127.0.0.1", "web")
+	if len(web) != 1 || web[0].Destination != 9999 {
+		t.Fatalf("WEB must use only the loopback listener: %+v", web)
 	}
 	tunnel.Transport = "native/dagger-https"
 	if !mtProxyEligible(tunnel) {

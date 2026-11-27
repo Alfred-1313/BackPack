@@ -94,11 +94,57 @@ export function addView(ctx) {
          the kharej side owns the address that is dialled. */
       const chosen = { side: 'server', direction: 'reverse', transport: null,
                        carrier: 'pck', preset: null };
+      const mtMode = el('select', { id: 'addMTPMode' }, [
+        el('option', { value: '', text: 'Off' }),
+        el('option', { value: 'native', text: 'MTProto · Fake TLS' }),
+        el('option', { value: 'web', text: 'MTProto WEB' }),
+      ]);
+      const mtEntry = el('input', { id: 'addMTPEntry', type: 'text', inputmode: 'numeric' });
+      const mtExit = el('input', { id: 'addMTPExit', type: 'text', inputmode: 'numeric' });
+      const mtHint = el('div', { class: 'hint' });
+      const mtPorts = el('div', { class: 'fgrid', hidden: true }, [
+        el('div', { class: 'f3' }, [el('label', { for: mtEntry.id, text: 'Port on this server' }), mtEntry]),
+        el('div', { class: 'f3' }, [el('label', { for: mtExit.id, text: 'Port on Kharej' }), mtExit]),
+      ]);
+      const mtOptional = el('div', { class: 'grp3', id: 'addMTPOptional' }, [
+        el('div', { class: 'gl3', text: 'Telegram MTProxy' }),
+        el('div', { class: 'fgrid' }, [
+          el('div', { class: 'f3 full' }, [
+            el('label', { for: mtMode.id, text: 'Proxy mode' }), mtMode, mtHint,
+          ]),
+        ]),
+        mtPorts,
+      ]);
       const reverseSetup = () => chosen.direction === 'reverse' && managedReverse.get(chosen.transport);
       const nativeMuxOptional = () => ['xtcpmux', 'xwsmux'].includes(reverseSetup()?.mode);
       const daggerUpgrade = () => ['dagger-http', 'dagger-https'].includes(reverseSetup()?.mode);
       const daggerRoute = () => daggerUpgrade() || reverseSetup()?.mode === 'dagger-xhttp';
       const directSetup = () => chosen.direction === 'direct' && managedDirect.get(chosen.carrier);
+      function mtProxyModes() {
+        if (chosen.direction === 'direct') {
+          if (directSetup() && chosen.carrier !== 'easytier') return [];
+          return chosen.carrier === 'pck' ? ['native', 'web'] : ['native'];
+        }
+        if (chosen.transport === 'easytier-reverse') return ['native'];
+        const carrier = (chosen.transport || '').replace(/^native-/, 'native/');
+        return (opts.mtProxyReverse || []).includes(carrier) ||
+          ['stealth', 'naive', 'xhttp', 'reality'].includes(carrier) ? ['native', 'web'] : [];
+      }
+      function paintMTProxyOptional() {
+        const modes = mtProxyModes();
+        mtMode.disabled = !modes.length;
+        for (const option of mtMode.options) option.disabled = !!option.value && !modes.includes(option.value);
+        if (mtMode.value && !modes.includes(mtMode.value)) mtMode.value = '';
+        mtPorts.hidden = !mtMode.value;
+        mtHint.textContent = !modes.length
+          ? 'This transport has no supported TCP forwarding rule for MTProxy.'
+          : mtMode.value === 'web'
+            ? 'Uses a loopback forwarding rule. The public HTTPS endpoint needs a domain and a certificate on port 443.'
+            : modes.includes('web')
+              ? 'Reserve a TCP port to set up MTProxy after the tunnel is created.'
+              : 'This routed tunnel can forward native MTProto to the private Kharej address.';
+      }
+      mtMode.addEventListener('change', paintMTProxyOptional);
       const penguSetup = () => {
         const selected = reverseSetup() || directSetup();
         return selected?.pengu ? selected : null;
@@ -765,6 +811,7 @@ export function addView(ctx) {
         if (routed?.dagger) directFields.hidden = true;
         // The token and the far end's address are the panel's business now.
         root.querySelectorAll('.tokgone, .addrgone').forEach(n => { n.hidden = true; });
+        paintMTProxyOptional();
         if (!direct) transportRows();
         paintRail();
         if (root.dataset.staged) paintNav(Number(root.querySelector('.step[data-s]:not([hidden])')?.dataset.s));
@@ -902,6 +949,7 @@ export function addView(ctx) {
           if (result) {
             result.innerHTML = setupLinkHTML(r);
             bindSetupLink(result);
+            if (mtMode.value) result.append(el('p', { class: 'hint', text: 'After Kharej joins, open MTProxy from the tunnel card.' }));
           }
           building = false;
           return;
@@ -925,6 +973,11 @@ export function addView(ctx) {
             result.innerHTML = `<div class="doneline warn"><span class="tick">!</span><div>
               <b>${esc(e.message)}</b><span>Open the tunnel's menu → Setup link to try again.</span></div></div>`;
           }
+        }
+        if (result && mtMode.value) {
+          const proxy = el('button', { type: 'button', class: 'nb', text: 'Set up MTProxy' });
+          proxy.addEventListener('click', () => go(`/t/${encodeURIComponent(name)}/mtproxy?mode=${mtMode.value}`));
+          result.append(proxy);
         }
         building = false;
       }
@@ -1723,6 +1776,7 @@ export function addView(ctx) {
         setupGroups = addSetupTuning(details.querySelector('#atok').closest('.fgrid'), perf, opt);
         daggerFields = addDaggerFields(details);
         penguFields = addPenguFields(details, opt);
+        opt.append(mtOptional);
         /* PCK's fine-tuning goes with the presets it overrides, on the same
            step, rather than among the fields that name the tunnel. */
         const pckDrawer = root.querySelector('#dw-pck');
@@ -1838,6 +1892,21 @@ export function addView(ctx) {
           at[last] = NUMERIC.has(n.name) ? Number(v) : v;
         });
         payload.name ||= '';
+        if (mtMode.value) {
+          const range = /^\d+$/;
+          const entry = mtEntry.value.trim(), exit = mtExit.value.trim();
+          if (![entry, exit].every(port => range.test(port) && Number(port) >= 1 && Number(port) <= 65535)) {
+            throw new Error('In Optional → Telegram MTProxy, enter both TCP ports between 1 and 65535.');
+          }
+          const occupied = (payload.ports || '').split(',').some(rule => {
+            const listen = rule.split('=')[0].trim().split(':').at(-1);
+            const [lo, hi = lo] = listen.split('-').map(Number);
+            return Number(entry) >= lo && Number(entry) <= hi;
+          });
+          if (occupied) throw new Error('Choose an MTProxy port that is separate from the other forwarded ports.');
+          const mapping = (mtMode.value === 'web' ? '127.0.0.1:' : '') + entry + '=' + exit;
+          payload.ports = [payload.ports, mapping].filter(Boolean).join(', ');
+        }
         if (chosen.direction === 'direct') {
           payload.side = chosen.side === 'server' ? 'iran' : 'kharej';
           payload.carrier = chosen.carrier;

@@ -13,7 +13,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"strconv"
+	"strings"
 	"time"
 
 	"github.com/backpack/backpack/internal/app"
@@ -48,7 +48,7 @@ func Command(ctx context.Context, args []string, in io.Reader, out io.Writer) er
 		if err := withServiceLock(func() error { return setup.enable(ctx) }); err != nil {
 			return err
 		}
-		fmt.Fprintf(out, "MTProxy Fake TLS is listening on 127.0.0.1:%d\n", setup.Port)
+		fmt.Fprintf(out, "MTProxy is listening on %s\n", setup.Addr())
 		return nil
 	case len(args) == 2 && args[0] == "remove":
 		id := args[1]
@@ -90,7 +90,10 @@ DynamicUser=yes
 NoNewPrivileges=yes
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 LoadCredential=proxy.toml:%s
-ExecStart=%s run %%d/proxy.toml
+StateDirectory=%s
+StateDirectoryMode=0700
+WorkingDirectory=%%S/%s
+ExecStart=%s %s%%d/proxy.toml
 Restart=on-failure
 RestartSec=3
 
@@ -105,49 +108,83 @@ func serviceFiles(id string) (unit, config string) {
 func (s Setup) enable(ctx context.Context) error {
 	unit, conf := serviceFiles(s.ID())
 	body := []byte(s.Config())
+	unitPath := filepath.Join(app.ServiceDir, unit)
 	previous, err := os.ReadFile(conf)
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
 	exists := err == nil
-	if exists && !bytes.Equal(body, previous) {
-		return errors.New("this MTProxy instance already has a different destination port")
+	oldUnit, err := os.ReadFile(unitPath)
+	if err != nil && (!os.IsNotExist(err) || exists) {
+		return err
 	}
-	if core.IsActive(unit) {
-		if exists {
-			return nil
-		}
+	active := core.IsActive(unit)
+	if active && exists && bytes.Equal(body, previous) {
+		return nil
+	}
+	if exists && !strings.Contains(string(previous), fmt.Sprintf("bind-to = %q", s.Addr())) &&
+		!strings.Contains(string(previous), fmt.Sprintf("ip = %q\nport = %d\n", s.BindIP(), s.Port)) {
+		return errors.New("this MTProxy instance already has a different destination address")
+	}
+	if active && !exists {
 		return errors.New("MTProxy unit is already running")
 	}
-	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(s.Port))
-	listener, err := net.Listen("tcp", addr)
-	if err != nil {
-		return fmt.Errorf("destination port %d is unavailable: %w", s.Port, err)
+	addr := s.Addr()
+	if !active {
+		listener, err := net.Listen("tcp", addr)
+		if err != nil {
+			return fmt.Errorf("destination %s is unavailable: %w", addr, err)
+		}
+		listener.Close()
 	}
-	listener.Close()
-	binary, err := ensureBinary(ctx)
+	binary, err := ensureBinary(ctx, s.Mode)
 	if err != nil {
 		return err
+	}
+	if s.Mode == ModeWeb {
+		if err := app.WriteFileAtomic(filepath.Join(webSite, "index.html"),
+			[]byte("<!doctype html><meta charset=utf-8><title>Welcome</title><p>Welcome.</p>\n"), 0644); err != nil {
+			return err
+		}
 	}
 	if err := app.WriteFileAtomic(conf, body, 0600); err != nil {
 		return err
 	}
 	success := false
 	defer func() {
-		if !success && !exists {
+		if success {
+			return
+		}
+		if !exists {
 			_ = remove(s.ID())
+			return
+		}
+		_ = app.WriteFileAtomic(conf, previous, 0600)
+		_ = app.WriteFileAtomic(unitPath, oldUnit, 0644)
+		_ = core.DaemonReload()
+		if active {
+			_ = core.RestartService(unit)
 		}
 	}()
-	if err := app.WriteFileAtomic(filepath.Join(app.ServiceDir, unit), fmt.Appendf(nil, unitBody, conf, binary), 0644); err != nil {
+	arg := ""
+	if s.Mode == "" {
+		arg = "run "
+	}
+	state := "backpack-mtproxy-" + s.ID()
+	if err := app.WriteFileAtomic(unitPath, fmt.Appendf(nil, unitBody, conf, state, state, binary, arg), 0644); err != nil {
 		return err
 	}
 	if err := core.DaemonReload(); err != nil {
 		return err
 	}
-	if err := core.StartService(unit); err != nil {
+	start := core.StartService
+	if active {
+		start = core.RestartService
+	}
+	if err := start(unit); err != nil {
 		return fmt.Errorf("start %s: %w", unit, err)
 	}
-	deadline, cancel := context.WithTimeout(ctx, 15*time.Second)
+	deadline, cancel := context.WithTimeout(ctx, 25*time.Second)
 	defer cancel()
 	tick := time.NewTicker(150 * time.Millisecond)
 	defer tick.Stop()
@@ -160,7 +197,7 @@ func (s Setup) enable(ctx context.Context) error {
 		}
 		select {
 		case <-deadline.Done():
-			return fmt.Errorf("%s did not open its loopback port", unit)
+			return fmt.Errorf("%s did not open %s", unit, addr)
 		case <-tick.C:
 		}
 	}
@@ -173,6 +210,7 @@ func remove(id string) error {
 		if err := core.DisableService(unit); err != nil {
 			return err
 		}
+		_, _ = core.Systemctl("clean", "--what=state", unit)
 		if err := os.Remove(unitPath); err != nil {
 			return err
 		}

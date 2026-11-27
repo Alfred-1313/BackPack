@@ -70,8 +70,10 @@ const samples = {
   tunnelCreate: [[{}]], directOptions: [[]], directDefaults: [['iran']], directCreate: [[{}]],
   health: [[]], linkTestStatus: [[]], linkTestRun: [['t1']],
   xrayReleases: [[]], xrayCoreStatus: [[], ['xray-core-1']], xrayCoreUpdate: [['26.7.28']],
-  mtProxySetup: [['t1']], mtProxyAction: [
+  mtProxySetup: [['t1'], ['t1', 'web']], mtProxyAction: [
     ['t1', { action: 'create', host: '203.0.113.7', domain: 'www.example.com', port: 8443 }],
+    ['t1', { action: 'create', host: 'proxy.example.com', webIp: '203.0.113.7', port: 18080 }, 'web'],
+    ['t1', { action: 'sponsor', sponsor: '00112233445566778899aabbccddeeff' }],
     ['t1', { action: 'check' }], ['t1', { action: 'clear' }],
   ],
   logs: [['t1'], ['t1', 'peer']], history: [['t1'], ['t1', 30]],

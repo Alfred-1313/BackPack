@@ -31,3 +31,17 @@ func TestFakeTLSSetupMapsTheIngressAndExitSeparately(t *testing.T) {
 		t.Fatal("accepted a URL as the Fake TLS hostname")
 	}
 }
+
+func TestWEBSetupMatchesTelemtRootCapability(t *testing.T) {
+	s := Setup{Mode: ModeWeb, Port: 8443, WebHost: "proxy.example.com", WebIP: "203.0.113.10",
+		Secret: "dd000102030405060708090a0b0c0d0e0f"}
+	if err := s.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.webCapability(); got != "IpJrt3e7sKtzPyoXy6w-Zj6GGEvsvclN66JzQEfPYLA" {
+		t.Fatalf("WEB capability = %s", got)
+	}
+	if !strings.HasPrefix(s.Link("", 0), "tg://webproxy?") || !strings.Contains(s.Config(), `transport = "web"`) {
+		t.Fatal("did not produce the WEB link and listener")
+	}
+}

@@ -48,6 +48,7 @@ func (s *server) handleTunnelOptions(w http.ResponseWriter, r *http.Request) {
 		"families":             manage.TransportFamilies(),
 		"presets":              manage.Presets(),
 		"setupPerformance":     manage.SetupPerformanceOptions(),
+		"mtProxyReverse":       mtProxyReverseCarriers,
 		"spoofProfiles":        manage.SpoofProfiles(),
 		"pckFlags":             manage.PckFlagCycles(),
 		"interfaces":           manage.RoutableInterfaces(),

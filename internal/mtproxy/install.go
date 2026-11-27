@@ -26,15 +26,28 @@ var releaseSHA = map[string]string{
 	"arm64": "86e0fc6f50bfb453b7a6e8b91497c6661a7d64a3f607828e0e42f534d795ac5a",
 }
 
-func ensureBinary(ctx context.Context) (string, error) {
+func ensureBinary(ctx context.Context, mode string) (string, error) {
+	version, binary := LegacyVersion, "mtg"
+	asset := fmt.Sprintf("mtg-%s-linux-%s", version[1:], runtime.GOARCH)
+	member := asset + "/mtg"
+	source := "https://github.com/9seconds/mtg/releases/download/" + version + "/" + asset + ".tar.gz"
 	checksum := releaseSHA[runtime.GOARCH]
+	if mode != "" {
+		version, binary, member = Version, "telemt", "telemt"
+		arch := map[string]string{"amd64": "x86_64", "arm64": "aarch64"}[runtime.GOARCH]
+		checksum = map[string]string{
+			"amd64": "f1591635849e0aad31f147692b21726da2f49499aae3ece79f8760c92925133a",
+			"arm64": "c80b0159b41cf410b2a87cf62676d67a16a537bd7207602b60dd9ce56e14d1f6",
+		}[runtime.GOARCH]
+		source = "https://github.com/telemt/telemt/releases/download/" + version + "/telemt-" + arch + "-linux-musl.tar.gz"
+	}
 	if runtime.GOOS != "linux" || checksum == "" {
 		return "", errors.New("MTProxy requires Linux amd64 or arm64")
 	}
 	// The shared BackPack helpers directory is normally root-only. The
 	// unprivileged proxy service needs to traverse this separate directory.
-	dir := filepath.Join("/usr/local/lib/backpack-mtproxy", Version+"-"+runtime.GOARCH)
-	dst := filepath.Join(dir, "mtg")
+	dir := filepath.Join(helperRoot, version+"-"+runtime.GOARCH)
+	dst := filepath.Join(dir, binary)
 	if info, err := os.Lstat(dst); err == nil {
 		if !info.Mode().IsRegular() || info.Mode().Perm()&0111 == 0 {
 			return "", errors.New("invalid installed mtg executable")
@@ -43,8 +56,6 @@ func ensureBinary(ctx context.Context) (string, error) {
 	} else if !os.IsNotExist(err) {
 		return "", err
 	}
-	asset := fmt.Sprintf("mtg-%s-linux-%s", Version[1:], runtime.GOARCH)
-	source := "https://github.com/9seconds/mtg/releases/download/" + Version + "/" + asset + ".tar.gz"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, source, nil)
 	if err != nil {
 		return "", err
@@ -55,7 +66,7 @@ func ensureBinary(ctx context.Context) (string, error) {
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("mtg release download returned HTTP %d", res.StatusCode)
+		return "", fmt.Errorf("%s release download returned HTTP %d", binary, res.StatusCode)
 	}
 	data, err := io.ReadAll(io.LimitReader(res.Body, maxArchive+1))
 	if err != nil {
@@ -63,9 +74,9 @@ func ensureBinary(ctx context.Context) (string, error) {
 	}
 	sum := sha256.Sum256(data)
 	if len(data) > maxArchive || hex.EncodeToString(sum[:]) != checksum {
-		return "", errors.New("mtg release SHA-256 check failed")
+		return "", fmt.Errorf("%s release SHA-256 check failed", binary)
 	}
-	file, err := extractBinary(data, asset+"/mtg")
+	file, err := extractBinary(data, member)
 	if err != nil {
 		return "", err
 	}

@@ -7,23 +7,35 @@
   </div>
   <div class="panes">
     <div class="pane">
-      <p class="mtp-path">Telegram → this server → BackPack tunnel → MTProxy on Kharej</p>
+      <div class="f">
+        <label for="mtpMode">Proxy mode</label>
+        <select id="mtpMode" class="sel">
+          <option value="native">MTProto · Fake TLS</option>
+          <option value="web">MTProto WEB</option>
+        </select>
+      </div>
+      <p class="mtp-path" id="mtpPath"></p>
       <p id="mtpStatus" class="mtp-status" role="status">Reading tunnel settings…</p>
       <form id="mtpCreate" hidden>
         <div class="f">
-          <label for="mtpHost">Public IP or hostname</label>
+          <label id="mtpHostLabel" for="mtpHost">Public IP or hostname</label>
           <input type="text" id="mtpHost" name="host" required maxlength="253" autocomplete="off">
           <div class="hint">The address Telegram connects to on this side of the tunnel.</div>
         </div>
         <div class="f">
-          <label for="mtpPort">Forwarded TCP port</label>
+          <label id="mtpPortLabel" for="mtpPort">Forwarded TCP port</label>
           <select id="mtpPort" name="port" class="sel" required></select>
           <div class="hint">Choose a port reserved for this proxy.</div>
         </div>
-        <div class="f">
+        <div class="f" id="mtpNative">
           <label for="mtpDomain">Fake TLS hostname</label>
           <input type="text" id="mtpDomain" name="domain" required maxlength="253" placeholder="www.example.com" autocomplete="off">
           <div class="hint">Use a TLS hostname that Kharej can reach. A new secret is generated for this proxy.</div>
+        </div>
+        <div class="f" id="mtpWeb" hidden>
+          <label for="mtpWebIP">Public IP of the HTTPS endpoint</label>
+          <input type="text" id="mtpWebIP" maxlength="45" placeholder="203.0.113.10" autocomplete="off">
+          <div class="hint">WEB uses a public HTTPS domain with a valid certificate on port 443 and a compatible Telegram Desktop build.</div>
         </div>
         <button type="submit" class="bt primary">Create setup</button>
       </form>
@@ -34,7 +46,13 @@
             <input type="text" id="mtpCommand" readonly>
             <button type="button" data-copy="mtpCommand">Copy</button>
           </div>
-          <div class="hint">Starts the proxy on the exit server's loopback port.</div>
+          <div class="hint">Starts the proxy on the destination address shown above.</div>
+        </div>
+        <div class="f" id="mtpFrontendRow" hidden>
+          <label for="mtpFrontend">HTTPS frontend on this server</label>
+          <textarea id="mtpFrontend" readonly rows="5"></textarea>
+          <button type="button" class="bt" data-copy="mtpFrontend">Copy Caddy configuration</button>
+          <div class="hint">Apply this to the public domain. Keep the forwarded HTTP port on loopback.</div>
         </div>
         <div class="f">
           <label for="mtpLink">2 · Open in Telegram</label>
@@ -45,6 +63,19 @@
           <div class="hint">The link contains the proxy secret. Share it with intended users.</div>
         </div>
         <button id="mtpCheck" type="button" class="bt">Test tunnel path</button>
+        <details id="mtpSponsorRow" class="mtp-remove">
+          <summary>Sponsor channel</summary>
+          <div class="f">
+            <label for="mtpRegister">Registration secret</label>
+            <div class="withbtn"><input type="text" id="mtpRegister" readonly><button type="button" data-copy="mtpRegister">Copy</button></div>
+            <div class="hint">Register the public address, port and this secret with @MTProxybot.</div>
+          </div>
+          <div class="f">
+            <label for="mtpSponsor">Sponsor tag (optional)</label>
+            <input type="text" id="mtpSponsor" maxlength="32" autocomplete="off" spellcheck="false">
+          </div>
+          <button id="mtpSaveSponsor" type="button" class="bt">Update setup command</button>
+        </details>
         <details class="mtp-remove">
           <summary>Remove proxy</summary>
           <div class="f">
