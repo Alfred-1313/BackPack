@@ -39,6 +39,11 @@ type NameRequest struct {
 	Name string `json:"name"`
 }
 
+type LinkedPeerRemoval struct {
+	Link string `json:"link"`
+	Name string `json:"name,omitempty"`
+}
+
 // Execute performs one operation and returns the answer.
 //
 // Everything not on the list is refused here rather than at the panel. A node
@@ -138,6 +143,17 @@ func Execute(req Request) Response {
 			return fail(err.Error())
 		}
 		return okBody(nil)
+
+	case OpDeleteLinkedPeer:
+		var removal LinkedPeerRemoval
+		if err := json.Unmarshal(req.Body, &removal); err != nil {
+			return fail("malformed linked peer removal")
+		}
+		name, err := manage.RemoveLinkedPeer(removal.Link, removal.Name)
+		if err != nil {
+			return fail(err.Error())
+		}
+		return okBody(NameRequest{Name: name})
 
 	case OpDelete:
 		var nr NameRequest

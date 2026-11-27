@@ -6,7 +6,7 @@
  * preview: .cfZ / .boxZ.
  */
 
-import { el, esc } from '../lib/dom.js';
+import { copyText, el, esc, flashCopied } from '../lib/dom.js';
 import { svg, paintIcons } from '../lib/icons.js';
 
 /* defaultNo puts the safe answer under the cursor and under Enter.
@@ -16,7 +16,7 @@ import { svg, paintIcons } from '../lib/icons.js';
  * question, about a second machine, that the operator did not go looking for.
  * There the reflex to press Enter has to mean "no". */
 export function confirmBox({ title, body, lines = [], go = 'Confirm', danger = false, icon,
-                             defaultNo = false }) {
+                             defaultNo = false, command = '' }) {
   return new Promise(resolve => {
     const scrim = el('div', { class: 'cfZ' }, el('div', { class: 'veilZ' }));
     const box = el('div', { class: 'boxZ' + (danger ? ' danger' : '') }, [
@@ -45,8 +45,19 @@ export function confirmBox({ title, body, lines = [], go = 'Confirm', danger = f
         ? el('div', { class: 'listZ' },
             lines.map(l => el('div', { html: svg(l.icon || 'logs') + `<code>${esc(l.text)}</code>` })))
         : null,
+      command ? el('div', { class: 'listZ remove-command' }, [
+        el('textarea', { readonly: true, rows: 3, 'aria-label': 'Kharej removal command', text: command }),
+      ]) : null,
       el('div', { class: 'actZ' }, [
-        el('button', { on: { click: () => done(false) } }, 'Cancel'),
+        command ? el('button', { 'data-copy-command': '', on: { click: async event => {
+          const button = event.currentTarget;
+          if (await copyText(command)) flashCopied(button, true);
+          else {
+            const input = box.querySelector('textarea');
+            input.focus();
+            input.select();
+          }
+        } } }, 'Copy command') : el('button', { on: { click: () => done(false) } }, 'Cancel'),
         el('button', { class: 'go', on: { click: () => done(true) } }, go),
       ]),
       el('div', { class: 'escZ', html: defaultNo
@@ -62,7 +73,7 @@ export function confirmBox({ title, body, lines = [], go = 'Confirm', danger = f
 
     const key = ev => {
       if (ev.key === 'Escape') done(false);
-      if (ev.key === 'Enter') done(!defaultNo);
+      if (ev.key === 'Enter' && !ev.target.closest?.('[data-copy-command], textarea')) done(!defaultNo);
     };
     function done(answer) {
       document.removeEventListener('keydown', key);

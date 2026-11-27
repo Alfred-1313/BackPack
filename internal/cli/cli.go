@@ -79,6 +79,7 @@ const usage = `backpack — non-interactive commands
                                         set what a tunnel has carried back to zero (restarts it)
   backpack check -c <file>              validate a config without starting it
   backpack link apply [--name N] [--host IP] '<setup link>'
+  backpack link remove [--name N] '<removal link>'
                                         build and start the tunnel a setup link describes
   backpack proxy enable <socks5|http> <port> [--user U --pass P]
   backpack proxy disable | status [--json]
@@ -522,9 +523,10 @@ func humanBytes(n uint64) string {
 // applyLink and awaitLink are what `link apply` calls; variables so a test can
 // see what it would have done without a machine to do it on.
 var (
-	applyLink = manage.ApplySetupLink
-	awaitLink = manage.AwaitLinkedTunnel
-	isRoot    = func() bool { return os.Geteuid() == 0 }
+	applyLink  = manage.ApplySetupLink
+	awaitLink  = manage.AwaitLinkedTunnel
+	removeLink = manage.RemoveLinkedPeer
+	isRoot     = func() bool { return os.Geteuid() == 0 }
 	// runConnTest is the kharej's side of a Connection Test, printing as it
 	// goes: a test takes minutes and the person running it should see it move.
 	runConnTest = manage.RunConnTestKharejTUI
@@ -537,8 +539,11 @@ var linkAwait = 25 * time.Second
 // link the Iran server printed, with nothing asked. It is also what the
 // one-line install runs once Backpack is on the machine.
 func runLink(args []string) Result {
+	if len(args) > 0 && args[0] == "remove" {
+		return runLinkRemove(args[1:])
+	}
 	if len(args) == 0 || args[0] != "apply" {
-		return fail(CodeUsage, "link needs a subcommand: apply\n\n%s", usage)
+		return fail(CodeUsage, "link needs a subcommand: apply or remove\n\n%s", usage)
 	}
 	var o manage.LinkApplyOptions
 	var link string
@@ -587,6 +592,24 @@ func runLink(args []string) Result {
 		return fail(CodeFailed, "could not set up the tunnel: %v\n", err)
 	}
 	return ReportLink(done)
+}
+
+func runLinkRemove(args []string) Result {
+	var name string
+	if len(args) == 3 && args[0] == "--name" {
+		name, args = args[1], args[2:]
+	}
+	if len(args) != 1 {
+		return fail(CodeUsage, "use backpack link remove [--name N] '<removal link>'\n")
+	}
+	if !isRoot() {
+		return fail(CodeFailed, "run the removal command as root (sudo) on Kharej\n")
+	}
+	removed, err := removeLink(args[0], name)
+	if err != nil {
+		return fail(CodeFailed, "could not remove the Kharej tunnel: %v\n", err)
+	}
+	return ok(fmt.Sprintf("Removed Kharej tunnel %q.\n", removed))
 }
 
 // Progress, when set, receives the lines of a long command as they happen —

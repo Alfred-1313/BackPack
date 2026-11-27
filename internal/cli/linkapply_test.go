@@ -87,3 +87,25 @@ func TestLinkApplyRefusesWhatItCannotDo(t *testing.T) {
 		t.Error("main would not route `backpack link` here")
 	}
 }
+
+func TestLinkRemoveRequiresRootAndKeepsTheExplicitPeerName(t *testing.T) {
+	oldRoot, oldRemove := isRoot, removeLink
+	t.Cleanup(func() { isRoot, removeLink = oldRoot, oldRemove })
+	called := false
+	removeLink = func(link, name string) (string, error) {
+		called = true
+		if link != "backpack-remove://1.test" || name != "foreign" {
+			t.Fatalf("link %q, name %q", link, name)
+		}
+		return name, nil
+	}
+	args := []string{"link", "remove", "--name", "foreign", "backpack-remove://1.test"}
+	isRoot = func() bool { return false }
+	if r := Run(args); r.Code != CodeFailed || called {
+		t.Fatal("removal ran without root")
+	}
+	isRoot = func() bool { return true }
+	if r := Run(args); r.Code != CodeOK || !called || !strings.Contains(r.Out, "foreign") {
+		t.Fatalf("removal output: %+v", r)
+	}
+}

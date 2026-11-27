@@ -592,9 +592,13 @@ export function dashboard(ctx) {
 
     const extra = {};
     if (action === 'delete') {
+      const t = store.tunnel(name);
+      const iran = t?.role !== 'client' && t?.role !== 'kharej';
       const ok = await confirmBox({
         title: `Delete <q>${esc(name)}</q>?`,
-        body: 'Its config and its service are removed. This cannot be undone.',
+        body: iran && !t?.node
+          ? 'Delete this end on Iran, then use the removal command to delete its other end on Kharej.'
+          : 'Its config and its service are removed. This cannot be undone.',
         lines: [
           { text: `/etc/backpack/${name}.toml` },
           { text: `backpack-${name}.service` },
@@ -608,8 +612,7 @@ export function dashboard(ctx) {
          answered "leave it" by every reflex — Esc, Enter and the button under
          the cursor — because saying nothing must not delete something
          somewhere else. */
-      const t = store.tunnel(name);
-      if (t && t.node) {
+      if (iran && t?.node) {
         const far = t.peerName || name;
         const alsoFar = await confirmBox({
           title: `Also delete <q>${esc(far)}</q> on ${esc(t.node)}?`,
@@ -618,6 +621,8 @@ export function dashboard(ctx) {
           go: 'Delete there too', danger: true, defaultNo: true,
         });
         if (alsoFar) extra.alsoFarEnd = '1';
+      } else if (iran) {
+        extra.alsoFarEnd = '1';
       }
     }
     cardEl.style.opacity = '.5';
@@ -627,7 +632,15 @@ export function dashboard(ctx) {
          the button reaches both. When only one end moved, that is the thing
          worth saying — "Tunnel stopped" over a far end still dialling is the
          message that costs somebody an afternoon. */
-      if (r && r.status === 'partial') {
+      if (r?.removeCommand) {
+        store.refresh();
+        await confirmBox({
+          title: 'Remove the Kharej end',
+          body: r.peerHint,
+          command: r.removeCommand,
+          go: 'Done',
+        });
+      } else if (r && r.status === 'partial') {
         toast(r.peerHint || r.peerError || 'Only this end changed.', true);
       } else {
         /* The server says what actually happened when it is not simply "both

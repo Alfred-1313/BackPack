@@ -311,7 +311,8 @@ func (s *server) handleTunnelAction(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing name", http.StatusBadRequest)
 		return
 	}
-	if _, ok := manage.Find(name); !ok {
+	tunnel, ok := manage.Find(name)
+	if !ok {
 		http.Error(w, fmt.Sprintf("no such tunnel %q", name), http.StatusNotFound)
 		return
 	}
@@ -325,49 +326,13 @@ func (s *server) handleTunnelAction(w http.ResponseWriter, r *http.Request) {
 	case "restart":
 		err = manage.Restart(name)
 	case "delete":
-		// Read before the delete, which is what forgets it.
-		pair, paired := manage.PairFor(name)
-		// The far end is its own question, asked separately, and answered here
-		// only if it was answered there. Absent means no — a delete of this end
-		// has never implied one of the other, and it still does not.
-		alsoFar := paired && r.FormValue("alsoFarEnd") == "1"
-
-		err = manage.Delete(name)
-		if err == nil && paired {
-			out := map[string]any{"status": "ok", "node": pair.Node}
-			switch {
-			case !alsoFar:
-				out["note"] = "Removed from this server. The other end is still on " +
-					pair.Node + " — it was not asked to be removed, so remove it there when you want it gone."
-			default:
-				peer := pair.PeerName
-				if peer == "" {
-					peer = name
-				}
-				hub := s.nodes.Runner()
-				if hub == nil || !hub.IsOnline(pair.Node) {
-					out["status"] = "partial"
-					out["peerError"] = pair.Node + " could not be reached, so its end is still there"
-					out["peerHint"] = "Remove " + peer + " on " + pair.Node + " when it is back."
-					break
-				}
-				if derr := hub.Call(pair.Node, node.OpDelete, node.NameRequest{Name: peer}, nil); derr != nil {
-					out["status"] = "partial"
-					out["peerError"] = "this end is gone; " + pair.Node + " refused: " + derr.Error()
-					out["peerHint"] = "Remove " + peer + " on " + pair.Node + " by hand."
-					break
-				}
-				// Deleted on purpose, so it is no longer expected. A record
-				// left behind here would report a tunnel the operator
-				// themselves removed as missing.
-				if s.want != nil {
-					_ = s.want.Forget(pair.Node, peer)
-				}
-				out["note"] = "Removed from both servers."
-			}
-			writeJSON(w, out)
+		out, err := s.deleteTunnelEnds(tunnel, r.FormValue("alsoFarEnd") == "1")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		writeJSON(w, out)
+		return
 	default:
 		http.Error(w, "unknown action", http.StatusBadRequest)
 		return
@@ -377,6 +342,50 @@ func (s *server) handleTunnelAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, s.alsoOnNode(name, action))
+}
+
+func (s *server) deleteTunnelEnds(t manage.Tunnel, alsoFar bool) (map[string]any, error) {
+	pair, paired := manage.PairFor(t.Name)
+	var link string
+	if alsoFar {
+		link, _ = manage.RemovalLinkFor(t)
+	}
+	if err := manage.Delete(t.Name); err != nil {
+		return nil, err
+	}
+	out := map[string]any{"status": "ok", "note": "Removed on Iran."}
+	if !alsoFar {
+		out["note"] = "Removed from this server."
+		return out, nil
+	}
+	if link == "" {
+		out["status"] = "partial"
+		out["peerHint"] = "This tunnel's Kharej end could not be identified. Remove its matching tunnel on Kharej."
+		return out, nil
+	}
+	if paired {
+		peer := node.NameRequest{}
+		run := s.nodes.Runner()
+		if run != nil {
+			// Resolve by identity first, even if the peer was renamed.
+			err := run.Call(pair.Node, node.OpDeleteLinkedPeer, node.LinkedPeerRemoval{Link: link}, &peer)
+			if err == nil {
+				if s.want != nil {
+					_ = s.want.Forget(pair.Node, peer.Name)
+					if pair.PeerName != "" && pair.PeerName != peer.Name {
+						_ = s.want.Forget(pair.Node, pair.PeerName)
+					}
+				}
+				out["note"] = "Removed from both servers."
+				return out, nil
+			}
+			out["peerError"] = err.Error()
+		}
+	}
+	out["status"] = "partial"
+	out["peerHint"] = "Run this command as root on the Kharej server to finish removing the tunnel."
+	out["removeCommand"] = "sudo backpack link remove '" + link + "'"
+	return out, nil
 }
 
 // The direct-tunnel half of the panel's setup form.

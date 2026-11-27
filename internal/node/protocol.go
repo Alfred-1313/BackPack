@@ -77,6 +77,10 @@ const (
 	// end gone, the other end named and left alone.
 	OpDelete = "delete"
 
+	// OpDeleteLinkedPeer only removes a Kharej tunnel whose config matches
+	// the fingerprint supplied by Iran.
+	OpDeleteLinkedPeer = "delete-linked-peer"
+
 	// OpStart, OpStop and OpRestart drive one tunnel's service. Nothing is
 	// written by any of them.
 	//
