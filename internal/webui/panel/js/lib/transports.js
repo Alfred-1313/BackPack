@@ -8,11 +8,17 @@ const sources = new Map([
   ['gretap', 'Gretap'],
   ['l2tpv3', 'VortexL2'],
   ['easytier', 'VortexL2'],
-  ['gost-direct', 'GOST'],
-  ['gost-direct-v2', 'GOST'],
+]);
+
+const gostNames = new Map([
+  ['gost', 'GOST 3'],
+  ['gost-direct', 'GOST 3'],
+  ['gost-direct-v2', 'GOST 2'],
 ]);
 
 export function transportDisplay(id, label) {
+  const gostName = gostNames.get(id);
+  if (gostName) return { name: gostName, source: '' };
   // Use the original transport name even for results saved by an older panel.
   const dagger = id?.replace(/^native-/, '').match(/^dagger-(http|https|xhttp|xhttps|quantum-gaming|quantum\+?|nova|dc6|tun(?:-(tcp|udp|icmp|gre|ipip|bip))?)$/);
   if (dagger) {
@@ -34,5 +40,5 @@ export function transportKey(label) {
 
 export function transportOption(id, label, key = id) {
   const { name, source } = transportDisplay(id, label);
-  return '<b>' + esc(name) + '</b>' + transportKey(source || key);
+  return '<b>' + esc(name) + '</b>' + transportKey(source ?? key);
 }

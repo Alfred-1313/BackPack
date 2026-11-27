@@ -616,8 +616,8 @@ func chooseDirectCarrier(extended bool) (string, bool) {
 	carriers := DirectCarriers()
 	if extended {
 		carriers = append(carriers,
-			map[string]string{"value": gostdirect.ModeV3, "label": "GOST v3.2.6 Direct (Relay + TLS)"},
-			map[string]string{"value": gostdirect.ModeV2, "label": "GOST v2.12.0 Direct (Relay + TLS)"},
+			map[string]string{"value": gostdirect.ModeV3, "label": "GOST 3"},
+			map[string]string{"value": gostdirect.ModeV2, "label": "GOST 2"},
 		)
 		for _, item := range omni.Options() {
 			if item["direction"] == "direct" {
