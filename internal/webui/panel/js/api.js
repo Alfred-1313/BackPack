@@ -171,6 +171,8 @@ export const health = () => get('/api/health');
 export const xrayReleases = () => get('/api/xray/releases');
 export const xrayCoreStatus = (id = '') => get('/api/xray/core?id=' + encodeURIComponent(id));
 export const xrayCoreUpdate = version => post('/api/xray/core', { version });
+export const mtProxySetup = name => get('/api/mtproxy?name=' + encodeURIComponent(name));
+export const mtProxyAction = (name, body) => post('/api/mtproxy?name=' + encodeURIComponent(name), body);
 export const linkTestStatus = () => get('/api/linktest');
 export const linkTestRun = name =>
   post('/api/linktest?name=' + encodeURIComponent(name));

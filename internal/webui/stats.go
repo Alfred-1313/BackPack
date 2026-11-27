@@ -39,6 +39,7 @@ type TunnelInfo struct {
 	Carrier      string `json:"carrier"`
 	Addr         string `json:"addr"`
 	Ports        string `json:"ports"`
+	MTProxy      bool   `json:"mtproxy,omitempty"`
 	State        string `json:"state"`
 	Ping         int    `json:"ping"` // milliseconds, -1 = n/a
 	PeerLocation string `json:"peerLocation"`
@@ -224,6 +225,7 @@ func tunnelInfo(t manage.Tunnel, h manage.Health, peersByPort map[string][]peerC
 		Transport:    t.Transport,
 		Addr:         t.Addr,
 		Ports:        ports,
+		MTProxy:      mtProxyEligible(t),
 		BotRelay:     bot,
 		BotRelayPort: relayPort,
 		// The port clients dial. It was declared and documented but

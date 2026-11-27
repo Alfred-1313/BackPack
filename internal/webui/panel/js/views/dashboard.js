@@ -311,6 +311,7 @@ ${st ? `<div class="permenu">
        built through the fleet has never had a way to say. -->
   <!-- The line that builds the other end, as the menu prints it. -->
   <button data-do="share"><span>${svg('link')}</span>${t.transport === 'matrix' ? 'Matrix nodes & ports' : 'Setup link…'}</button>
+  ${t.mtproxy ? `<button data-do="mtproxy"><span>${svg('link')}</span>MTProxy…</button>` : ''}
   ${t.node
     ? `<button data-do="unlink"><span>${svg('link')}</span>Unlink from ${esc(t.node)}</button>`
     : `<button data-do="adopt"><span>${svg('link')}</span>Link to a server…</button>`}
@@ -574,6 +575,7 @@ export function dashboard(ctx) {
     cardEl.querySelector('.card-more').classList.remove('on');
 
     if (action === 'share') { go(`/t/${encodeURIComponent(name)}/share`); return; }
+    if (action === 'mtproxy') { go(`/t/${encodeURIComponent(name)}/mtproxy`); return; }
     if (action === 'adopt') { await linkToServer(name); store.refresh(); return; }
     if (action === 'unlink') {
       const t = store.tunnel(name);

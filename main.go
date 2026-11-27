@@ -17,6 +17,7 @@ import (
 	"github.com/backpack/backpack/internal/manage"
 	"github.com/backpack/backpack/internal/menu"
 	"github.com/backpack/backpack/internal/monitor"
+	"github.com/backpack/backpack/internal/mtproxy"
 	"github.com/backpack/backpack/internal/omni"
 	"github.com/backpack/backpack/internal/telegram"
 	"github.com/backpack/backpack/internal/transportprobe"
@@ -52,6 +53,16 @@ func exitCLI(r cli.Result) {
 //   - Menu mode:    `backpack`  (no arguments)
 //     Opens the interactive management CLI on the VPS.
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "mtproxy" {
+		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		err := mtproxy.Command(ctx, os.Args[2:], os.Stdin, os.Stdout)
+		cancel()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	if len(os.Args) == 3 && os.Args[2] == "join" && (os.Args[1] == "dagger" || os.Args[1] == "backhaul") {
 		join, label := manage.JoinDagger, "DaggerConnect"
 		if os.Args[1] == "backhaul" {

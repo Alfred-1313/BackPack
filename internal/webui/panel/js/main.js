@@ -113,6 +113,7 @@ const addView      = lazy(() => import('./views/add.js'), 'addView');
 const settingsView = lazy(() => import('./views/settings.js'), 'settingsView');
 const shareView    = lazy(() => import('./views/share.js'), 'shareView');
 const quotaView    = lazy(() => import('./views/quota.js'), 'quotaView');
+const mtProxyView  = lazy(() => import('./views/mtproxy.js'), 'mtProxyView');
 const maintView    = lazy(() => import('./views/maint.js'), 'maintView');
 const undoView     = lazy(() => import('./views/maint.js'), 'undoView');
 const alertsView   = lazy(() => import('./views/monitor.js'), 'alertsView');
@@ -169,6 +170,7 @@ router.route('/t/:name/history', over(historyView));
 router.route('/t/:name/link',    over(linkTestView));
 router.route('/t/:name/share',   over(shareView));
 router.route('/t/:name/quota',   over(quotaView));
+router.route('/t/:name/mtproxy', over(mtProxyView));
 router.route('/t/:name/edit',    over(editView));
 router.route('/t/:name/undo',    over(undoView));
 

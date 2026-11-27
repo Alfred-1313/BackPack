@@ -1,0 +1,10 @@
+.dlg.mtproxy { width: min(560px, 100%); height: auto; }
+.mtproxy .df { justify-content: flex-end; }
+.mtproxy .mtp-path { margin: 0 0 17px; padding: 10px 12px; border-radius: 10px; background: var(--sunk); color: var(--tx2); font-size: 12px; line-height: 1.5; }
+.mtproxy .mtp-status { margin: 0 0 14px; color: var(--mu); font-size: 12px; line-height: 1.5; }
+.mtproxy .mtp-status:empty { display: none; }
+.mtproxy .mtp-status.error { color: var(--er); }
+.mtproxy select.sel { display: block; }
+.mtproxy .withbtn input { min-width: 0; }
+.mtproxy .mtp-remove { margin-top: 17px; border-top: 1px solid var(--ln); padding-top: 12px; }
+.mtproxy .mtp-remove summary { cursor: pointer; font-size: 12px; color: var(--mu); margin-bottom: 10px; }

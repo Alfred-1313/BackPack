@@ -1,0 +1,60 @@
+<div class="dlg mtproxy" role="dialog" aria-modal="true" aria-labelledby="mtpTitle">
+  <div class="dh">
+    <div class="ttl"><b id="mtpTitle">MTProxy</b><small id="mtpSubtitle"></small></div>
+    <button class="x" type="button" data-close aria-label="Close">
+      <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+  <div class="panes">
+    <div class="pane">
+      <p class="mtp-path">Telegram → this server → BackPack tunnel → MTProxy on Kharej</p>
+      <p id="mtpStatus" class="mtp-status" role="status">Reading tunnel settings…</p>
+      <form id="mtpCreate" hidden>
+        <div class="f">
+          <label for="mtpHost">Public IP or hostname</label>
+          <input type="text" id="mtpHost" name="host" required maxlength="253" autocomplete="off">
+          <div class="hint">The address Telegram connects to on this side of the tunnel.</div>
+        </div>
+        <div class="f">
+          <label for="mtpPort">Forwarded TCP port</label>
+          <select id="mtpPort" name="port" class="sel" required></select>
+          <div class="hint">Choose a port reserved for this proxy.</div>
+        </div>
+        <div class="f">
+          <label for="mtpDomain">Fake TLS hostname</label>
+          <input type="text" id="mtpDomain" name="domain" required maxlength="253" placeholder="www.example.com" autocomplete="off">
+          <div class="hint">Use a TLS hostname that Kharej can reach. A new secret is generated for this proxy.</div>
+        </div>
+        <button type="submit" class="bt primary">Create setup</button>
+      </form>
+      <section id="mtpResult" hidden>
+        <div class="f">
+          <label for="mtpCommand">1 · Run on Kharej</label>
+          <div class="withbtn">
+            <input type="text" id="mtpCommand" readonly>
+            <button type="button" data-copy="mtpCommand">Copy</button>
+          </div>
+          <div class="hint">Starts the proxy on the exit server's loopback port.</div>
+        </div>
+        <div class="f">
+          <label for="mtpLink">2 · Open in Telegram</label>
+          <div class="withbtn">
+            <input type="text" id="mtpLink" readonly>
+            <button type="button" data-copy="mtpLink">Copy link</button>
+          </div>
+          <div class="hint">The link contains the proxy secret. Share it with intended users.</div>
+        </div>
+        <button id="mtpCheck" type="button" class="bt">Test tunnel path</button>
+        <details class="mtp-remove">
+          <summary>Remove proxy</summary>
+          <div class="f">
+            <label for="mtpRemove">Run on Kharej first</label>
+            <div class="withbtn"><input type="text" id="mtpRemove" readonly><button type="button" data-copy="mtpRemove">Copy</button></div>
+          </div>
+          <button id="mtpClear" type="button" class="bt">Clear saved setup</button>
+        </details>
+      </section>
+    </div>
+  </div>
+  <div class="df"><span class="sp"></span><button class="bt" type="button" data-close>Close</button></div>
+</div>
