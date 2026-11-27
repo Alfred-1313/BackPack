@@ -669,7 +669,11 @@ func ReportLink(done manage.LinkApplied) Result {
 		say("  %s Running. It connects as soon as the Iran server dials in.\n%s", ok, rule)
 		return Result{Out: b.String()}
 	}
-	say("  %s Waiting for the Iran server …\n", paint("33", "◌"))
+	waitingFor := "the Iran server"
+	if done.Transport == "matrix" {
+		waitingFor = "the Matrix peer"
+	}
+	say("  %s Waiting for %s …\n", paint("33", "◌"), waitingFor)
 	check := done.AwaitPeer
 	if check == nil {
 		check = func(within time.Duration) (bool, string) { return awaitLink(done.Name, within) }
