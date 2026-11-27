@@ -300,6 +300,7 @@ export const proxyTest = () => post('/api/manage/proxy', new URLSearchParams({ a
 export const tunnelLink = (name, host = '') =>
   get('/api/tunnel/link?name=' + encodeURIComponent(name) + (host ? '&host=' + encodeURIComponent(host) : ''));
 export const matrixStatus = name => get('/api/matrix?name=' + encodeURIComponent(name));
+export const matrixSuggestSubnet = previous => get('/api/matrix?suggest=subnet&previous=' + encodeURIComponent(previous));
 export const matrixCreate = form => post('/api/matrix', { action: 'create', form });
 export const matrixInvite = name => post('/api/matrix', { action: 'invite', name });
 export const matrixEdit = edit => post('/api/matrix', { action: 'edit', edit });

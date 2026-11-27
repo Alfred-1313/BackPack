@@ -14,7 +14,13 @@ func (s *server) handleMatrix(w http.ResponseWriter, r *http.Request) {
 	var err error
 	switch r.Method {
 	case http.MethodGet:
-		out, err = manage.ReadMatrixStatus(r.URL.Query().Get("name"))
+		query := r.URL.Query()
+		if query.Get("suggest") == "subnet" {
+			subnet, suggestErr := manage.SuggestMatrixSubnet(query.Get("previous"))
+			out, err = map[string]string{"subnet": subnet.String()}, suggestErr
+		} else {
+			out, err = manage.ReadMatrixStatus(query.Get("name"))
+		}
 	case http.MethodPost:
 		var request struct {
 			Action string

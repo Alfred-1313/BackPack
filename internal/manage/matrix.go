@@ -85,12 +85,14 @@ func matrixSubnetAvailable(block netip.Prefix) error {
 	return nil
 }
 
-func freeMatrixSubnet() (netip.Prefix, error) {
+// SuggestMatrixSubnet finds a private /24 available on this server.
+func SuggestMatrixSubnet(previous string) (netip.Prefix, error) {
+	exclude, _ := netip.ParsePrefix(strings.TrimSpace(previous))
 	offset := rand.IntN(256)
 	for i := range 256 {
 		ip := netip.AddrFrom4([4]byte{10, 203, byte(offset + i), 0})
 		block := netip.PrefixFrom(ip, 24)
-		if matrixSubnetAvailable(block) == nil {
+		if block != exclude.Masked() && matrixSubnetAvailable(block) == nil {
 			return block, nil
 		}
 	}
@@ -125,7 +127,7 @@ func StartMatrixSetup(ctx, lifetime context.Context, f MatrixForm) (SetupLinkInf
 	}
 	var block netip.Prefix
 	if strings.TrimSpace(f.Subnet) == "" {
-		block, err = freeMatrixSubnet()
+		block, err = SuggestMatrixSubnet("")
 	} else {
 		block, err = matrix.Subnet(strings.TrimSpace(f.Subnet))
 		if err == nil {

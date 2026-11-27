@@ -131,9 +131,20 @@ export function addView(ctx) {
         el('option', { value: 'iran', text: 'Iran (this server)' }),
       ]);
       const matrixSubnet = el('input', { id: 'matrixSubnet', type: 'text', placeholder: 'Automatic or 10.203.42.0/24', spellcheck: 'false' });
+      const randomMatrixSubnet = el('button', { type: 'button', class: 'mini3 rnd', text: 'Random', 'aria-label': 'Choose a random private network', 'aria-controls': matrixSubnet.id });
+      randomMatrixSubnet.addEventListener('click', async () => {
+        const previous = matrixSubnet.value;
+        randomMatrixSubnet.disabled = true;
+        try {
+          const { subnet } = await api.matrixSuggestSubnet(previous);
+          if (matrixSubnet.value === previous) matrixSubnet.value = subnet;
+        } catch (e) { oops(e); }
+        finally { randomMatrixSubnet.disabled = false; }
+      });
       const matrixRows = [
         el('div', { class: 'f3', hidden: true }, el('label', { for: 'matrixMain', text: 'Main server' }), matrixMain),
-        el('div', { class: 'f3', hidden: true }, el('label', { for: 'matrixSubnet', text: 'Private network' }), matrixSubnet),
+        el('div', { class: 'f3', hidden: true }, el('label', { for: 'matrixSubnet', text: 'Private network' }),
+          el('div', { class: 'withb' }, matrixSubnet, randomMatrixSubnet)),
       ];
       directFields.querySelector('[name="name"]').closest('.f3').after(...matrixRows);
       const tokenWrap = el('div', { class: 'withb' });
