@@ -35,16 +35,17 @@ type TunnelInfo struct {
 	// has to learn about every new tunnel kind, and the place nobody remembers
 	// to update. "l3/pck" on a card was the symptom: an internal name, leaking
 	// out because there was one field where there are two facts.
-	Direction    string `json:"direction"`
-	Carrier      string `json:"carrier"`
-	Addr         string `json:"addr"`
-	Ports        string `json:"ports"`
-	MTProxy      bool   `json:"mtproxy,omitempty"`
-	State        string `json:"state"`
-	Ping         int    `json:"ping"` // milliseconds, -1 = n/a
-	PeerLocation string `json:"peerLocation"`
-	PeerISP      string `json:"peerISP"`
-	BotRelay     bool   `json:"botRelay"` // has a hidden port used for the Telegram relay
+	Direction    string  `json:"direction"`
+	Carrier      string  `json:"carrier"`
+	Addr         string  `json:"addr"`
+	Ports        string  `json:"ports"`
+	MTProxy      bool    `json:"mtproxy,omitempty"`
+	MTProxyBytes *uint64 `json:"mtproxyBytes,omitempty"`
+	State        string  `json:"state"`
+	Ping         int     `json:"ping"` // milliseconds, -1 = n/a
+	PeerLocation string  `json:"peerLocation"`
+	PeerISP      string  `json:"peerISP"`
+	BotRelay     bool    `json:"botRelay"` // has a hidden port used for the Telegram relay
 	// BotRelayPort is the loopback port that relay listens on. It is shown on
 	// its own, under its own name, rather than as the raw mapping: the mapping
 	// reads like something the operator set up and can therefore tidy away,

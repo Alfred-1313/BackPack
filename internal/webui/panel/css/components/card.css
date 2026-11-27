@@ -109,6 +109,9 @@
   border-top:1px solid color-mix(in srgb,var(--tx) 6%,transparent);
   font-size:12px;color:var(--mu)}
 .c7 .mfoot .sp2{flex:1}
+.c7 .mtp-usage{position:relative;z-index:1;display:flex;gap:8px;align-items:center;padding:0 16px 6px;color:var(--mu);font-size:11px}
+.c7 .mtp-usage[hidden]{display:none}
+.c7 .mtp-usage b{color:var(--tx);font-weight:600;font-variant-numeric:tabular-nums}
 /* Left of the band: the bot relay, when there is one, and nothing when there
    is not. It used to carry the change since the last reading, which is a
    number that moves every few seconds and told nobody anything. */

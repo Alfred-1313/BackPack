@@ -17,6 +17,15 @@ import (
 
 const randomStart, randomEnd = 11, 43
 
+// CheckListener authenticates this proxy at its local or forwarded TCP address.
+func (s Setup) CheckListener(ctx context.Context, addr string) error {
+	if s.Mode == ModeWeb {
+		return s.checkWebListener(ctx, addr)
+	}
+	_, err := s.CheckPath(ctx, addr)
+	return err
+}
+
 // CheckPath authenticates the expected MTProxy through the forwarded port.
 // It checks Fake TLS reachability and the secret; an actual Telegram session
 // also depends on connectivity from the exit to Telegram.

@@ -286,6 +286,8 @@ ${field(t, idx)}
     </span>` : ''}`}
 </div>
 
+<div class="mtp-usage" hidden><span>MTProxy</span><b></b></div>
+
 <div class="foot">
   <span class="tot"><i>↓</i>${esc(bytes(t.inBytes || 0))}<i>↑</i>${esc(bytes(t.outBytes || 0))}</span>
   <span class="sp2"></span>
@@ -479,6 +481,9 @@ export function dashboard(ctx) {
         }
         updateSpark(h.el, t, i);
       }
+      const proxyUsage = h.el.querySelector('.mtp-usage');
+      proxyUsage.hidden = t.mtproxyBytes == null;
+      if (!proxyUsage.hidden) proxyUsage.querySelector('b').textContent = bytes(t.mtproxyBytes);
       at = h.el;
     });
   };

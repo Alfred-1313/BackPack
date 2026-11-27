@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/backpack/backpack/config"
 	"github.com/backpack/backpack/internal/app"
 	"github.com/backpack/backpack/internal/manage"
 	"github.com/backpack/backpack/internal/manage/core"
@@ -28,6 +29,7 @@ type mtProxyPort struct {
 	Destination int    `json:"destination"`
 	Bind        string `json:"bind"`
 	listen      string
+	ingress     string
 }
 
 var mtProxyReverseCarriers = []string{
@@ -80,6 +82,7 @@ func mtProxyPorts(t manage.Tunnel, exit, mode string) []mtProxyPort {
 			if (mode == mtproxy.ModeWeb) != net.ParseIP(host).IsLoopback() {
 				continue
 			}
+			ingress := host
 			if host == "" || host == "0.0.0.0" {
 				host = "127.0.0.1"
 			}
@@ -89,7 +92,7 @@ func mtProxyPorts(t manage.Tunnel, exit, mode string) []mtProxyPort {
 			public, _ := strconv.Atoi(port)
 			destination, _ := strconv.Atoi(dest)
 			out = append(out, mtProxyPort{Public: public, Destination: destination,
-				Bind: bind, listen: net.JoinHostPort(host, port)})
+				Bind: bind, listen: net.JoinHostPort(host, port), ingress: ingress})
 		}
 	}
 	return out
@@ -129,6 +132,30 @@ func (d mtProxyDraft) matches(p mtProxyPort) bool {
 	return p.Public == d.Public && p.Destination == d.Setup.Port && p.Bind == d.Setup.BindIP()
 }
 
+const mtProxyDraftDir = app.ConfigDir + "/mtproxy-panel"
+
+func mtProxyModeDir(mode string) string {
+	if mode == mtproxy.ModeWeb {
+		return filepath.Join(mtProxyDraftDir, "web")
+	}
+	return mtProxyDraftDir
+}
+
+func mtProxyExit(cfg config.Config) (string, error) {
+	if cfg.L3.Enabled() && cfg.L3.Carrier != l3.CarrierPck {
+		layer, err := l3.ConfigFromTable(cfg.L3)
+		if err != nil {
+			return "", err
+		}
+		return layer.PeerIP, nil
+	}
+	return "127.0.0.1", nil
+}
+
+func mtProxyHasProxyProtocol(cfg config.Config) bool {
+	return cfg.Server.ProxyProtocol || (cfg.Backhaul.Mux != nil && cfg.Backhaul.Mux.ProxyProtocol)
+}
+
 var mtProxyMu sync.Mutex
 
 func (s *server) handleMTProxy(w http.ResponseWriter, r *http.Request) {
@@ -155,21 +182,17 @@ func (s *server) handleMTProxy(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "could not read the tunnel configuration", http.StatusConflict)
 		return
 	}
-	exit := "127.0.0.1"
-	if cfg.L3.Enabled() && cfg.L3.Carrier != l3.CarrierPck {
-		layer, err := l3.ConfigFromTable(cfg.L3)
-		if err != nil {
-			http.Error(w, "could not read the private tunnel address", http.StatusConflict)
-			return
-		}
-		exit = layer.PeerIP
+	exit, err := mtProxyExit(cfg)
+	if err != nil {
+		http.Error(w, "could not read the private tunnel address", http.StatusConflict)
+		return
 	}
 	ports := mtProxyPorts(t, exit, mode)
 	var note string
 	if mode == mtproxy.ModeWeb && exit != "127.0.0.1" {
 		note = "WEB requires a loopback TCP mapping on both servers. Use a reverse stream tunnel or direct PCK."
 	}
-	if cfg.Server.ProxyProtocol || (cfg.Backhaul.Mux != nil && cfg.Backhaul.Mux.ProxyProtocol) {
+	if mtProxyHasProxyProtocol(cfg) {
 		ports = nil
 		note = "Choose a tunnel with PROXY protocol disabled."
 	}
@@ -185,11 +208,7 @@ func (s *server) handleMTProxy(w http.ResponseWriter, r *http.Request) {
 		return planMTProxyForward(t, ports, public, destination, exit, mode, udp)
 	}
 
-	path := filepath.Join(app.ConfigDir, "mtproxy-panel")
-	if mode == mtproxy.ModeWeb {
-		path = filepath.Join(path, "web")
-	}
-	path = filepath.Join(path, name+".json")
+	path := filepath.Join(mtProxyModeDir(mode), name+".json")
 	mtProxyMu.Lock()
 	locked := true
 	defer func() {

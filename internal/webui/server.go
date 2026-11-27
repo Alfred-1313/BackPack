@@ -196,8 +196,9 @@ func (s *sessionStore) clear() {
 }
 
 type server struct {
-	authMu   sync.Mutex
-	sessions *sessionStore
+	mtProxyTraffic mtProxyTraffic
+	authMu         sync.Mutex
+	sessions       *sessionStore
 
 	// pending holds logins that have passed the password and not yet the
 	// second factor. See totpauth.go for why it is a store of its own rather
@@ -301,6 +302,7 @@ func Serve() error {
 	// fleet after the panel has gone is exactly the thing nobody would notice
 	// until it had finished.
 	srv.ctx = probeCtx
+	go srv.mtProxyTraffic.run(probeCtx)
 
 	// Said once, at startup, into the journal.
 	//
@@ -760,7 +762,9 @@ func (s *server) handleStats(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleTunnels(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, gatherTunnels(s.nodes.Runner()))
+	rows := gatherTunnels(s.nodes.Runner())
+	s.mtProxyTraffic.fill(rows)
+	writeJSON(w, rows)
 }
 
 func (s *server) handleLogs(w http.ResponseWriter, r *http.Request) {

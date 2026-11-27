@@ -239,12 +239,7 @@ func (s Setup) waitReady(ctx context.Context) error {
 	defer tick.Stop()
 	for {
 		probeCtx, stop := context.WithTimeout(ctx, 3*time.Second)
-		var err error
-		if s.Mode == ModeWeb {
-			err = s.checkWebListener(probeCtx, s.Addr())
-		} else {
-			_, err = s.CheckPath(probeCtx, s.Addr())
-		}
+		err := s.CheckListener(probeCtx, s.Addr())
 		stop()
 		if err == nil {
 			return nil
