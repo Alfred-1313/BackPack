@@ -1,18 +1,16 @@
 # Updates & rollback
 
-The fork is currently distributed from source. In your fork checkout, run
-`git pull --ff-only` and then `sudo env BP_BUILD_FROM_SOURCE=1 bash install.sh`.
-Include your installed optional helpers in `BP_HELPERS` to refresh them.
-The steps below apply when a signed release is published on the fork.
-
-The **Update** menu detects a newer GitHub release and installs the prebuilt
-`backpack_linux_<arch>.tar.gz`.
+Choose **Update** (option 8) in the terminal menu to install the newest
+published release from the fork. The menu and web panel are part of the same
+binary. The update verifies the release, takes a restore point, then reloads
+the running web panel. Running tunnels pick up the new binary on their next
+restart.
 
 ## How it downloads
 
 **Direct from GitHub, or through a tunnel peer** when this server cannot reach
 GitHub itself. Both paths terminate TLS at GitHub, so the download is verified
-against the release's published **SHA-256**.
+against the release's published **SHA-256** and its publisher signature.
 
 **An archive that cannot be verified is refused, not installed.** A server that
 can reach neither path installs offline instead — see the offline install
@@ -21,12 +19,12 @@ section in the main README.
 ## Safety net
 
 Before touching anything, Update saves a **restore point**. After installing it
-health-checks the result and **rolls back by itself** if anything fails to come
-back up. You can also roll back on demand from **Update → Restore points**.
+checks the web panel and restores the previous binary if the panel fails to restart.
+Use **Manage → Update Tools → Restore Points** for a manual rollback.
 
 ## Channels
 
-Follow **stable** (default) or **beta** under **Update → Release channel**.
+Follow **stable** (default) or **beta** under **Manage → Update Tools → Release Channel**.
 
 ## Upgrading a very old install
 
@@ -39,11 +37,7 @@ release-based.
 
 ## خلاصهٔ فارسی
 
-برای دریافت نسخهٔ فعلی فورک، داخل پوشهٔ آن `git pull --ff-only` را اجرا
-کن و با `sudo env BP_BUILD_FROM_SOURCE=1 bash install.sh` نصب کن. برای
-به‌روزرسانی ابزارهای اختیاری، نامشان را در `BP_HELPERS` هم قرار بده.
-
-منوی **Update** ریلیز جدیدتر گیت‌هاب را پیدا و نصب می‌کند.
+با انتخاب **Update** (گزینهٔ ۸) از منوی ترمینال، آخرین ریلیز فورک نصب می‌شود. پنل و منو همزمان به‌روز می‌شوند و تونل‌های فعال به کارشان ادامه می‌دهند.
 
 **چطور دانلود می‌کند:** مستقیم از گیت‌هاب، یا **از طریق یک تونل** وقتی خود این
 سرور به گیت‌هاب دسترسی ندارد. هر دو مسیر TLS را در گیت‌هاب terminate می‌کنند، پس
@@ -52,10 +46,10 @@ release-based.
 
 **تور ایمنی:** قبل از دست زدن به چیزی یک **restore point** ذخیره می‌کند، بعد از
 نصب نتیجه را health-check می‌کند و **اگر چیزی بالا نیامد خودش برمی‌گردد عقب**.
-دستی هم می‌شود از `Update → Restore points` برگشت.
+دستی هم می‌شود از `Manage → Update Tools → Restore Points` برگشت.
 
 **کانال:** پیش‌فرض **stable**؛ اگر بخواهی pre-release‌ها را هم بگیری، از
-`Update → Release channel` روی **beta** بگذار.
+`Manage → Update Tools → Release Channel` روی **beta** بگذار.
 
 سروری که به هیچ‌کدام دسترسی ندارد، [آفلاین نصب می‌کند](install.md).
 

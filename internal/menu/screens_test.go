@@ -106,7 +106,7 @@ func TestEveryScreenDrawsAndComesBack(t *testing.T) {
 		{"backup", backupMenu, []string{"Backup"}},
 		{"web panel", webPanelMenu, []string{"Web Panel"}},
 		{"telegram", telegramMenu, []string{"Telegram"}},
-		{"update", updateMenu, []string{"Update"}},
+		{"update tools", updateToolsMenu, []string{"Update Tools"}},
 		{"auto refresh", autoRefreshMenu, []string{"Refresh"}},
 		{"built-in proxy", builtinProxyMenu, []string{"Proxy"}},
 		{"release channel", channelMenu, []string{"Release Channel", "Stable", "Beta"}},
@@ -199,20 +199,28 @@ func TestThePanelSubScreensDrawTheConfigurationTheyAreGiven(t *testing.T) {
 	}
 }
 
-// The relay offer is a decision, not a screen: it is what runs when the release
-// host cannot be reached, and answering it wrongly is the difference between an
-// update that finds another way out and one that gives up. With no tunnel to
-// relay through there is nothing to offer, and it has to say so and return
-// false rather than present an empty list.
-func TestTheRelayOfferSaysSoWhenThereIsNoWayOut(t *testing.T) {
-	var took bool
-	out := plain(drive(t, "\n", func() { took = offerRelay(errors.New("dial github.com: no route to host")) }))
-
-	if took {
-		t.Fatal("the relay offer was accepted when there was nothing to relay through")
+// The main menu selection is all the input an update needs.
+func TestUpdateNeedsNoFurtherInput(t *testing.T) {
+	prev := execSelf
+	t.Cleanup(func() { execSelf = prev })
+	reopened := 0
+	execSelf = func() error { reopened++; return nil }
+	out := plain(drive(t, "", func() {
+		runUpdate(func(logf func(string)) (bool, error) {
+			logf("Installing the update")
+			return true, nil
+		})
+	}))
+	if reopened != 1 || !strings.Contains(out, "Updated.") || strings.Contains(out, "Install The Update") {
+		t.Fatalf("expected an immediate update and reopen, got %q (reopened %d times)", out, reopened)
 	}
-	if !strings.Contains(out, "no route to host") {
-		t.Errorf("the offer does not say why the update failed:\n%s", out)
+	out = plain(drive(t, "", func() {
+		runUpdate(func(func(string)) (bool, error) {
+			return false, errors.New("release unavailable")
+		})
+	}))
+	if reopened != 1 || !strings.Contains(out, "release unavailable") || strings.Contains(out, "Through Tunnel") {
+		t.Fatalf("expected a visible update error without a prompt, got %q", out)
 	}
 }
 

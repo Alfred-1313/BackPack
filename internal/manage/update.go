@@ -202,6 +202,22 @@ func latestTag() (string, error) {
 		lastErr = fmt.Errorf("api via %s: status %d", s.name, resp.StatusCode)
 	}
 
+	// The stable release redirect is also available when the API is rate-limited.
+	if !beta {
+		for _, s := range sources(20 * time.Second) {
+			resp, err := s.client.Get(repoURL() + "/releases/latest")
+			if err != nil {
+				lastErr = err
+				continue
+			}
+			resp.Body.Close()
+			if tag, ok := strings.CutPrefix(resp.Request.URL.String(), repoURL()+"/releases/tag/"); ok &&
+				resp.StatusCode == http.StatusOK && versionValidRe.MatchString(tag) {
+				return tag, nil
+			}
+		}
+	}
+
 	// 2) raw VERSION file — works when the API rate-limits the source's IP.
 	for _, s := range sources(20 * time.Second) {
 		resp, err := s.client.Get(rawURL)
@@ -486,27 +502,11 @@ func extractBinaryTo(archive, dest string) error {
 	return fmt.Errorf("no `backpack` binary found inside the archive")
 }
 
-// ApplyUpdate downloads the latest release and installs it safely:
-// a full snapshot is taken first, the new binary is put in place, every service
-// is restarted and health-checked, and if anything fails to come back up the
-// snapshot is rolled back automatically — so a broken release can never leave
-// the server without working tunnels.
-func ApplyUpdate(logf func(string)) error {
-	if logf == nil {
-		logf = func(string) {}
-	}
-	tag, err := latestTag()
+// downloadVerifiedUpdate returns the archive after verifying its checksum and signature.
+func downloadVerifiedUpdate(tag, dir string, logf func(string)) (string, error) {
+	archive, err := downloadAsset(tag, dir, logf)
 	if err != nil {
-		return err
-	}
-	if !newerVersion(tag, app.Version) {
-		logf("Already up to date (" + app.Version + ").")
-		return nil
-	}
-
-	archive, err := downloadAsset(tag, app.InstallDir, logf)
-	if err != nil {
-		return err
+		return "", err
 	}
 
 	// Confirm the archive is the file the release actually publishes before it
@@ -521,12 +521,12 @@ func ApplyUpdate(logf func(string)) error {
 	sums, want, cerr := fetchChecksums(tag, filepath.Base(archive))
 	if cerr != nil {
 		os.Remove(archive)
-		return fmt.Errorf("could not fetch the checksum list for %s, so the download cannot be "+
+		return "", fmt.Errorf("could not fetch the checksum list for %s, so the download cannot be "+
 			"verified: %w\nInstall offline instead — see the README", tag, cerr)
 	}
 	if want == "" {
 		os.Remove(archive)
-		return fmt.Errorf("release %s publishes no checksum for %s, so the download cannot be "+
+		return "", fmt.Errorf("release %s publishes no checksum for %s, so the download cannot be "+
 			"verified\nInstall offline instead — see the README", tag, filepath.Base(archive))
 	}
 	// The signature first, because it is what says the list itself is the
@@ -534,11 +534,11 @@ func ApplyUpdate(logf func(string)) error {
 	// the check this closes — see releasesig.go.
 	if serr := verifyChecksumSignature(tag, sums); serr != nil {
 		os.Remove(archive)
-		return serr
+		return "", serr
 	}
 	if verr := verifyChecksum(archive, want); verr != nil {
 		os.Remove(archive)
-		return fmt.Errorf("the downloaded release failed verification: %w", verr)
+		return "", fmt.Errorf("the downloaded release failed verification: %w", verr)
 	}
 	if releasesAreSigned() {
 		logf("Signature and checksum verified.")
@@ -547,6 +547,37 @@ func ApplyUpdate(logf func(string)) error {
 		// beside the thing it describes proves the download is intact, not that
 		// it is the publisher's.
 		logf("Checksum verified (this build pins no release key, so the checksum list itself is unverified).")
+	}
+
+	return archive, nil
+}
+
+// ApplyUpdate downloads the latest release and installs it safely:
+// a full snapshot is taken first, the new binary is put in place, every service
+// is restarted and health-checked, and if anything fails to come back up the
+// snapshot is rolled back automatically — so a broken release can never leave
+// the server without working tunnels.
+func ApplyUpdate(logf func(string)) error {
+	lock, err := lockUpdate()
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
+	if logf == nil {
+		logf = func(string) {}
+	}
+	tag, err := latestTag()
+	if err != nil {
+		return err
+	}
+	if !newerVersion(tag, app.Version) {
+		logf("Already up to date (" + app.Version + ").")
+		return nil
+	}
+
+	archive, err := downloadVerifiedUpdate(tag, app.InstallDir, logf)
+	if err != nil {
+		return err
 	}
 
 	// Snapshot BEFORE touching anything, so we can always get back.

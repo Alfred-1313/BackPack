@@ -52,8 +52,12 @@ func Run() {
 	// redraw — the notice simply appears once the check comes back.
 	go manage.RefreshUpdateCheckIfStale(6 * time.Hour)
 
+	keepUpdateOutput := false
 	for {
-		tui.Clear()
+		if !keepUpdateOutput {
+			tui.Clear()
+		}
+		keepUpdateOutput = false
 		tui.Logo(app.Version)
 		printUpdateBanner()
 		tui.Rule()
@@ -86,7 +90,8 @@ func Run() {
 		case "7":
 			telegramMenu()
 		case "8":
-			updateMenu()
+			runUpdate(manage.ApplyMenuUpdate)
+			keepUpdateOutput = true
 		case "9":
 			uninstallMenu()
 		case "11":

@@ -180,6 +180,11 @@ func runBounded(bin string, d time.Duration, args ...string) (string, error) {
 // means the next update finds a stale file and offers to install a version
 // older than the one already running.
 func ApplyLocalUpdate(u LocalUpdate, logf func(string)) error {
+	lock, err := lockUpdate()
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
 	if logf == nil {
 		logf = func(string) {}
 	}

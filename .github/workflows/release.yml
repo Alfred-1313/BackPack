@@ -104,13 +104,12 @@ jobs:
       - name: Build release assets
         # The cgo variables the test step exported are for the runner's own
         # libpcap; build-linux.sh sets its own per architecture.
-        # RELEASE_SIGNING_KEY signs release/SHA256SUMS. Without it the build
-        # still produces every asset and simply publishes no signature, which
-        # is what a fork gets — and what this repository got until a key was
-        # generated. See tools/signsums and internal/manage/releasesig.go.
+        # Updaters pin the fork's signing key, so require a signed release.
         env:
           RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
-        run: make release
+        run: |
+          make release
+          test -s release/SHA256SUMS.sig
 
       - name: Verify the tag matches the built version
         env:

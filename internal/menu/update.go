@@ -17,29 +17,20 @@ import (
 	"github.com/backpack/backpack/internal/tui"
 )
 
-// updateMenu offers a safe update and the restore points it creates.
-func updateMenu() {
+func updateToolsMenu() {
 	for {
 		tui.Clear()
-		tui.Title("Update Backpack")
-		tui.Warn("Version : " + app.Version)
-		tui.Warn("Channel : " + manage.ChannelLabel())
-		fmt.Println()
-
-		idx := tui.ChooseOpt("Update", []tui.Option{
-			{Title: "Check For Updates", Desc: "with automatic rollback"},
+		idx := tui.ChooseOpt("Update Tools", []tui.Option{
 			{Title: "Install From A File", Desc: localUpdateDesc()},
 			{Title: "Restore Points", Desc: "go back to a previous version"},
 			{Title: "Release Channel", Desc: "stable, or also pre-releases"},
 		})
 		switch idx {
 		case 0:
-			runUpdate()
-		case 1:
 			runLocalUpdate()
-		case 2:
+		case 1:
 			restorePointMenu()
-		case 3:
+		case 2:
 			channelMenu()
 		default:
 			return
@@ -149,111 +140,20 @@ func channelMenu() {
 	tui.PressEnter()
 }
 
-// runUpdate checks for and installs a newer release. A restore point is taken
-// first and the update rolls itself back if the services do not come back up.
-func runUpdate() {
+// runUpdate applies the latest release in one step and reopens the menu.
+func runUpdate(apply func(func(string)) (bool, error)) {
 	tui.Clear()
-	tui.Title("Check For Updates")
-	fmt.Println()
-	tui.Info("Checking GitHub...")
-
-	available, summary, err := manage.CheckUpdate()
-	if err != nil {
-		// Nothing could be reached. On the machine this matters most for — an
-		// Iran server with working tunnels and no route to GitHub — the way out
-		// is running the whole time, so offer it rather than stopping here.
-		if !offerRelay(err) {
-			return
-		}
-		available, summary, err = manage.CheckUpdate()
-		if err != nil {
-			tui.Error(err.Error())
-			tui.PressEnter()
-			return
-		}
-	}
-	if !available {
-		tui.Success(summary)
-		tui.PressEnter()
-		return
-	}
-
-	tui.Warn(summary)
-	fmt.Println()
-	tui.Info("A Restore Point Is Taken First; A Failed Update Rolls Back.")
-	fmt.Println()
-	if !tui.Confirm("Install The Update", true) {
-		return
-	}
-	fmt.Println()
-	err = manage.ApplyUpdate(func(l string) { tui.Info("• " + l) })
-	// The check reads a few hundred bytes and the download tens of megabytes,
-	// so a route that answered the first can still fail the second. The same
-	// offer applies, and only when a tunnel has not already been chosen.
-	if err != nil && !manage.RelayChosen() {
-		fmt.Println()
-		if offerRelay(err) {
-			err = manage.ApplyUpdate(func(l string) { tui.Info("• " + l) })
-		}
-	}
+	tui.Title("Update Backpack")
+	tui.Info("Checking the fork for updates...")
+	updated, err := apply(func(line string) { tui.Info("• " + line) })
 	if err != nil {
 		tui.Error("Update failed: " + err.Error())
-		tui.PressEnter()
 		return
 	}
-	tui.Success("Updated.")
-	tui.PressEnter()
-	reopen()
-}
-
-// offerRelay asks whether to fetch the update through one of the tunnels, and
-// arranges it if so. It reports whether to carry on.
-//
-// The choice is put to the operator rather than made for them because taking it
-// costs something: a tunnel that does not already expose the relay port has to
-// be restarted to gain it, which interrupts whatever it is carrying for a
-// moment. Tunnels that need no restart are offered first and say so.
-func offerRelay(reason error) bool {
-	options := manage.RelayOptions()
-	if len(options) == 0 {
-		tui.Error(reason.Error())
-		fmt.Println()
-		tui.Warn("No Tunnel Is Online Either — Use Install From A File.")
-		tui.PressEnter()
-		return false
+	if updated {
+		tui.Success("Updated.")
+		reopen()
 	}
-
-	tui.Error(reason.Error())
-	fmt.Println()
-	tui.Info("GitHub Is Unreachable — Fetch Through A Tunnel:")
-	fmt.Println()
-
-	opts := make([]tui.Option, len(options))
-	for i, o := range options {
-		desc := "restarts this tunnel briefly to open the relay port"
-		if o.Ready {
-			desc = "already carries the relay port — costs nothing"
-		}
-		opts[i] = tui.Option{Title: o.Name, Desc: desc}
-	}
-	idx := tui.ChooseOpt("Through Tunnel", opts)
-	if idx < 0 || idx >= len(options) {
-		return false
-	}
-
-	chosen := options[idx]
-	if !chosen.Ready {
-		fmt.Println()
-		tui.Warn("This Restarts " + chosen.Name + " For A Moment.")
-		if !tui.Confirm("Go Ahead", true) {
-			return false
-		}
-	}
-
-	manage.UseRelay(chosen.Name)
-	fmt.Println()
-	tui.Info("Fetching through " + chosen.Name + "...")
-	return true
 }
 
 // restorePointMenu lists saved restore points and can roll back to one.
@@ -311,7 +211,6 @@ func reopen() {
 	tui.Info("Opening The New Version...")
 	if err := execSelf(); err != nil {
 		tui.Warn("Could Not Reopen (" + err.Error() + ") — Run sudo backpack Again.")
-		tui.PressEnter()
 	}
 }
 

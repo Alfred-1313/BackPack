@@ -26,6 +26,7 @@ func manageMenu() {
 			{Title: "Auto Refresh", Desc: "restart all every N hours — " + refreshLabel()},
 			{Title: "Built-in Proxy", Desc: "SOCKS5/HTTP backend — " + proxyLabel()},
 			{Title: "File Locations", Desc: "configs, services, backups"},
+			{Title: "Update Tools", Desc: "offline install, restore points and release channel"},
 		})
 
 		switch idx {
@@ -55,6 +56,8 @@ func manageMenu() {
 			builtinProxyMenu()
 		case 11:
 			manage.FileLocations()
+		case 12:
+			updateToolsMenu()
 		default:
 			return
 		}

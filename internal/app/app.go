@@ -13,7 +13,7 @@ const (
 	ConnTestParentPipe = "BACKPACK_CONNTEST_PARENT_PIPE"
 
 	// Version of the backpack engine.
-	Version = "v2.0.0"
+	Version = "v2.0.1"
 
 	// RepoOwner/RepoName identify the GitHub repository used by the installer
 	// and the release-based updater.
@@ -111,7 +111,7 @@ func ServiceName(name string) string {
 // A var rather than a const so a test can pin a key of its own — the same
 // reason node.StorePath and optimize.sysctlFile are vars. Nothing at runtime
 // writes it.
-var ReleasePublicKey = "uDVeC9NUFceAuhg53ZWbBNTVSaMC8tEvtwWmcDZmV9Q="
+var ReleasePublicKey = "8u3oNNmz6dwGsbYnHo5LLXsYnMco2Q4rnYHiGTKYHnI="
 
 // TunnelConfigMode is the permission a tunnel's TOML config is written with.
 //
