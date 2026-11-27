@@ -45,7 +45,7 @@
           <label for="mtpPortCommand">Check the port on Kharej</label>
           <div class="withbtn">
             <input type="text" id="mtpPortCommand" readonly>
-            <button type="button" data-copy="mtpPortCommand">Copy</button>
+            <button type="button" data-copy="mtpPortCommand" data-copy-own="1">Copy</button>
           </div>
           <label class="mtp-second-label" for="mtpPortResult">Check result</label>
           <input type="text" id="mtpPortResult" autocomplete="off" spellcheck="false" placeholder="Paste the MTPORT line from Kharej">
@@ -61,40 +61,43 @@
           <input type="text" id="mtpWebIP" maxlength="45" placeholder="203.0.113.10" autocomplete="off">
           <div class="hint">WEB uses a public HTTPS domain with a valid certificate on port 443 and a compatible Telegram Desktop build.</div>
         </div>
-        <button type="submit" class="bt primary">Create setup</button>
+        <div id="mtpReplaceNotice" class="mtp-path" hidden>
+          The new setup replaces the current proxy. Remove the current setup before creating it.
+        </div>
       </form>
       <section id="mtpResult" hidden>
         <div class="f">
           <label for="mtpCommand">1 · Run on Kharej</label>
           <div class="withbtn">
             <input type="text" id="mtpCommand" readonly>
-            <button type="button" data-copy="mtpCommand">Copy</button>
+            <button type="button" data-copy="mtpCommand" data-copy-own="1">Copy</button>
           </div>
           <div class="hint">Starts the proxy on the destination address shown above.</div>
         </div>
         <div class="f" id="mtpFrontendRow" hidden>
           <label for="mtpFrontend">HTTPS frontend on this server</label>
           <textarea id="mtpFrontend" readonly rows="5"></textarea>
-          <button type="button" class="bt" data-copy="mtpFrontend">Copy Caddy configuration</button>
+          <button type="button" class="bt" data-copy="mtpFrontend" data-copy-own="1">Copy Caddy configuration</button>
           <div class="hint">Apply this to the public domain. Keep the forwarded HTTP port on loopback.</div>
         </div>
         <div class="f">
           <label for="mtpLink">2 · Open in Telegram</label>
           <div class="withbtn">
             <input type="text" id="mtpLink" readonly>
-            <button type="button" data-copy="mtpLink">Copy link</button>
+            <button type="button" data-copy="mtpLink" data-copy-own="1">Copy link</button>
           </div>
           <div class="hint">The link contains the proxy secret. Share it with intended users.</div>
         </div>
         <div class="mtp-actions">
           <button id="mtpCheck" type="button" class="bt">Test proxy</button>
+          <button id="mtpEditPorts" type="button" class="bt">Change ports</button>
           <button id="mtpDelete" type="button" class="bt mtp-danger">Delete proxy</button>
         </div>
         <details id="mtpSponsorRow" class="mtp-remove">
           <summary>Sponsor channel</summary>
           <div class="f">
             <label for="mtpRegister">Registration secret</label>
-            <div class="withbtn"><input type="text" id="mtpRegister" readonly><button type="button" data-copy="mtpRegister">Copy</button></div>
+            <div class="withbtn"><input type="text" id="mtpRegister" readonly><button type="button" data-copy="mtpRegister" data-copy-own="1">Copy</button></div>
             <div class="hint">Register the public address, port and this secret with @MTProxybot.</div>
           </div>
           <div class="f">
@@ -103,18 +106,30 @@
           </div>
           <button id="mtpSaveSponsor" type="button" class="bt">Update setup command</button>
         </details>
-        <section id="mtpRemoval" class="mtp-remove" hidden>
-          <div class="f">
-            <label for="mtpRemove">Run on Kharej first</label>
-            <div class="withbtn"><input type="text" id="mtpRemove" readonly><button type="button" data-copy="mtpRemove">Copy</button></div>
-          </div>
-          <div class="mtp-actions">
-            <button id="mtpClear" type="button" class="bt mtp-danger">Finish removal</button>
-            <button id="mtpCancelRemove" type="button" class="bt">Cancel</button>
-          </div>
-        </section>
+      </section>
+      <section id="mtpRemoval" class="mtp-remove" aria-labelledby="mtpRemoveTitle" hidden>
+        <h3 id="mtpRemoveTitle">Delete proxy</h3>
+        <div id="mtpRemoteRemoval" class="f" hidden>
+          <label for="mtpRemove">Run the remove command on Kharej</label>
+          <div class="withbtn"><input type="text" id="mtpRemove" readonly><button type="button" data-copy="mtpRemove" data-copy-own="1">Copy</button></div>
+          <div class="hint">Then confirm here to remove the setup from this panel.</div>
+        </div>
+        <div class="mtp-actions">
+          <button id="mtpClear" type="button" class="bt mtp-danger">Confirm deletion</button>
+          <button id="mtpCancelRemove" type="button" class="bt">Go back</button>
+        </div>
+        <div id="mtpDiscardRow" class="f mtp-discard" hidden>
+          <p class="hint">If the setup command was never run, you can discard the saved setup here.</p>
+          <button id="mtpDiscard" type="button" class="bt">Discard saved setup</button>
+        </div>
       </section>
     </div>
   </div>
-  <div class="df"><span class="sp"></span><button class="bt" type="button" data-close>Close</button></div>
+  <div class="df">
+    <span class="sp"></span>
+    <button id="mtpBack" class="bt" type="button" hidden>Back to proxy</button>
+    <button class="bt" type="button" data-close>Close</button>
+    <button id="mtpNew" type="button" class="bt primary" hidden>Create new setup</button>
+    <button id="mtpSubmit" type="submit" class="bt primary" form="mtpCreate" hidden>Create proxy</button>
+  </div>
 </div>

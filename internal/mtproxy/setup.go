@@ -109,6 +109,14 @@ func (s Setup) Addr() string { return net.JoinHostPort(s.BindIP(), strconv.Itoa(
 
 func (s Setup) RegistrationSecret() string { return s.Secret[2:34] }
 
+// TLSHostname returns the cover hostname for Fake TLS or the public WEB domain.
+func (s Setup) TLSHostname() string {
+	if s.Mode == ModeWeb {
+		return s.WebHost
+	}
+	return s.domain()
+}
+
 func (s Setup) domain() string {
 	host, _ := hex.DecodeString(s.Secret[34:])
 	return string(host)

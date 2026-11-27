@@ -104,6 +104,7 @@ type mtProxyDraft struct {
 func (d mtProxyDraft) display(port mtProxyPort) map[string]any {
 	out := map[string]any{
 		"address": d.Host, "public": d.Public, "destination": d.Setup.Port,
+		"id": d.Setup.ID(), "domain": d.Setup.TLSHostname(), "webIp": d.Setup.WebIP,
 		"link": d.Setup.Link(d.Host, d.Public), "command": d.Setup.Command(),
 		"remove": "sudo backpack mtproxy remove " + d.Setup.ID(),
 		"bind":   d.Setup.BindIP(), "engine": "Telemt " + mtproxy.Version,
@@ -223,6 +224,7 @@ func (s *server) handleMTProxy(w http.ResponseWriter, r *http.Request) {
 			Sponsor     string `json:"sponsor"`
 			Destination int    `json:"destination"`
 			PortResult  string `json:"portResult"`
+			ID          string `json:"id"`
 			Confirmed   bool   `json:"confirmed"`
 		}
 		if err := decodeJSON(w, r, &req); err != nil {
@@ -274,7 +276,7 @@ func (s *server) handleMTProxy(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, status)
 		case "create":
 			if saved {
-				writeJSON(w, draft.display(current))
+				http.Error(w, "remove the current MTProxy setup before creating another one on this tunnel", http.StatusConflict)
 				return
 			}
 			port, forward, err := plan(req.Port, req.Destination)
@@ -355,13 +357,17 @@ func (s *server) handleMTProxy(w http.ResponseWriter, r *http.Request) {
 			}
 			writeJSON(w, map[string]int64{"ms": elapsed.Milliseconds()})
 		case "remove", "clear":
-			if saved && managed {
+			if saved && req.ID != draft.Setup.ID() {
+				http.Error(w, "the MTProxy setup changed. Reopen this dialog and try again", http.StatusConflict)
+				return
+			}
+			if saved && req.Action == "remove" && managed {
 				if err := run.Call(pair.Node, node.OpMTProxyRemove, draft.Setup.ID(), nil); err != nil {
 					http.Error(w, err.Error(), http.StatusBadGateway)
 					return
 				}
 			} else if saved && !req.Confirmed {
-				http.Error(w, "run the removal command on Kharej first", http.StatusBadRequest)
+				http.Error(w, "confirm that the proxy was removed from Kharej or the setup was never run", http.StatusBadRequest)
 				return
 			}
 			if saved && draft.Forward != "" {
