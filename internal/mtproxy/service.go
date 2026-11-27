@@ -13,6 +13,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -50,18 +51,29 @@ func Command(ctx context.Context, args []string, in io.Reader, out io.Writer) er
 		}
 		fmt.Fprintf(out, "MTProxy is listening on %s\n", setup.Addr())
 		return nil
-	case len(args) == 2 && args[0] == "remove":
-		id := args[1]
-		if _, err := hex.DecodeString(id); err != nil || len(id) != 16 {
-			return errors.New("invalid MTProxy instance ID")
+	case len(args) >= 2 && len(args) <= 3 && args[0] == "port":
+		check := PortCheck{Bind: args[1]}
+		if len(args) == 3 {
+			port, err := strconv.Atoi(args[2])
+			if err != nil || port == 0 {
+				return errors.New("enter a port from 1 to 65535, or omit it for a random port")
+			}
+			check.Port = port
 		}
-		if err := withServiceLock(func() error { return remove(id) }); err != nil {
+		status, err := check.Check()
+		if err != nil {
+			return err
+		}
+		fmt.Fprintln(out, check.ResultLine(status))
+		return nil
+	case len(args) == 2 && args[0] == "remove":
+		if err := Remove(args[1]); err != nil {
 			return err
 		}
 		fmt.Fprintln(out, "MTProxy instance removed")
 		return nil
 	default:
-		return errors.New("use backpack mtproxy join or backpack mtproxy remove <id>")
+		return errors.New("use backpack mtproxy join, backpack mtproxy port <bind> [port], or backpack mtproxy remove <id>")
 	}
 }
 
@@ -201,6 +213,13 @@ func (s Setup) enable(ctx context.Context) error {
 		case <-tick.C:
 		}
 	}
+}
+
+func Remove(id string) error {
+	if _, err := hex.DecodeString(id); err != nil || len(id) != 16 {
+		return errors.New("invalid MTProxy instance ID")
+	}
+	return withServiceLock(func() error { return remove(id) })
 }
 
 func remove(id string) error {

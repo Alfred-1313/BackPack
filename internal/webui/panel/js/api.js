@@ -174,7 +174,7 @@ export const xrayCoreStatus = (id = '') => get('/api/xray/core?id=' + encodeURIC
 export const xrayCoreUpdate = version => post('/api/xray/core', { version });
 const mtProxyPath = (name, mode) => '/api/mtproxy?' + new URLSearchParams({ name, mode });
 export const mtProxySetup = (name, mode = 'native') => get(mtProxyPath(name, mode));
-export const mtProxyAction = (name, body, mode = 'native') => post(mtProxyPath(name, mode), body);
+export const mtProxyAction = (name, body, mode = 'native', signal) => post(mtProxyPath(name, mode), body, signal);
 export const linkTestStatus = () => get('/api/linktest');
 export const linkTestRun = name =>
   post('/api/linktest?name=' + encodeURIComponent(name));

@@ -13,6 +13,7 @@ import (
 	"github.com/backpack/backpack/internal/app"
 	"github.com/backpack/backpack/internal/geo"
 	"github.com/backpack/backpack/internal/manage"
+	"github.com/backpack/backpack/internal/mtproxy"
 	"github.com/backpack/backpack/internal/sysstat"
 )
 
@@ -116,6 +117,27 @@ func Execute(req Request) Response {
 			return failf("%s", why)
 		}
 		return okBody(manage.MeasureLink(t))
+
+	case OpMTProxyPort:
+		var check mtproxy.PortCheck
+		if err := json.Unmarshal(req.Body, &check); err != nil {
+			return fail("malformed MTProxy port check")
+		}
+		status, err := check.Check()
+		if err != nil {
+			return fail(err.Error())
+		}
+		return okBody(status)
+
+	case OpMTProxyRemove:
+		var id string
+		if err := json.Unmarshal(req.Body, &id); err != nil {
+			return fail("malformed MTProxy removal")
+		}
+		if err := mtproxy.Remove(id); err != nil {
+			return fail(err.Error())
+		}
+		return okBody(nil)
 
 	case OpDelete:
 		var nr NameRequest

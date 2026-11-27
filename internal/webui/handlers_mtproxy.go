@@ -17,6 +17,7 @@ import (
 	"github.com/backpack/backpack/internal/manage"
 	"github.com/backpack/backpack/internal/manage/core"
 	"github.com/backpack/backpack/internal/mtproxy"
+	"github.com/backpack/backpack/internal/node"
 	"github.com/backpack/backpack/internal/tunnel/l3"
 	"github.com/backpack/backpack/internal/tunnel/portmap"
 )
@@ -94,9 +95,10 @@ func mtProxyPorts(t manage.Tunnel, exit, mode string) []mtProxyPort {
 }
 
 type mtProxyDraft struct {
-	Host   string        `json:"host"`
-	Public int           `json:"public"`
-	Setup  mtproxy.Setup `json:"setup"`
+	Host    string        `json:"host"`
+	Public  int           `json:"public"`
+	Setup   mtproxy.Setup `json:"setup"`
+	Forward string        `json:"forward,omitempty"`
 }
 
 func (d mtProxyDraft) display(port mtProxyPort) map[string]any {
@@ -105,6 +107,7 @@ func (d mtProxyDraft) display(port mtProxyPort) map[string]any {
 		"link": d.Setup.Link(d.Host, d.Public), "command": d.Setup.Command(),
 		"remove": "sudo backpack mtproxy remove " + d.Setup.ID(),
 		"bind":   d.Setup.BindIP(), "engine": "Telemt " + mtproxy.Version,
+		"ownsForward": d.Forward != "",
 	}
 	if d.Setup.Mode == "" {
 		out["engine"] = "mtg " + mtproxy.LegacyVersion
@@ -169,6 +172,17 @@ func (s *server) handleMTProxy(w http.ResponseWriter, r *http.Request) {
 		note = "Choose a tunnel with PROXY protocol disabled."
 	}
 
+	pair, paired := manage.PairFor(name)
+	run := s.nodes.Runner()
+	managed := paired && run != nil
+	udp := (cfg.Server.BindAddr != "" && cfg.Server.ForwardsUDP()) || cfg.L3.AcceptUDP
+	plan := func(public, destination int) (mtProxyPort, string, error) {
+		if note != "" {
+			return mtProxyPort{}, "", fmt.Errorf("%s", note)
+		}
+		return planMTProxyForward(t, ports, public, destination, exit, mode, udp)
+	}
+
 	path := filepath.Join(app.ConfigDir, "mtproxy-panel")
 	if mode == mtproxy.ModeWeb {
 		path = filepath.Join(path, "web")
@@ -193,34 +207,99 @@ func (s *server) handleMTProxy(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		locked = false
 		mtProxyMu.Unlock()
-		out := map[string]any{"ports": ports, "host": panelHost(r), "version": mtproxy.Version, "note": note}
+		out := map[string]any{"ports": ports, "host": panelHost(r), "version": mtproxy.Version, "note": note,
+			"bind": exit, "managed": managed, "active": manage.IsActive(t.Service)}
 		if saved {
 			out["proxy"] = draft.display(current)
 		}
 		writeJSON(w, out)
 	case http.MethodPost:
 		var req struct {
-			Action  string `json:"action"`
-			Host    string `json:"host"`
-			Domain  string `json:"domain"`
-			Port    int    `json:"port"`
-			WebIP   string `json:"webIp"`
-			Sponsor string `json:"sponsor"`
+			Action      string `json:"action"`
+			Host        string `json:"host"`
+			Domain      string `json:"domain"`
+			Port        int    `json:"port"`
+			WebIP       string `json:"webIp"`
+			Sponsor     string `json:"sponsor"`
+			Destination int    `json:"destination"`
+			PortResult  string `json:"portResult"`
+			Confirmed   bool   `json:"confirmed"`
 		}
 		if err := decodeJSON(w, r, &req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 		switch req.Action {
+		case "check-ports":
+			locked = false
+			mtProxyMu.Unlock()
+			errors := map[string]string{}
+			if _, _, err := plan(req.Port, req.Destination); req.Port != 0 && err != nil {
+				errors["public"] = err.Error()
+			}
+			if managed && req.Destination != 0 {
+				check := mtproxy.PortCheck{Bind: exit, Port: req.Destination}
+				var status mtproxy.PortStatus
+				if err := run.Call(pair.Node, node.OpMTProxyPort, check, &status); err != nil {
+					errors["destination"] = err.Error()
+				} else if status.Busy {
+					errors["destination"] = mtProxyBusy(status.Port)
+				}
+			}
+			writeJSON(w, errors)
+		case "random-public":
+			for i := 0; i < 16; i++ {
+				p := manage.SuggestPort()
+				if p == 0 {
+					break
+				}
+				if _, _, err := plan(p, req.Destination); err == nil {
+					writeJSON(w, map[string]int{"port": p})
+					return
+				}
+			}
+			http.Error(w, "could not find a free port on Iran", http.StatusConflict)
+		case "random-destination":
+			locked = false
+			mtProxyMu.Unlock()
+			if !managed {
+				http.Error(w, "run the random port command on Kharej", http.StatusConflict)
+				return
+			}
+			var status mtproxy.PortStatus
+			if err := run.Call(pair.Node, node.OpMTProxyPort, mtproxy.PortCheck{Bind: exit}, &status); err != nil {
+				http.Error(w, err.Error(), http.StatusBadGateway)
+				return
+			}
+			writeJSON(w, status)
 		case "create":
 			if saved {
 				writeJSON(w, draft.display(current))
 				return
 			}
-			port, err := chooseMTProxyPort(ports, req.Port)
+			port, forward, err := plan(req.Port, req.Destination)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusConflict)
+				return
+			}
 			host := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(req.Host), "."))
-			if err != nil || !mtproxy.ValidPublicHost(host) {
-				http.Error(w, "choose a forwarded TCP port and enter the public address", http.StatusBadRequest)
+			if !mtproxy.ValidPublicHost(host) {
+				http.Error(w, "enter the public address", http.StatusBadRequest)
+				return
+			}
+			check := mtproxy.PortCheck{Bind: port.Bind, Port: port.Destination}
+			if managed {
+				var status mtproxy.PortStatus
+				if err := run.Call(pair.Node, node.OpMTProxyPort, check, &status); err != nil {
+					http.Error(w, err.Error(), http.StatusBadGateway)
+					return
+				}
+				if status.Busy {
+					http.Error(w, mtProxyBusy(status.Port), http.StatusConflict)
+					return
+				}
+			} else if !check.ManualResult(req.PortResult) {
+				http.Error(w, "check the destination port on Kharej and paste its FREE result", http.StatusBadRequest)
 				return
 			}
 			domain := req.Domain
@@ -235,7 +314,19 @@ func (s *server) handleMTProxy(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
-			saveMTProxy(w, path, mtProxyDraft{Host: host, Public: port.Public, Setup: setup}, port)
+			draft = mtProxyDraft{Host: host, Public: port.Public, Setup: setup, Forward: forward}
+			if err := writeMTProxyDraft(path, draft); err != nil {
+				http.Error(w, "could not save the MTProxy setup", http.StatusInternalServerError)
+				return
+			}
+			if forward != "" {
+				if err := manage.ApplyMTProxyForward(t, forward, false); err != nil {
+					_ = os.Remove(path)
+					http.Error(w, err.Error(), http.StatusConflict)
+					return
+				}
+			}
+			writeJSON(w, draft.display(port))
 		case "sponsor":
 			tag := strings.ToLower(strings.TrimSpace(req.Sponsor))
 			if mode != mtproxy.ModeNative || !saved || (tag != "" && !mtproxy.ValidTag(tag)) {
@@ -263,7 +354,22 @@ func (s *server) handleMTProxy(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			writeJSON(w, map[string]int64{"ms": elapsed.Milliseconds()})
-		case "clear":
+		case "remove", "clear":
+			if saved && managed {
+				if err := run.Call(pair.Node, node.OpMTProxyRemove, draft.Setup.ID(), nil); err != nil {
+					http.Error(w, err.Error(), http.StatusBadGateway)
+					return
+				}
+			} else if saved && !req.Confirmed {
+				http.Error(w, "run the removal command on Kharej first", http.StatusBadRequest)
+				return
+			}
+			if saved && draft.Forward != "" {
+				if err := manage.ApplyMTProxyForward(t, draft.Forward, true); err != nil {
+					http.Error(w, err.Error(), http.StatusConflict)
+					return
+				}
+			}
 			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 				http.Error(w, "could not remove the saved MTProxy setup", http.StatusInternalServerError)
 				return
@@ -279,18 +385,67 @@ func (s *server) handleMTProxy(w http.ResponseWriter, r *http.Request) {
 }
 
 func saveMTProxy(w http.ResponseWriter, path string, draft mtProxyDraft, port mtProxyPort) {
-	data, err := json.Marshal(draft)
-	if err == nil {
-		err = os.MkdirAll(filepath.Dir(path), 0700)
-	}
-	if err == nil {
-		err = app.WriteFileAtomic(path, data, 0600)
-	}
-	if err != nil {
+	if err := writeMTProxyDraft(path, draft); err != nil {
 		http.Error(w, "could not save the MTProxy setup", http.StatusInternalServerError)
 		return
 	}
 	writeJSON(w, draft.display(port))
+}
+
+func writeMTProxyDraft(path string, draft mtProxyDraft) error {
+	data, err := json.Marshal(draft)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return err
+	}
+	return app.WriteFileAtomic(path, data, 0600)
+}
+
+func mtProxyBusy(port int) string {
+	return fmt.Sprintf("Port %d (TCP) is already in use on Kharej.", port)
+}
+
+func planMTProxyForward(t manage.Tunnel, ports []mtProxyPort, public, destination int, exit, mode string, udp bool) (mtProxyPort, string, error) {
+	if public < 1 || public > 65535 || destination < 0 || destination > 65535 {
+		return mtProxyPort{}, "", fmt.Errorf("enter port numbers from 1 to 65535")
+	}
+	existing, err := chooseMTProxyPort(ports, public)
+	if err == nil && (destination == 0 || destination == existing.Destination) {
+		return existing, "", nil
+	}
+	host := ""
+	if mode == mtproxy.ModeWeb {
+		host = "127.0.0.1"
+	}
+	if destination == 0 {
+		destination = public
+	}
+	listen := net.JoinHostPort(host, strconv.Itoa(public))
+	for _, rule := range t.Ports {
+		left, _, _ := strings.Cut(rule, "=")
+		mappings, _ := portmap.Expand([]string{left}, exit)
+		for _, mapping := range mappings {
+			other, port, _ := net.SplitHostPort(mapping.Listen)
+			if port == strconv.Itoa(public) && (other == host || host == "" || other == "" || other == "0.0.0.0" || other == "::") {
+				return mtProxyPort{}, "", fmt.Errorf("Port %d already forwards to a service on this tunnel. Choose a separate port on Iran.", public)
+			}
+		}
+	}
+	left := strings.TrimPrefix(listen, ":")
+	control := ""
+	if t.Role == "server" {
+		control = t.Addr
+	}
+	check := manage.CheckForwardPorts(manage.ForwardPortCheck{
+		Ports: left, TCP: true, UDP: udp, TunnelPort: control, TunnelTransport: t.Transport,
+	})
+	if check.Ports != "" {
+		return mtProxyPort{}, "", fmt.Errorf("%s", check.Ports)
+	}
+	rule := left + "=" + net.JoinHostPort(exit, strconv.Itoa(destination))
+	return mtProxyPort{Public: public, Destination: destination, Bind: exit, listen: net.JoinHostPort("127.0.0.1", strconv.Itoa(public))}, rule, nil
 }
 
 func chooseMTProxyPort(ports []mtProxyPort, port int) (mtProxyPort, error) {

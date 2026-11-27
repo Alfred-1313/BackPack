@@ -10,3 +10,10 @@
 .mtproxy textarea + button { margin-top: 6px; }
 .mtproxy .mtp-remove { margin-top: 17px; border-top: 1px solid var(--ln); padding-top: 12px; }
 .mtproxy .mtp-remove summary { cursor: pointer; font-size: 12px; color: var(--mu); margin-bottom: 10px; }
+
+.mtproxy input[aria-invalid="true"] { border-color: var(--er); }
+.mtproxy .mtp-field-error { color: var(--er); font-size: 12px; margin-top: 6px; }
+.mtproxy .mtp-field-error[hidden], .mtproxy section[hidden] { display: none; }
+.mtproxy .mtp-second-label { display: block; margin-top: 10px; }
+.mtproxy .mtp-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.mtproxy .mtp-danger { color: var(--er); }

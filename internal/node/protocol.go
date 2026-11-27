@@ -62,6 +62,9 @@ const (
 	// true and useless when it has a shell on the machine where it can be done.
 	OpLinkTest = "linktest"
 
+	OpMTProxyPort   = "mtproxy-port"
+	OpMTProxyRemove = "mtproxy-remove"
+
 	// OpDelete removes one tunnel from this server: its service, its unit and
 	// its configuration, exactly as the CLI's delete does.
 	//
