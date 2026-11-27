@@ -42,19 +42,13 @@ func ctDaggerCases() []*connTestCase {
 			continue
 		}
 		cases = append(cases, &connTestCase{kind: option.Direction, tr: ctDaggerPrefix + option.Value, extra: true})
-		if option.Value == "quantum" {
-			cases = append(cases, &connTestCase{kind: option.Direction, tr: ctDaggerPrefix + "quantum-gaming", extra: true})
-		}
 	}
 	return cases
 }
 
 func ctDaggerLabel(mode string) string {
-	if mode == ctDaggerPrefix+"quantum-gaming" {
-		return "quantum / gaming"
-	}
 	if profile, ok := strings.CutPrefix(mode, ctDaggerTUNPrefix); ok {
-		return "tun / " + profile
+		return "TUN / " + strings.ToUpper(profile)
 	}
 	flavor, ok := strings.CutPrefix(mode, ctDaggerPrefix)
 	if ok {
@@ -220,8 +214,7 @@ func (s *ConnTestIran) setupDagger(ctx context.Context, c *connTestCase, mode st
 		}
 		c.peerIP = cfg.KharejTunnelIP
 	} else {
-		tuningMode := strings.TrimSuffix(flavor, "-gaming")
-		if value, err := setupTuningValue("dagger-"+tuningMode, SetupTuning{Preset: s.link.Preset}); err == nil {
+		if value, err := setupTuningValue(mode, SetupTuning{Preset: s.link.Preset}); err == nil {
 			cfg.ConnectionPool = value
 		}
 		cfg.LoopbackOnly = true

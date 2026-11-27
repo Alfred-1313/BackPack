@@ -545,7 +545,9 @@ export function addView(ctx) {
               ? 'Direct: L2TPv3 carries Ethernet over IP protocol 115.'
               : chosen.carrier === 'easytier'
                 ? 'Direct: EasyTier connects over TCP using a shared network name and secret.'
-            : 'Direct: Iran connects to Kharej. Peer-to-peer carriers exchange packets in both directions.'
+                : officialDagger() === 'tun'
+                  ? 'Direct: DaggerConnect pairs both IPv4 endpoints using the Setup command.'
+                  : 'Direct: Iran connects to Kharej. Peer-to-peer carriers exchange packets in both directions.'
           : 'Reverse — the kharej dials in to Iran. Try this first.';
         const gretap = chosen.carrier === 'gretap';
         root.querySelector('#greEncryptionNote').textContent = gretap
@@ -1424,9 +1426,9 @@ export function addView(ctx) {
         profile.addEventListener('change', paintDaggerFields);
         add('tunPort', 'TUN service port', ['tun'], { type: 'number', min: 1, max: 65535, value: 443 });
         add('ports', 'Forwarded ports (optional)', ['tun'], { placeholder: 'tcp:443=8443, udp:53' });
-        add('quantumProfile', 'Quantum profile', ['quantum'], { choices: [['', 'Standard'], ['gaming', 'Gaming']] });
-        add('quantumMTU', 'Quantum MTU', ['quantum'], { type: 'number', min: 512, max: 9000, placeholder: '1350' });
-        add('quantumCipher', 'Quantum header cipher', ['quantum'], { choices: [['aes', 'AES'], ['salsa20', 'Salsa20'], ['none', 'None']] });
+        const quantumModes = ['quantum', 'quantum-gaming'];
+        add('quantumMTU', 'Quantum MTU', quantumModes, { type: 'number', min: 512, max: 9000, placeholder: '1350' });
+        add('quantumCipher', 'Quantum header cipher', quantumModes, { choices: [['aes', 'AES'], ['salsa20', 'Salsa20'], ['none', 'None']] });
         add('httpPath', 'HTTP path', ['xhttps'], { placeholder: '/api/v2', maxlength: 512 });
         add('uploadMode', 'Upload mode', ['xhttps'], {
           choices: [['auto', 'Auto'], ['stream-up', 'Streaming'], ['packet-up', 'Sequenced']],

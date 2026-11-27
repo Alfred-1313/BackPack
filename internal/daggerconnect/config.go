@@ -30,9 +30,10 @@ func Options() []Transport {
 		{"xhttps", "xhttps", "reverse"},
 		{"quantum", "quantum", "reverse"},
 		{"quantum+", "quantum+", "reverse"},
+		{"quantum-gaming", "quantum-gaming", "reverse"},
 		{"nova", "nova", "reverse"},
 		{"dc6", "dc6", "reverse"},
-		{"tun", "tun", "direct"},
+		{"tun", "TUN", "direct"},
 	}
 }
 
@@ -108,7 +109,7 @@ func Build(name string, c config.DaggerConfig) ([]byte, error) {
 			break
 		}
 	}
-	if !known && c.Flavor != "quantum-gaming" {
+	if !known {
 		return nil, fmt.Errorf("unknown DaggerConnect transport")
 	}
 	if c.Port == 0 {

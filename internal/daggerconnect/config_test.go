@@ -8,7 +8,7 @@ import (
 )
 
 func TestDaggerOfficialConfigShapes(t *testing.T) {
-	for _, option := range append(Options(), Transport{Value: "quantum-gaming"}) {
+	for _, option := range Options() {
 		for _, role := range []string{"server", "client"} {
 			t.Run(option.Value+"/"+role, func(t *testing.T) {
 				form := config.DaggerConfig{

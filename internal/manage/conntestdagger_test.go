@@ -66,7 +66,7 @@ func TestConnectionTestListsQuantumWithOrWithoutLicense(t *testing.T) {
 		for _, c := range s.cases {
 			rows[c.tr] = c.skip
 		}
-		for _, tr := range []string{"dagger-quantum", "dagger-quantum+", "dagger-nova"} {
+		for _, tr := range []string{"dagger-quantum", "dagger-quantum+", "dagger-quantum-gaming", "dagger-nova", "dagger-tun-gre"} {
 			reason, listed := rows[tr]
 			switch {
 			case !listed:
