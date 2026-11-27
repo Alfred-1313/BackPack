@@ -131,8 +131,12 @@ esac
 # Optional protocol helpers: pinned, isolated and installed only on request.
 helpers_validate() {
   [[ -z "${BP_HELPERS:-}" ]] && return 0
-  if ! [[ "$BP_HELPERS" =~ ^((naive|xray|gost|omni|anytls),)*(naive|xray|gost|omni|anytls)$ ]]; then
-    err 'BP_HELPERS accepts a comma-separated list of naive, xray, gost, omni and anytls'
+  if ! [[ "$BP_HELPERS" =~ ^((naive|xray|gost|gost-v1|gost-v2|omni|anytls),)*(naive|xray|gost|gost-v1|gost-v2|omni|anytls)$ ]]; then
+    err 'BP_HELPERS accepts a comma-separated list of naive, xray, gost, gost-v1, gost-v2, omni and anytls'
+    return 2
+  fi
+  if [[ ",$BP_HELPERS," == *,gost-v1,* && ! -f "$SCRIPT_DIR/scripts/gost-v1/build.sh" ]]; then
+    err 'BP_HELPERS=gost-v1 requires the fork source checkout'
     return 2
   fi
   [[ "$(uname -s)" == Linux ]] || { err 'Optional helpers require Linux'; return 1; }
@@ -159,7 +163,7 @@ helpers_validate() {
 
 # Exact immutable archive pins, obtained from each official release API digest.
 helper_spec() {
-  helper_tool="$1"; helper_arch="$2"; helper_extra=""
+  helper_tool="$1"; helper_arch="$2"; helper_extra=""; helper_url=""
   case "$helper_tool/$helper_arch" in
     daggerconnect/amd64) helper_sha=0de6ce630b92f06cdb7046561bf328b99d621a4e25cccc014e0552a3139ae929 ;;
     daggerconnect/arm64) helper_sha=81d41e64a5979e13158bf2fa78229d181e1616f869c72d87bf318675dff21eea ;;
@@ -169,6 +173,9 @@ helper_spec() {
     sing-box/arm64) helper_sha=b43a1fb1bda131c6653576741ce527eb2bdeab7c9308ca90ee8b972abb7e4a7f ;;
     gost/amd64) helper_sha=f4c1255dc892a7014c0ad6e5f1c3573108f7bea4403f04f21873406ab58aa666 ;;
     gost/arm64) helper_sha=4c704c92df6eeea8a3b08d0de4fd3c44343095a20136b3b6cf334f98d2f174ab ;;
+    gost-v2/amd64) helper_sha=1b6d47e6b850479b23fda484b3a8193c7bc0d5dc38fa5a02b4b4c57a77534d92 ;;
+    gost-v2/arm64) helper_sha=3c1bf20c223f424f9a706cc4a3042f6e79084ebe3becca4899e1dc9fb86fd661 ;;
+    gost-v1/amd64|gost-v1/arm64) helper_sha=979e01837d4b57aed10dc3215d69a280b527e9049356d737db4afb6cd5751bd3 ;;
     xray/amd64) helper_sha=23cd9af937744d97776ee35ecad4972cf4b2109d1e0fe6be9930467608f7c8ae; helper_arch=64 ;;
     xray/arm64) helper_sha=4d30283ae614e3057f730f67cd088a42be6fdf91f8639d82cb69e48cde80413c; helper_arch=arm64-v8a ;;
     *) return 1 ;;
@@ -189,6 +196,12 @@ helper_spec() {
     gost)
       helper_version=v3.3.3; helper_repo=go-gost/gost
       helper_asset="gost_${helper_version#v}_linux_$helper_arch.tar.gz"; helper_member=gost; helper_kind=tar-root ;;
+    gost-v2)
+      helper_version=v2.12.0; helper_repo=ginuerzh/gost
+      helper_asset="gost_${helper_version#v}_linux_$helper_arch.tar.gz"; helper_member=gost; helper_kind=tar-root ;;
+    gost-v1)
+      helper_version=v1.8; helper_asset=gost-v1.8-source.tar.gz; helper_kind=gost-source
+      helper_url=https://codeload.github.com/ginuerzh/gost/tar.gz/82e624d8ce2d2d7f792188bd7a579de902710400 ;;
     xray)
       helper_version=v26.3.27; helper_repo=XTLS/Xray-core
       helper_asset="Xray-linux-$helper_arch.zip"; helper_member=xray; helper_kind=zip ;;
@@ -202,6 +215,7 @@ install_helper() (
   root="/usr/local/lib/backpack/helpers/$helper_tool"
   final="$root/$helper_version-$ARCH"
   helper_exec="$helper_tool"
+  if [[ "$helper_tool" == gost-v1 || "$helper_tool" == gost-v2 ]]; then helper_exec=gost; fi
   if [[ "$helper_tool" == daggerconnect ]]; then
     final="$root/$helper_version"
     helper_exec=DaggerLauncher
@@ -230,11 +244,14 @@ install_helper() (
   stage="$(mktemp -d "$root/.stage.XXXXXX")" || exit 1
   trap 'rm -rf -- "$stage"' EXIT
   archive="$stage/archive"
-  fetch "https://github.com/$helper_repo/releases/download/$helper_version/$helper_asset" "$archive" || exit 1
+  fetch "${helper_url:-https://github.com/$helper_repo/releases/download/$helper_version/$helper_asset}" "$archive" || exit 1
   actual="$(helper_sha256 "$archive")"
   [[ "$actual" == "$helper_sha" ]] || { err "CHECKSUM MISMATCH for $helper_asset"; exit 1; }
   mkdir "$stage/payload" || exit 1
   case "$helper_kind" in
+    gost-source)
+      [[ -n "${GO_BIN:-}" ]] || ensure_go
+      bash "$SCRIPT_DIR/scripts/gost-v1/build.sh" "$archive" "$stage/payload/$helper_exec" "$GO_BIN" || exit 1 ;;
     raw) mv -- "$archive" "$stage/payload/$helper_exec" || exit 1 ;;
     tar-root) tar -xzf "$archive" -C "$stage/payload" "$helper_member" || exit 1 ;;
     zip) unzip -p "$archive" "$helper_member" > "$stage/payload/$helper_tool" || exit 1 ;;
@@ -260,9 +277,11 @@ helper_sha256() {
 }
 
 install_helpers() {
-  case "$(uname -s)/$ARCH" in
-    Linux/amd64|Linux/arm64) install_helper daggerconnect || return 1 ;;
-  esac
+  if [[ "${BP_HELPERS_ONLY:-0}" != 1 ]]; then
+    case "$(uname -s)/$ARCH" in
+      Linux/amd64|Linux/arm64) install_helper daggerconnect || return 1 ;;
+    esac
+  fi
   [[ -n "${BP_HELPERS:-}" ]] || return 0
   if [[ "$BP_HELPERS" == *naive* ]]; then
     install_helper naive || return 1
@@ -271,7 +290,9 @@ install_helpers() {
     install_helper sing-box || return 1
   fi
   [[ "$BP_HELPERS" != *xray* ]] || install_helper xray || return 1
-  [[ "$BP_HELPERS" != *gost* ]] || install_helper gost || return 1
+  [[ ",$BP_HELPERS," != *,gost,* ]] || install_helper gost || return 1
+  [[ ",$BP_HELPERS," != *,gost-v2,* ]] || install_helper gost-v2 || return 1
+  [[ ",$BP_HELPERS," != *,gost-v1,* ]] || install_helper gost-v1 || return 1
   if [[ "$BP_HELPERS" == *omni* ]]; then
     source "$SCRIPT_DIR/scripts/install-omnitunnel.sh"
     install_omnitunnel
@@ -594,6 +615,15 @@ build_from_source() {
 }
 
 # Select the engine build independently of optional helper installation.
+if [[ "${BP_HELPERS_ONLY:-0}" == 1 ]]; then
+  [[ -n "${BP_HELPERS:-}" ]] || { err 'BP_HELPERS_ONLY=1 requires BP_HELPERS'; exit 2; }
+  if [[ ",$BP_HELPERS," == *,omni,* ]]; then
+    ensure_go
+  fi
+  install_helpers
+  exit $?
+fi
+
 if [[ "${BP_BUILD_FROM_SOURCE:-0}" == 1 ]]; then
   trusted_dir "$SCRIPT_DIR" || { err 'The requested source directory is not trusted'; exit 1; }
   build_from_source

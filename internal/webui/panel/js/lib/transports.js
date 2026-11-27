@@ -9,6 +9,8 @@ const sources = new Map([
   ['l2tpv3', 'VortexL2'],
   ['easytier', 'VortexL2'],
   ['gost-direct', 'GOST'],
+  ['gost-direct-v2', 'GOST'],
+  ['gost-direct-v1', 'GOST'],
 ]);
 
 export function transportDisplay(id, label) {

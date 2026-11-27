@@ -2,7 +2,6 @@ package manage
 
 import (
 	"fmt"
-	"github.com/backpack/backpack/internal/omni"
 	"math"
 	"net"
 	"os"
@@ -12,6 +11,8 @@ import (
 
 	"github.com/backpack/backpack/config"
 	"github.com/backpack/backpack/internal/app"
+	"github.com/backpack/backpack/internal/gostdirect"
+	"github.com/backpack/backpack/internal/omni"
 	"github.com/backpack/backpack/internal/optimize"
 	"github.com/backpack/backpack/internal/snispoof"
 	"github.com/backpack/backpack/internal/tui"
@@ -101,7 +102,7 @@ func setupL3(side directSide) {
 	if !ok {
 		return
 	}
-	if carrier == "gost-direct" || strings.HasPrefix(carrier, "omni:") {
+	if gostdirect.ModeVersion(carrier) != 0 || strings.HasPrefix(carrier, "omni:") {
 		setupExtraTransport(carrier, side)
 		return
 	}
@@ -614,7 +615,11 @@ func chooseDirectCarrier(extended bool) (string, bool) {
 	// until an operator is told about a carrier one of the screens does not have.
 	carriers := DirectCarriers()
 	if extended {
-		carriers = append(carriers, map[string]string{"value": "gost-direct", "label": "GOST Direct (Relay + TLS)"})
+		carriers = append(carriers,
+			map[string]string{"value": gostdirect.ModeV3, "label": "GOST v3.3.3 Direct (Relay + TLS)"},
+			map[string]string{"value": gostdirect.ModeV2, "label": "GOST v2.12.0 Direct (Relay + TLS)"},
+			map[string]string{"value": gostdirect.ModeV1, "label": "GOST v1.8 Direct (SOCKS5 + TLS)"},
+		)
 		for _, item := range omni.Options() {
 			if item["direction"] == "direct" {
 				carriers = append(carriers, map[string]string{"value": "omni:" + item["value"], "label": item["label"], "desc": item["desc"]})

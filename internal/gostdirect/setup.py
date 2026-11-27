@@ -10,6 +10,7 @@ import secrets
 import shutil
 import subprocess
 import sys
+from urllib.parse import quote, urlencode
 
 def run(*args):
     return subprocess.run(args, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
@@ -27,15 +28,40 @@ def test_paths(name):
     return (Path("/run/backpack-ct-gost") / name,
             Path("/run/systemd/system") / ("bp-gost-direct-" + name + ".service"))
 
+def v2_config(join, host, endpoint, target, ingress, password, cert, key, temporary):
+    credentials = "backpack:" + quote(password, safe="")
+    destination = "127.0.0.1:" + str(target)
+    if join:
+        options = urlencode({"cert": str(cert), "key": str(key),
+                             "whitelist": "tcp:" + destination})
+        return {"ServeNodes": [f"relay+tls://{credentials}@:{endpoint}?{options}"]}
+    options = urlencode({"secure": "true", "ca": str(cert), "nodelay": "true"})
+    bind = "127.0.0.1" if temporary else "0.0.0.0"
+    return {"ServeNodes": [f"tcp://{bind}:{ingress}/{destination}"],
+            "ChainNodes": [f"relay+tls://{credentials}@{host}:{endpoint}?{options}"]}
+
+def v1_config(join, host, endpoint, target, ingress, password, cert, key, temporary):
+    bind = "127.0.0.1" if temporary else "0.0.0.0"
+    config = {"listen": f"0.0.0.0:{endpoint}" if join else f"{bind}:{ingress}",
+              "target": f"127.0.0.1:{target}", "password": password, "certificate": str(cert)}
+    if join:
+        config["key"] = str(key)
+    else:
+        config["server"] = f"{host}:{endpoint}"
+    return config
+
 def install(form):
     temporary = form.get("_test", False)
     join = form["action"] == "join"
     if join:
-        prefix = "bpgost1."
         text = form["token"].strip()
-        if not text.startswith(prefix) or len(text) > 24000:
+        prefix, _, payload = text.partition(".")
+        if prefix not in ("bpgost1", "bpgost2") or len(payload) > 24000:
             raise ValueError("invalid GOST Direct setup token")
-        form = json.loads(base64.b64decode(text[len(prefix):], validate=True))
+        form = json.loads(base64.b64decode(payload, validate=True))
+        version = form.get("version", 3)
+        if (prefix == "bpgost1" and version != 3) or (prefix == "bpgost2" and version not in (1, 2)):
+            raise ValueError("GOST setup token version does not match its selected core")
     name = form["name"]
     if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_-]{0,31}", name):
         raise ValueError("use 1-32 letters, digits, underscores or hyphens for the name")
@@ -46,9 +72,14 @@ def install(form):
     if not 0 <= weight <= 10000 or not 0 <= restart <= 60:
         raise ValueError("invalid GOST CPU weight or restart delay")
     arch = {"x86_64":"amd64","aarch64":"arm64"}[platform.machine()]
-    binary = Path("/usr/local/lib/backpack/helpers/gost") / ("v3.3.3-"+arch) / "gost"
+    version = form.get("version", 3)
+    helpers = {1: ("gost-v1", "v1.8"), 2: ("gost-v2", "v2.12.0"), 3: ("gost", "v3.3.3")}
+    if type(version) is not int or version not in helpers:
+        raise ValueError("unsupported GOST version")
+    helper, release = helpers[version]
+    binary = Path("/usr/local/lib/backpack/helpers") / helper / (release+"-"+arch) / "gost"
     if not os.access(binary, os.X_OK):
-        raise ValueError("install the pinned GOST v3.3.3 helper with BP_HELPERS=gost")
+        raise ValueError(f"install the pinned GOST {release} helper with BP_HELPERS={helper}")
     directory = Path("/etc/backpack/gost-direct") / name
     unit = Path("/etc/systemd/system") / ("bp-gost-direct-"+name+".service")
     if temporary:
@@ -59,6 +90,7 @@ def install(form):
     try:
         cert, key = directory/"cert.pem", directory/"key.pem"
         token = ""
+        ingress = 0
         if join:
             password = form["password"]
             cert.write_text(form["certificate"])
@@ -82,7 +114,10 @@ def install(form):
                 "-days","365","-subj","/CN="+host,"-addext","subjectAltName=IP:"+host,"-keyout",key,"-out",cert)
             payload = dict(name=name,peer=host,port=endpoint,target=target,password=password,
                            certificate=cert.read_text(),key=key.read_text(),cpuWeight=weight,restartSeconds=restart)
-            token = "bpgost1."+base64.b64encode(json.dumps(payload).encode()).decode()
+            if version != 3:
+                payload["version"] = version
+            prefix = "bpgost1." if version == 3 else "bpgost2."
+            token = prefix+base64.b64encode(json.dumps(payload).encode()).decode()
             key.unlink()
             node = {"name":"kharej","addr":host+":"+str(endpoint),
                 "dialer":{"type":"tls","tls":{"secure":True,"serverName":host,"caFile":str(cert)}},
@@ -91,13 +126,17 @@ def install(form):
                 "handler":{"type":"tcp","chain":"kharej"},
                 "forwarder":{"nodes":[{"name":"target","addr":"127.0.0.1:"+str(target)}]}}
             config = {"services":[service],"chains":[{"name":"kharej","hops":[{"name":"relay","nodes":[node]}]}]}
+        if version == 1:
+            config = v1_config(join, host, endpoint, target, ingress, password, cert, key, temporary)
+        elif version == 2:
+            config = v2_config(join, host, endpoint, target, ingress, password, cert, key, temporary)
         cfg = directory/"gost.json"
         cfg.write_text(json.dumps(config))
         if token:
             (directory/"setup-token").write_text(token)
         with unit.open("x") as out:
             unit_created = True
-            out.write("[Unit]\nDescription=BackPack GOST Direct "+name+"\nAfter=network-online.target\n"
+            out.write("[Unit]\nDescription=BackPack GOST "+release+" Direct "+name+"\nAfter=network-online.target\n"
                       "[Service]\nExecStart="+str(binary)+" -C "+str(cfg)+"\n")
             if temporary:
                 out.write("Restart=no\nTimeoutStopSec=5\nRuntimeMaxSec=90min\n"

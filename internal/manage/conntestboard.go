@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/backpack/backpack/internal/gostdirect"
 	"github.com/backpack/backpack/internal/omni"
 	"golang.org/x/sys/unix"
 )
@@ -38,8 +39,8 @@ var ctTransportNames = map[string]string{
 }
 
 func ctName(tr string) string {
-	if tr == ctGostDirect {
-		return "GOST Direct"
+	if version := gostdirect.ModeVersion(tr); version != 0 {
+		return fmt.Sprintf("GOST Direct v%d", version)
 	}
 	if mode, ok := strings.CutPrefix(tr, ctOmniPrefix); ok {
 		return omni.Label(mode)

@@ -48,6 +48,8 @@ func TestConnectionTestCoversEveryPanelTransport(t *testing.T) {
 		assertTest(option["direction"], ctOmniPrefix+option["value"])
 	}
 	assertTest("direct", ctGostDirect)
+	assertTest("direct", "gost-direct-v2")
+	assertTest("direct", "gost-direct-v1")
 }
 
 func TestConnectionTestRoutedLinksMirrorTheKernelSettings(t *testing.T) {

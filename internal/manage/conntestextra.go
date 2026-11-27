@@ -6,7 +6,6 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -22,7 +21,7 @@ import (
 	"github.com/backpack/backpack/internal/omni"
 )
 
-const ctGostDirect = "gost-direct"
+const ctGostDirect = gostdirect.ModeV3
 const ctOmniPrefix = "omni-"
 
 const (
@@ -48,7 +47,9 @@ func ctExtraCases() []*connTestCase {
 	for _, mode := range omni.Options() {
 		cases = append(cases, &connTestCase{kind: mode["direction"], tr: ctOmniPrefix + mode["value"], extra: true})
 	}
-	cases = append(cases, &connTestCase{kind: "direct", tr: ctGostDirect, extra: true})
+	for _, mode := range []string{gostdirect.ModeV3, gostdirect.ModeV2, gostdirect.ModeV1} {
+		cases = append(cases, &connTestCase{kind: "direct", tr: mode, extra: true})
+	}
 	return append(cases, ctBackhaulCases()...)
 }
 
@@ -121,7 +122,7 @@ func ctExtraRemove(ctx context.Context, mode, name string) error {
 	}
 	ctx, cancel := context.WithTimeout(ctx, 32*time.Second)
 	defer cancel()
-	if mode == ctGostDirect {
+	if gostdirect.ModeVersion(mode) != 0 {
 		_, err := gostdirect.RunTest(ctx, gostdirect.Form{Action: "remove", Name: name})
 		return err
 	}
@@ -236,7 +237,7 @@ func (w *ctExtraWorker) perform(ctx context.Context, link ConnTestLink, job ctEx
 	}
 	switch job.Action {
 	case "port":
-		if job.Mode != ctGostDirect {
+		if gostdirect.ModeVersion(job.Mode) == 0 {
 			if err := ctCheckOmniTestHelper(ctx); err != nil {
 				return 0, err
 			}
@@ -283,13 +284,9 @@ func (w *ctExtraInstance) join(ctx context.Context, link ConnTestLink, job ctExt
 	if _, ok := strings.CutPrefix(job.Mode, ctDaggerPrefix); ok {
 		return w.joinDagger(ctx, link, job)
 	}
-	if job.Mode == ctGostDirect {
-		raw, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(job.Token, "bpgost1."))
-		var token struct {
-			Name   string
-			Target int
-		}
-		if err != nil || json.Unmarshal(raw, &token) != nil || token.Name != job.Name || token.Target != link.TCP {
+	if version := gostdirect.ModeVersion(job.Mode); version != 0 {
+		token, err := gostdirect.ReadTokenInfo(job.Token)
+		if err != nil || token.Name != job.Name || token.Target != link.TCP || token.Version != version {
 			return errors.New("invalid GOST test token")
 		}
 		w.name, w.mode = job.Name, job.Mode
@@ -440,7 +437,8 @@ func (s *ConnTestIran) setupExtra(ctx context.Context, c *connTestCase, mode str
 	if near == "" || far == "" || near == far {
 		return errors.New("this carrier requires two different IPv4 endpoints")
 	}
-	if mode != ctGostDirect {
+	gostVersion := gostdirect.ModeVersion(mode)
+	if gostVersion == 0 {
 		if err := ctCheckOmniTestHelper(ctx); err != nil {
 			return err
 		}
@@ -454,7 +452,7 @@ func (s *ConnTestIran) setupExtra(ctx context.Context, c *connTestCase, mode str
 		return errors.New("invalid test port selected on Kharej")
 	}
 	port := strconv.Itoa(r.Port)
-	if mode == ctGostDirect {
+	if gostVersion != 0 {
 		c.entry = ctPickPort(map[int]bool{}, false)
 		if c.entry == 0 {
 			return errors.New("no free GOST ingress port on Iran")
@@ -462,7 +460,8 @@ func (s *ConnTestIran) setupExtra(ctx context.Context, c *connTestCase, mode str
 		ctx, cancel := context.WithTimeout(ctx, 32*time.Second)
 		defer cancel()
 		c.localStarted = true
-		result, err := gostdirect.RunTest(ctx, gostdirect.Form{Action: "setup", Name: c.name, Peer: far, Port: port, Target: strconv.Itoa(s.link.TCP), Ingress: strconv.Itoa(c.entry)})
+		result, err := gostdirect.RunTest(ctx, gostdirect.Form{Action: "setup", Name: c.name, Peer: far,
+			Port: port, Target: strconv.Itoa(s.link.TCP), Ingress: strconv.Itoa(c.entry), Version: gostVersion})
 		if err != nil {
 			return err
 		}

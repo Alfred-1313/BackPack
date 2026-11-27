@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/backpack/backpack/internal/app"
 	"github.com/backpack/backpack/internal/gostdirect"
 	"github.com/backpack/backpack/internal/omni"
 	"github.com/backpack/backpack/internal/tunnel/portmap"
@@ -62,7 +63,8 @@ func StartRoutedPeerSetup(ctx context.Context, form RoutedPeerForm) (SetupLinkIn
 		}
 		form.PeerAddr = peer
 	}
-	if form.Transport == ctGostDirect && form.Ports == "" && form.Ingress != "" {
+	gostVersion := gostdirect.ModeVersion(form.Transport)
+	if gostVersion != 0 && form.Ports == "" && form.Ingress != "" {
 		if !validPort(form.Ingress) || !validPort(form.Target) {
 			return SetupLinkInfo{}, errors.New("enter ports from 1 to 65535")
 		}
@@ -72,7 +74,7 @@ func StartRoutedPeerSetup(ctx context.Context, form RoutedPeerForm) (SetupLinkIn
 	if err != nil {
 		return SetupLinkInfo{}, err
 	}
-	if form.Transport == ctGostDirect {
+	if gostVersion != 0 {
 		if form.Port == "" || len(ports) != 1 || form.AcceptUDP {
 			return SetupLinkInfo{}, errors.New("GOST Direct needs a tunnel port and one TCP forward")
 		}
@@ -80,14 +82,19 @@ func StartRoutedPeerSetup(ctx context.Context, form RoutedPeerForm) (SetupLinkIn
 		if err != nil {
 			return SetupLinkInfo{}, err
 		}
-		return beginPeerJoin(ctx, form.Name, "direct", false, func(ctx context.Context, _, peer string) (peerJoinResult, error) {
+		setup, err := beginPeerJoin(ctx, form.Name, "direct", false, func(ctx context.Context, _, peer string) (peerJoinResult, error) {
 			ingress, target, _ := strings.Cut(ports[0], ":")
 			peer = orDefault(form.PeerAddr, peer)
 			result, err := gostdirect.Install(ctx, gostdirect.Form{Action: "setup", Name: form.Name, Peer: peer,
 				Port: form.Port, Ingress: ingress, Target: target, Secret: routedKey(form.Secret),
-				CPUWeight: weight, RestartSeconds: presetOverride(form.Tuning.RestartSeconds)})
+				Version: gostVersion, CPUWeight: weight, RestartSeconds: presetOverride(form.Tuning.RestartSeconds)})
 			return peerJoinResult{Driver: "gost", Token: result.Token, Mode: form.Transport, Name: form.Name}, err
 		})
+		if err != nil {
+			return SetupLinkInfo{}, err
+		}
+		setup.Install = app.SourceInstallGostCommand(FindSetupLink(setup.Apply), gostVersion)
+		return setup, nil
 	}
 	for _, option := range omni.Options() {
 		if option["value"] != form.Transport {

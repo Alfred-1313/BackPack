@@ -54,7 +54,11 @@ export function addView(ctx) {
       const managedDirect = new Map([
         ...omniEntries('direct'),
         ...daggerEntries('direct'),
-        ['gost-direct', { value: 'gost-direct', mode: 'gost-direct', label: 'GOST Direct (Relay + TLS)',
+        ['gost-direct', { value: 'gost-direct', mode: 'gost-direct', label: 'GOST v3.3.3 Direct (Relay + TLS)',
+          port: true, secret: true, forward: true }],
+        ['gost-direct-v2', { value: 'gost-direct-v2', mode: 'gost-direct-v2', label: 'GOST v2.12.0 Direct (Relay + TLS)',
+          port: true, secret: true, forward: true }],
+        ['gost-direct-v1', { value: 'gost-direct-v1', mode: 'gost-direct-v1', label: 'GOST v1.8 Direct (SOCKS5 + TLS)',
           port: true, secret: true, forward: true }],
       ]);
       /* families */
@@ -590,7 +594,7 @@ export function addView(ctx) {
           directPort.value = directPortValues[portMode];
           directPortMode = portMode;
         }
-        const gost = routed?.mode === 'gost-direct';
+        const gost = routed?.mode?.startsWith('gost-direct');
         directPort.placeholder = gost ? '1–65535' : routed ? 'Automatic' : 'e.g. 9000';
         directPort.closest('.f3').querySelector('.hint').textContent = routed
           ? (gost ? 'Enter the port GOST listens on in Kharej.' : 'Leave blank to allocate a tunnel port automatically.')
@@ -1014,7 +1018,7 @@ export function addView(ctx) {
           try {
             const r = await api.tunnelSuggest();
             if (!r.port) return;
-            if (inp === directForward && directSetup()?.mode === 'gost-direct') {
+            if (inp === directForward && directSetup()?.mode?.startsWith('gost-direct')) {
               const target = inp.value.split('=', 2)[1]?.trim();
               inp.value = target ? r.port + '=' + target : String(r.port);
             } else {
@@ -1347,7 +1351,7 @@ export function addView(ctx) {
         value.input.max = profile.max;
         value.input.placeholder = sameKnob ? applies : 'Automatic';
         delay.row.hidden = !profile.restart;
-        delay.input.placeholder = id === 'gost-direct' || id === 'omni-hysteria' ? '3' : '2';
+        delay.input.placeholder = id?.startsWith('gost-direct') || id === 'omni-hysteria' ? '3' : '2';
         mtu.row.hidden = !profile.mtu;
       }
 

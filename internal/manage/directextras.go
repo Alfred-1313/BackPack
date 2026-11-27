@@ -13,8 +13,8 @@ import (
 
 func setupExtraTransport(carrier string, side directSide) {
 	defer tui.PressEnter()
-	if carrier == "gost-direct" {
-		form := gostdirect.Form{Action: "setup"}
+	if version := gostdirect.ModeVersion(carrier); version != 0 {
+		form := gostdirect.Form{Action: "setup", Version: version}
 		if side == sideKharej {
 			form.Action = "join"
 			form.Token = tui.Prompt("GOST Direct setup token: ")

@@ -58,7 +58,9 @@ func relayEngineChecks() []manage.Check {
 		installed bool
 	}{
 		{"OmniTunnel", omni.Installed()},
-		{"GOST", manage.EngineHelperInstalled("gost")},
+		{"GOST v3.3.3", manage.EngineHelperInstalled("gost")},
+		{"GOST v2.12.0", manage.EngineHelperInstalled("gost-v2")},
+		{"GOST v1.8", manage.EngineHelperInstalled("gost-v1")},
 		{"Xray", manage.EngineHelperInstalled("xray")},
 		{"sing-box", manage.EngineHelperInstalled("sing-box")},
 		{"NaiveProxy", manage.EngineHelperInstalled("naive")},

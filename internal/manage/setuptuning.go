@@ -75,6 +75,8 @@ func buildSetupPerformance() map[string]SetupPerformance {
 	gost := performance("CPU scheduling weight", 50, 100, 200, 1, 10000)
 	gost.Restart = true
 	m["gost-direct"] = gost
+	m["gost-direct-v2"] = gost
+	m["gost-direct-v1"] = gost
 	for _, carrier := range []string{"gretap", "l2tpv3", "easytier"} {
 		p := performance("Interface transmit queue (packets)", 1024, 4096, 16384, 576, 1450)
 		p.OverrideLabel = "MTU (bytes)"

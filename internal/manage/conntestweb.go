@@ -3,6 +3,8 @@ package manage
 import (
 	"strings"
 	"time"
+
+	"github.com/backpack/backpack/internal/gostdirect"
 )
 
 // What the web panel's Connection Test section needs from the test that the
@@ -69,7 +71,7 @@ func ConnTestTimeLeft(rows []ConnTestResult) time.Duration {
 		if row.Phase == ctPhaseStageQueued {
 			return 0
 		}
-		if row.Transport != ctGostDirect && !strings.HasPrefix(row.Transport, ctOmniPrefix) {
+		if gostdirect.ModeVersion(row.Transport) == 0 && !strings.HasPrefix(row.Transport, ctOmniPrefix) {
 			native = append(native, row.Phase)
 			nativeProbing = nativeProbing || (row.Status == ctTesting && !ctSpeedPhase(row.Phase))
 			continue

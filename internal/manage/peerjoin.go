@@ -337,6 +337,10 @@ func applyPeerJoin(raw string, options LinkApplyOptions) (LinkApplied, error) {
 	done := LinkApplied{Name: result.Name, Transport: result.Mode, Kind: "direct", External: true}
 	switch result.Driver {
 	case "gost":
+		token, err := gostdirect.ReadTokenInfo(result.Token)
+		if err != nil || token.Version != gostdirect.ModeVersion(result.Mode) {
+			return done, errors.New("invalid GOST setup token for the selected core")
+		}
 		out, err := gostdirect.Install(ctx, gostdirect.Form{Action: "join", Token: result.Token})
 		done.Service, done.Active = out.Unit, err == nil
 		return done, err
