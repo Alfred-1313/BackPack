@@ -17,6 +17,22 @@
       <p class="mtp-path" id="mtpPath"></p>
       <p id="mtpStatus" class="mtp-status" role="status">Reading tunnel settings…</p>
       <form id="mtpCreate" hidden>
+        <div class="mtp-ports">
+          <div class="f">
+            <label for="mtpLabel">Proxy name</label>
+            <input type="text" id="mtpLabel" maxlength="48" autocomplete="off">
+          </div>
+          <div class="f">
+            <label for="mtpLimit">Traffic limit</label>
+            <div class="withbtn mtp-limit">
+              <input type="text" id="mtpLimit" inputmode="decimal" maxlength="24" placeholder="Unlimited" autocomplete="off">
+              <select id="mtpLimitUnit" class="sel" aria-label="Traffic limit unit">
+                <option value="1073741824">GB</option>
+                <option value="1099511627776">TB</option>
+              </select>
+            </div>
+          </div>
+        </div>
         <div class="f">
           <label id="mtpHostLabel" for="mtpHost">Public IP or hostname</label>
           <input type="text" id="mtpHost" name="host" required maxlength="253" autocomplete="off">

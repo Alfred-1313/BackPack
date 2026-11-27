@@ -286,13 +286,7 @@ ${field(t, idx)}
     </span>` : ''}`}
 </div>
 
-<div class="mfoot mtp-usage" hidden>
-  <span>MTProxy</span>
-  <span class="qm none">
-    <span class="qm-tx"><b></b><i>/</i><em>∞</em></span>
-    <span class="qm-bar" aria-hidden="true"></span>
-  </span>
-</div>
+<div class="mtp-usages">${proxyMeters(t.mtproxyUsage)}</div>
 
 <div class="foot">
   <span class="tot"><i>↓</i>${esc(bytes(t.inBytes || 0))}<i>↑</i>${esc(bytes(t.outBytes || 0))}</span>
@@ -397,15 +391,25 @@ const ACTION_DONE = {
  * the one a limit is set on. With none set it says so, with the same button. */
 const PEN = '<svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>';
 function quotaMeter(t) {
-  const used = t.totalBytes || 0, lim = t.quotaLimit || 0;
+  return trafficMeter(t.totalBytes || 0, t.quotaLimit || 0, t.quotaHit);
+}
+
+function proxyMeters(usage = []) {
+  return usage.map(proxy => `<div class="mfoot mtp-usage">
+    <span class="mtp-label" title="${esc(proxy.label)}">${esc(proxy.label)}</span>
+    ${trafficMeter(proxy.used, proxy.limit, proxy.hit, proxy.mode)}
+  </div>`).join('');
+}
+
+function trafficMeter(used, lim, hit, mode) {
   const pct = lim ? Math.min(100, (used / lim) * 100) : 0;
-  const tone = !lim ? 'none' : t.quotaHit || pct >= 100 ? 'er' : pct >= 90 ? 'er' : pct >= 70 ? 'wr' : 'ok';
+  const tone = !lim ? 'none' : hit || pct >= 90 ? 'er' : pct >= 70 ? 'wr' : 'ok';
   return `<span class="qm ${tone}" title="${lim ? `${pct.toFixed(1)}% of the traffic limit used` : 'No traffic limit'}">
     <span class="qm-tx"><b>${esc(bytes(used))}</b><i>/</i>${lim ? esc(bytes(lim)) : '<em>∞</em>'}</span>
     <span class="qm-bar"><i style="--w:${pct.toFixed(2)}%"></i></span>
-    ${lim ? `<span class="qm-pc">${pct >= 99.95 && !t.quotaHit ? '99.9' : pct.toFixed(pct < 10 ? 1 : 0)}%</span>` : ''}
+    ${lim ? `<span class="qm-pc">${pct >= 99.95 && !hit ? '99.9' : pct.toFixed(pct < 10 ? 1 : 0)}%</span>` : ''}
   </span>
-  <button class="qm-ed" data-act="quota" title="${lim ? 'Change the traffic limit' : 'Set a traffic limit'}">${PEN}</button>`;
+  <button class="qm-ed" type="button" data-act="quota"${mode ? ` data-mode="${esc(mode)}"` : ''} title="${lim ? 'Change the traffic limit' : 'Set a traffic limit'}">${PEN}</button>`;
 }
 
 /* What a card draws, minus the chart.
@@ -487,9 +491,11 @@ export function dashboard(ctx) {
         }
         updateSpark(h.el, t, i);
       }
-      const proxyUsage = h.el.querySelector('.mtp-usage');
-      proxyUsage.hidden = t.mtproxyBytes == null;
-      if (!proxyUsage.hidden) proxyUsage.querySelector('b').textContent = bytes(t.mtproxyBytes);
+      const proxyUsage = proxyMeters(t.mtproxyUsage);
+      if (h.proxyUsage !== proxyUsage) {
+        h.el.querySelector('.mtp-usages').innerHTML = proxyUsage;
+        h.proxyUsage = proxyUsage;
+      }
       at = h.el;
     });
   };
@@ -554,7 +560,11 @@ export function dashboard(ctx) {
         break;
       }
       case 'edit':   go('/t/' + encodeURIComponent(name) + '/edit'); break;
-      case 'quota':  go(`/t/${encodeURIComponent(name)}/quota`); break;
+      case 'quota': {
+        const mode = btn.dataset.mode;
+        go(`/t/${encodeURIComponent(name)}/quota${mode ? '?proxy=' + encodeURIComponent(mode) : ''}`);
+        break;
+      }
       case 'logs':   go(`/t/${encodeURIComponent(name)}/logs`); break;
       case 'detail': go(`/t/${encodeURIComponent(name)}/metrics`); break;
       /* The link test is no longer a button on the card: the card is for the

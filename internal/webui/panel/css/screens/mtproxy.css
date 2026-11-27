@@ -9,6 +9,7 @@
 .mtproxy .mtp-latency { color: var(--ok); }
 .mtproxy select.sel { display: block; }
 .mtproxy .withbtn input { min-width: 0; }
+.mtproxy .mtp-limit select { width: auto; flex: none; }
 .mtproxy .mtp-ports { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 14px; }
 .mtproxy #mtpSavedActions { margin-bottom: 16px; }
 @media (max-width: 520px) {

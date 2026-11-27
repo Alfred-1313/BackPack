@@ -38,6 +38,8 @@ const TONE_COLOR = { ok: 'var(--ac)', wr: 'var(--wr)', er: 'var(--er)', none: 'v
 
 export function quotaView(ctx) {
   const name = ctx.params.name;
+  const mode = ctx.query.get('proxy');
+  const subject = mode ? 'the proxy' : 'the tunnel';
   openScreen('quota', {
     pick: '.dlg.quota',
     bind: async (root, close) => {
@@ -48,7 +50,8 @@ export function quotaView(ctx) {
       const body = root.querySelector('#qtBody');
       const save = root.querySelector('#qtSave');
 
-      let q;
+      let q, label = name;
+      if (mode) root.querySelector('#qtNote').textContent = 'In and out together. The proxy keeps its usage across restarts.';
       /* A count the engine keeps in memory can only be zeroed with the tunnel
        * stopped, so this restarts it: said before, not discovered after. */
       const resetUsage = async () => {
@@ -69,12 +72,22 @@ export function quotaView(ctx) {
           close();
         } catch (e) { oops(e); if (btn) btn.disabled = false; }
       };
-      try { q = await api.tunnelQuota(name); } catch (e) {
+      try {
+        if (mode) {
+          const info = await api.mtProxySetup(name, mode);
+          if (!info.quota) throw new Error('This proxy is no longer configured.');
+          q = info.quota;
+          label = q.label;
+          if (sub) sub.textContent = `${name} · ${label}`;
+        } else {
+          q = await api.tunnelQuota(name);
+        }
+      } catch (e) {
         body.innerHTML = `<div class="qt-wait">${esc(e.message)}</div>`;
         if (save) save.hidden = true;
         return;
       }
-      if (!q.settable) {
+      if (!mode && !q.settable) {
         body.innerHTML = `<div class="qt-state"><i></i><span><b>This is the kharej end.</b> A traffic limit is set on the
           Iran end of the tunnel — the one users connect to — and this end follows whatever it lets through.</span></div>
           ${resetRow(q.used || 0)}`;
@@ -89,16 +102,17 @@ export function quotaView(ctx) {
       const draw = () => {
         const used = q.used || 0;
         const tone = toneOf(used, want);
-        const pct = pctOf(used, want);
-        const left = want ? Math.max(0, want - used) : 0;
+        const hit = q.hit && want === q.limit;
+        const pct = hit ? 1 : pctOf(used, want);
+        const left = want && !hit ? Math.max(0, want - used) : 0;
         const custom = !PRESETS.some(p => p.v === want);
         const stateBox = q.hit
           ? `<div class="qt-state er"><i></i><span><b>Offline — the limit is used up.</b> Nothing passes until it is raised;
-              the moment you save a higher one, the tunnel comes back on its own.</span></div>`
+              ${subject} can carry traffic again when you raise or remove the limit.</span></div>`
           : q.limit && used / q.limit >= 0.9
-            ? `<div class="qt-state wr"><i></i><span><b>Nearly used up.</b> The tunnel goes offline the moment it reaches
+            ? `<div class="qt-state wr"><i></i><span><b>Nearly used up.</b> ${subject[0].toUpperCase() + subject.slice(1)} stops carrying traffic at
                 ${esc(bytes(q.limit))}, and stays offline until the limit is raised.</span></div>`
-            : `<div class="qt-state"><i></i><span>${q.limit ? `Goes offline at <b>${esc(bytes(q.limit))}</b>; back when the limit is raised.` : '<b>No limit.</b> The tunnel goes offline when it reaches one.'}</span></div>`;
+            : `<div class="qt-state"><i></i><span>${q.limit ? `Goes offline at <b>${esc(bytes(q.limit))}</b>; back when the limit is raised.` : '<b>No limit.</b>'}</span></div>`;
         body.innerHTML = `
           <div class="qt-hero">
             <div class="qt-ring ${want ? '' : 'inf'}" style="--p:${pct.toFixed(4)};--c:${TONE_COLOR[tone]}">
@@ -111,7 +125,7 @@ export function quotaView(ctx) {
             <div class="qt-nums">
               <div><span>Used</span><b>${esc(bytes(used))}</b></div>
               <div><span>Limit</span><b>${want ? esc(bytes(want)) : 'Unlimited'}</b></div>
-              <div class="wide"><span>Left</span><b>${want ? (used >= want ? 'nothing — offline' : esc(bytes(left))) : '—'}</b></div>
+              <div class="wide"><span>Left</span><b>${want ? (!left ? 'nothing — offline' : esc(bytes(left))) : '—'}</b></div>
             </div>
           </div>
           ${stateBox}
@@ -120,22 +134,27 @@ export function quotaView(ctx) {
             `<button type="button" data-v="${p.v}" class="${p.v === want ? 'on' : ''}">${p.label}${p.note ? `<small>${p.note}</small>` : ''}</button>`).join('')}</div>
           <div class="qt-custom">
             <input id="qtNum" type="number" min="0" step="any" inputmode="decimal" placeholder="Or type an amount"
-              value="${custom && want ? +(want / unit).toFixed(2) : ''}">
+              value="${custom && want ? +(want / unit).toFixed(12) : ''}">
             <div class="qt-unit">${[['GB', GB], ['TB', TB]].map(([l, u]) =>
               `<button type="button" data-u="${u}" class="${u === unit ? 'on' : ''}">${l}</button>`).join('')}</div>
           </div>
           <div class="qt-add"><span>Add to it</span>${ADDS.map(a =>
             `<button type="button" data-add="${a}">+ ${esc(bytes(a))}</button>`).join('')}</div>
           <div class="qt-preview ${want && want <= used ? 'er' : ''}" id="qtPrev">${preview(used)}</div>
-          ${resetRow(used)}`;
+          ${mode ? '' : resetRow(used)}`;
         if (save) save.disabled = want === (q.limit || 0);
       };
 
       const preview = used => {
         if (want === (q.limit || 0)) return '';
-        if (!want) return 'Saving removes the limit — <b>the tunnel runs without one</b>.';
-        if (want <= used) return `<b>Below what it has carried</b> — the tunnel goes offline on save.`;
-        return `New limit <b>${esc(bytes(want))}</b> — <b>${esc(bytes(want - used))}</b> left${q.hit ? '; the tunnel comes back online' : ''}.`;
+        if (!want) return `Saving removes the limit — <b>${subject} runs without one</b>.`;
+        if (want <= used) return `<b>Limit already reached</b> — ${subject} stops carrying traffic on save.`;
+        return `New limit <b>${esc(bytes(want))}</b> — <b>${esc(bytes(want - used))}</b> left${q.hit ? `; ${subject} can carry traffic again` : ''}.`;
+      };
+
+      const quantity = (number, scale) => {
+        const amount = Math.round(number * scale);
+        return Number.isSafeInteger(amount) && amount > 0 ? amount : null;
       };
 
       body.addEventListener('click', ev => {
@@ -146,20 +165,25 @@ export function quotaView(ctx) {
         if (b.dataset.u) {
           unit = Number(b.dataset.u);
           const n = Number(body.querySelector('#qtNum')?.value);
-          if (n > 0) want = Math.round(n * unit);
+          if (n > 0) want = quantity(n, unit) ?? want;
           draw();
           return;
         }
         if (b.dataset.add) {
-          want = (want || q.used || 0) + Number(b.dataset.add);
+          want = quantity((want || q.used || 0) + Number(b.dataset.add), 1) ?? want;
           draw();
         }
       });
       body.addEventListener('input', ev => {
         if (ev.target.id !== 'qtNum') return;
-        const n = Number(ev.target.value);
-        if (!(n > 0)) return;
-        want = Math.round(n * unit);
+        const amount = quantity(Number(ev.target.value), unit);
+        if (amount == null) {
+          ev.target.setCustomValidity('Enter a valid positive amount. Choose Unlimited to remove the limit.');
+          if (save) save.disabled = true;
+          return;
+        }
+        ev.target.setCustomValidity('');
+        want = amount;
         // Only what the number changes: redrawing the whole pane would take the
         // field from under the cursor.
         body.querySelectorAll('.qt-presets button').forEach(x => x.classList.toggle('on', Number(x.dataset.v) === want));
@@ -169,16 +193,19 @@ export function quotaView(ctx) {
         if (lim) lim.textContent = bytes(want);
         if (save) save.disabled = want === (q.limit || 0);
       });
-      body.addEventListener('change', ev => { if (ev.target.id === 'qtNum') draw(); });
+      body.addEventListener('change', ev => {
+        if (ev.target.id === 'qtNum' && ev.target.validity.valid) draw();
+      });
 
       save?.addEventListener('click', async () => {
         save.disabled = true;
         try {
           const was = q;
-          q = await api.setTunnelQuota(name, want);
-          toast(!q.limit ? `${name} has no traffic limit now.`
-            : was.hit && !q.hit ? `${name} has ${bytes(q.limit - q.used)} again — coming back online.`
-              : `${name} goes offline at ${bytes(q.limit)}.`);
+          q = mode ? await api.mtProxyAction(name, { action: 'quota', id: q.id, limit: want }, mode)
+            : await api.setTunnelQuota(name, want);
+          toast(!q.limit ? `${label} has no traffic limit now.`
+            : was.hit && !q.hit ? `${label} has ${bytes(q.limit - q.used)} available again.`
+              : `${label} traffic limit saved at ${bytes(q.limit)}.`);
           store.refresh();
           close();
         } catch (e) { oops(e); save.disabled = false; }

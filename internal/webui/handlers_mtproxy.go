@@ -1,6 +1,7 @@
 package webui
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math/rand/v2"
@@ -8,11 +9,14 @@ import (
 	"net/http"
 	"net/netip"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/backpack/backpack/config"
 	"github.com/backpack/backpack/internal/app"
@@ -103,6 +107,30 @@ type mtProxyDraft struct {
 	Public  int           `json:"public"`
 	Setup   mtproxy.Setup `json:"setup"`
 	Forward string        `json:"forward,omitempty"`
+	Label   string        `json:"label,omitempty"`
+	Limit   uint64        `json:"limit,omitempty"`
+}
+
+func (d mtProxyDraft) label(mode string) string {
+	if d.Label != "" {
+		return d.Label
+	}
+	if mode == mtproxy.ModeWeb {
+		return "MTProxy WEB"
+	}
+	return "MTProxy"
+}
+
+func validateMTProxyLimit(limit uint64) error {
+	if limit > (1<<53)-1 {
+		return fmt.Errorf("enter a smaller traffic limit")
+	}
+	if limit != 0 {
+		if _, err := exec.LookPath("nft"); err != nil {
+			return fmt.Errorf("MTProxy traffic limits require nftables on Iran")
+		}
+	}
+	return nil
 }
 
 func (d mtProxyDraft) display(port mtProxyPort) map[string]any {
@@ -112,7 +140,7 @@ func (d mtProxyDraft) display(port mtProxyPort) map[string]any {
 		"link": d.Setup.Link(d.Host, d.Public), "command": d.Setup.Command(),
 		"remove": "sudo backpack mtproxy remove " + d.Setup.ID(),
 		"bind":   d.Setup.BindIP(), "engine": "Telemt " + mtproxy.Version,
-		"ownsForward": d.Forward != "",
+		"ownsForward": d.Forward != "", "label": d.Label, "limit": d.Limit,
 	}
 	if d.Setup.Mode == "" {
 		out["engine"] = "mtg " + mtproxy.LegacyVersion
@@ -232,6 +260,7 @@ func (s *server) handleMTProxy(w http.ResponseWriter, r *http.Request) {
 			"bind": exit, "managed": managed, "active": manage.IsActive(t.Service)}
 		if saved {
 			out["proxy"] = draft.display(current)
+			out["quota"] = s.mtProxyTraffic.status(name, draft, mode)
 		}
 		writeJSON(w, out)
 	case http.MethodPost:
@@ -247,6 +276,8 @@ func (s *server) handleMTProxy(w http.ResponseWriter, r *http.Request) {
 			PortResult           string `json:"portResult"` // Accepted from older panels. Join checks the port directly.
 			ID                   string `json:"id"`
 			Confirmed            bool   `json:"confirmed"`
+			Label                string `json:"label"`
+			Limit                uint64 `json:"limit"`
 		}
 		if err := decodeJSON(w, r, &req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -301,9 +332,42 @@ func (s *server) handleMTProxy(w http.ResponseWriter, r *http.Request) {
 			// Kharej before attempting installation.
 			port := 49152 + rand.IntN(16384)
 			writeJSON(w, map[string]any{"port": port, "checked": false})
+		case "quota":
+			if !saved || req.ID != draft.Setup.ID() {
+				http.Error(w, "the MTProxy setup changed. Reopen this dialog and try again", http.StatusConflict)
+				return
+			}
+			if err := validateMTProxyLimit(req.Limit); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			before := draft
+			draft.Limit = req.Limit
+			if err := writeMTProxyDraft(path, draft); err != nil {
+				http.Error(w, "could not save the MTProxy traffic limit", http.StatusInternalServerError)
+				return
+			}
+			ctx := context.WithoutCancel(r.Context())
+			if err := s.mtProxyTraffic.refresh(ctx); err != nil {
+				if writeMTProxyDraft(path, before) == nil {
+					_ = s.mtProxyTraffic.refresh(ctx)
+				}
+				http.Error(w, "could not apply the MTProxy traffic limit: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+			writeJSON(w, s.mtProxyTraffic.status(name, draft, mode))
 		case "create":
 			if saved {
 				http.Error(w, "remove the current MTProxy setup before creating another one on this tunnel", http.StatusConflict)
+				return
+			}
+			label := strings.TrimSpace(req.Label)
+			if utf8.RuneCountInString(label) > 48 || strings.ContainsFunc(label, unicode.IsControl) {
+				http.Error(w, "enter a proxy name of up to 48 characters", http.StatusBadRequest)
+				return
+			}
+			if err := validateMTProxyLimit(req.Limit); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
 			port, forward, err := plan(req.Port, req.Destination)
@@ -336,7 +400,7 @@ func (s *server) handleMTProxy(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
-			draft = mtProxyDraft{Host: host, Public: port.Public, Setup: setup, Forward: forward}
+			draft = mtProxyDraft{Host: host, Public: port.Public, Setup: setup, Forward: forward, Label: label, Limit: req.Limit}
 			if err := writeMTProxyDraft(path, draft); err != nil {
 				http.Error(w, "could not save the MTProxy setup", http.StatusInternalServerError)
 				return
@@ -360,6 +424,10 @@ func (s *server) handleMTProxy(w http.ResponseWriter, r *http.Request) {
 		case "check":
 			if !saved || !draft.matches(current) {
 				http.Error(w, "the saved TCP forwarding rule is unavailable", http.StatusConflict)
+				return
+			}
+			if s.mtProxyTraffic.status(name, draft, mode).Hit {
+				http.Error(w, "this proxy has reached its traffic limit", http.StatusConflict)
 				return
 			}
 			locked = false

@@ -46,6 +46,8 @@ type TunnelInfo struct {
 	PeerLocation string  `json:"peerLocation"`
 	PeerISP      string  `json:"peerISP"`
 	BotRelay     bool    `json:"botRelay"` // has a hidden port used for the Telegram relay
+
+	MTProxyUsage []mtProxyUsage `json:"mtproxyUsage,omitempty"`
 	// BotRelayPort is the loopback port that relay listens on. It is shown on
 	// its own, under its own name, rather than as the raw mapping: the mapping
 	// reads like something the operator set up and can therefore tidy away,

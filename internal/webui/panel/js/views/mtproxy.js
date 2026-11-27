@@ -21,6 +21,9 @@ export function mtProxyView(ctx) {
       const destination = field('mtpDestination');
       const mode = field('mtpMode');
       const subtitle = field('mtpSubtitle');
+      const label = field('mtpLabel');
+      const limit = field('mtpLimit');
+      const limitUnit = field('mtpLimitUnit');
       const setStatus = (text, error = false, target = status) => {
         target.textContent = text;
         target.classList.toggle('error', error);
@@ -88,7 +91,24 @@ export function mtProxyView(ctx) {
         checkTimer = setTimeout(() => checkPorts().catch(e => setStatus(e.message, true)), 350);
       };
 
-      const show = (info, values = { host: info.address, domain: info.domain, webIp: info.webIp, sponsor: info.sponsor }) => {
+      const savedFormValues = info => ({
+        host: info.address, domain: info.domain, webIp: info.webIp, sponsor: info.sponsor,
+        label: info.label, limit: info.limit,
+      });
+      const limitBytes = () => {
+        const input = limit.value.trim();
+        if (!input) return 0;
+        const amount = Math.round(Number(input) * Number(limitUnit.value));
+        return /^(?:\d+(?:\.\d*)?|\.\d+)$/.test(input) && Number.isSafeInteger(amount) && amount > 0 ? amount : null;
+      };
+      const validateLimit = () => {
+        limit.setCustomValidity(limitBytes() == null ? 'Enter a valid positive amount or leave it blank for Unlimited.' : '');
+        return limit.reportValidity();
+      };
+      limit.addEventListener('input', () => { limit.setCustomValidity(''); });
+      limitUnit.addEventListener('change', () => { limit.setCustomValidity(''); });
+
+      const show = (info, values = savedFormValues(info)) => {
         proxy = info;
         replacement = null;
         field('mtpCommand').value = info.command;
@@ -100,7 +120,7 @@ export function mtProxyView(ctx) {
         field('mtpRegister').value = info.registrationSecret || '';
         field('mtpSponsor').value = info.sponsor || '';
         openForm(values);
-        subtitle.textContent = name + ' \u00b7 ' + (info.engine || 'MTProxy');
+        subtitle.textContent = [name, info.label, info.engine || 'MTProxy'].filter(Boolean).join(' \u00b7 ');
         const ingress = isWeb() ? 'HTTPS ' + address(info.address, 443) + ' \u2192 TCP ' + info.public
           : 'TCP ' + address(info.address, info.public);
         setStatus(settings.note || ingress + ' \u2192 ' + address(info.bind, info.destination) + ' on Kharej');
@@ -112,6 +132,8 @@ export function mtProxyView(ctx) {
         domain: isWeb() ? '' : field('mtpDomain').value.trim(),
         webIp: isWeb() ? field('mtpWebIP').value.trim() : '',
         sponsor,
+        label: label.value.trim(),
+        limit: limitBytes(),
       });
 
       const openForm = (values = {}) => {
@@ -125,6 +147,12 @@ export function mtProxyView(ctx) {
         field('mtpExisting').replaceChildren(...(settings.ports || []).map(p => new Option(
           'Forwards to ' + address(p.bind, p.destination), p.public,
         )));
+        label.value = values.label || '';
+        label.placeholder = web ? 'MTProxy WEB' : 'MTProxy';
+        const scale = values.limit && values.limit % (1024 ** 4) === 0 ? 1024 ** 4 : 1024 ** 3;
+        limitUnit.value = scale;
+        limit.value = values.limit ? +(values.limit / scale).toFixed(12) : '';
+        limit.setCustomValidity('');
         publicPort.value = values.port || '';
         destination.value = values.destination || '';
         sponsor = values.sponsor || '';
@@ -192,7 +220,7 @@ export function mtProxyView(ctx) {
       };
       const remove = (button, discard = false) => work(button, async () => {
         const replacing = !!replacement;
-        const values = replacement ?? { host: proxy.address, domain: proxy.domain, webIp: proxy.webIp };
+        const values = replacement ?? savedFormValues(proxy);
         setStatus('Removing the saved setup\u2026');
         await action({ action: discard ? 'clear' : 'remove', id: proxy.id, confirmed: true });
         await load(values);
@@ -224,6 +252,7 @@ export function mtProxyView(ctx) {
       }));
       form.addEventListener('submit', event => {
         event.preventDefault();
+        if (!validateLimit()) return;
         work(submit, async () => {
           setStatus('Checking ports\u2026');
           if (!await checkPorts()) {
@@ -266,7 +295,7 @@ export function mtProxyView(ctx) {
         setStatus('Run the updated setup command on Kharej to apply the sponsor tag.');
       }));
       newSetup.addEventListener('click', () => {
-        openForm({ host: proxy.address, domain: proxy.domain, webIp: proxy.webIp });
+        openForm(savedFormValues(proxy));
         publicPort.focus();
       });
       field('mtpDelete').addEventListener('click', () => openRemoval(null));
