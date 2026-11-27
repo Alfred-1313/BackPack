@@ -286,7 +286,13 @@ ${field(t, idx)}
     </span>` : ''}`}
 </div>
 
-<div class="mtp-usage" hidden><span>MTProxy</span><b></b></div>
+<div class="mfoot mtp-usage" hidden>
+  <span>MTProxy</span>
+  <span class="qm none">
+    <span class="qm-tx"><b></b><i>/</i><em>∞</em></span>
+    <span class="qm-bar" aria-hidden="true"></span>
+  </span>
+</div>
 
 <div class="foot">
   <span class="tot"><i>↓</i>${esc(bytes(t.inBytes || 0))}<i>↑</i>${esc(bytes(t.outBytes || 0))}</span>
