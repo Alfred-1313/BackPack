@@ -23,6 +23,7 @@ const line = (icon, text, label) => {
 
 export function setupLinkHTML(info) {
   const kharej = info.for === 'kharej';
+  const terminal = info.matrix ? 'the new node' : 'Kharej';
   if (info.gretapPeer || info.panelDirectPeer) {
     const peer = info.panelDirectPeer || info.gretapPeer;
     const easyTier = peer.carrier === 'easytier';
@@ -50,12 +51,12 @@ export function setupLinkHTML(info) {
     <div class="sl-steps">
       <span class="sl-side here"><b>This server</b><small>${info.kind === 'direct' ? 'direct' : 'reverse'} · ${info.pending ? 'waiting for peer' : 'built'}</small></span>
       <span class="sl-wire"><i></i></span>
-      <span class="sl-side there"><b>${kharej ? 'Kharej' : 'Iran'}</b><small>build it with the ${kharej ? 'line' : 'link'} below</small></span>
+      <span class="sl-side there"><b>${info.matrix ? 'New node' : kharej ? 'Kharej' : 'Iran'}</b><small>build it with the ${kharej ? 'line' : 'link'} below</small></span>
     </div>
     ${kharej ? `
-      <div class="sl-h"><b>On the kharej, as root</b><small>Backpack already installed</small></div>
+      <div class="sl-h"><b>On ${terminal}, as root</b><small>Backpack already installed</small></div>
       ${line(TERM, info.apply, 'the command')}
-      <details class="ct-more"><summary><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>The kharej has no Backpack yet</summary>
+      <details class="ct-more"><summary><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>Install Backpack on ${terminal}</summary>
         <p>Installs Backpack and sets this tunnel up in one go.</p>
         ${line(TERM, info.install, 'the install command')}</details>
       ${info.link ? `<div class="sl-h"><b>Or paste the link</b><small>${esc(info.where)}</small></div>
@@ -67,10 +68,11 @@ export function setupLinkHTML(info) {
          refuses to guess it — the command above carries --host for it. */
       ? `<div class="tl-note wr">This server's own address could not be found, so the link does not name it. Put the address the kharej reaches this server at in place of IRAN_SERVER_IP above.</div>`
       : `<div class="tl-note wr">This server's public address could not be found, so the other side will ask for it.</div>`) : ''}
-    ${info.pending ? '<div class="tl-note">Run the command on Kharej within 15 minutes to configure both ends.</div>' : ''}
+    ${info.pending ? `<div class="tl-note">Run the command on ${terminal} within 15 minutes.</div>` : ''}
     <div class="tl-note">${info.gre
       ? 'Holds the GRE key and both addresses — send it only to the server it is for.'
-      : 'Holds the tunnel token — send it only to the server it is for.'}</div>
+      : info.matrix ? 'Contains a one-time Matrix invitation. Keep it private.'
+        : 'Holds the tunnel token — send it only to the server it is for.'}</div>
   </div>`;
 }
 

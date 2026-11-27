@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/backpack/backpack/internal/gostdirect"
+	"github.com/backpack/backpack/internal/matrix"
 	"github.com/backpack/backpack/internal/omni"
 	"golang.org/x/sys/unix"
 )
@@ -30,7 +31,8 @@ const ctBarSegments = 8
 
 // ctTransportNames are the names the menus use.
 var ctTransportNames = map[string]string{
-	"tcp": "TCP", "tcpmux": "TCP MUX", "stealth": "Stealth", "pck": "PCK",
+	matrix.ID: matrix.Label,
+	"tcp":     "TCP", "tcpmux": "TCP MUX", "stealth": "Stealth", "pck": "PCK",
 	"ws": "WS", "wss": "WSS", "wsmux": "WS MUX", "wssmux": "WSS MUX",
 	"kcp": "KCP FEC", "quic": "QUIC", "udp": "UDP", "xdi": "xDi", ctXdiFEC: "xDi + FEC", "sni": "SNI", "gre": "GRE",
 	"gretap": "GRETAP", "l2tpv3": "L2TPv3 (IP)", "easytier": "EasyTier",

@@ -310,7 +310,7 @@ ${st ? `<div class="permenu">
        for a tunnel is gated on knowing where that end lives, and a tunnel not
        built through the fleet has never had a way to say. -->
   <!-- The line that builds the other end, as the menu prints it. -->
-  <button data-do="share"><span>${svg('link')}</span>Setup link…</button>
+  <button data-do="share"><span>${svg('link')}</span>${t.transport === 'matrix' ? 'Matrix nodes & ports' : 'Setup link…'}</button>
   ${t.node
     ? `<button data-do="unlink"><span>${svg('link')}</span>Unlink from ${esc(t.node)}</button>`
     : `<button data-do="adopt"><span>${svg('link')}</span>Link to a server…</button>`}
@@ -541,7 +541,7 @@ export function dashboard(ctx) {
         sheet.classList.toggle('on', !was);
         break;
       }
-      case 'edit':   go(`/t/${encodeURIComponent(name)}/edit`); break;
+      case 'edit':   go(`/t/${encodeURIComponent(name)}/${store.tunnel(name)?.transport === 'matrix' ? 'share' : 'edit'}`); break;
       case 'quota':  go(`/t/${encodeURIComponent(name)}/quota`); break;
       case 'logs':   go(`/t/${encodeURIComponent(name)}/logs`); break;
       case 'detail': go(`/t/${encodeURIComponent(name)}/metrics`); break;

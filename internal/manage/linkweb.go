@@ -39,6 +39,7 @@ type SetupLinkInfo struct {
 	// token, so the screen's warning names what it does hold.
 	GRE     bool `json:"gre,omitempty"`
 	Pending bool `json:"pending,omitempty"`
+	Matrix  bool `json:"matrix,omitempty"`
 	// GRETAP is configured from the other server's Add tunnel form.
 	GRETAPPeer      *PeerForm `json:"gretapPeer,omitempty"`
 	PanelDirectPeer *PeerForm `json:"panelDirectPeer,omitempty"`

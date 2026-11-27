@@ -107,6 +107,12 @@ func Run(configPath string, ctx context.Context) {
 		logger.Fatalf("%v", err)
 	}
 
+	if cfg.Matrix.Present() {
+		if err := runMatrix(ctx, configPath, cfg.Matrix); err != nil {
+			logger.Fatalf("Matrix stopped: %v", err)
+		}
+		return
+	}
 	if cfg.Backhaul.Present() {
 		if cfg.Backhaul.Native {
 			ctx, cancel := context.WithCancel(ctx)

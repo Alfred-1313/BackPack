@@ -17,6 +17,7 @@ const gostNames = new Map([
 ]);
 
 export function transportDisplay(id, label) {
+  if (id === 'matrix') return { name: 'Matrix', source: 'Tinc' };
   const gostName = gostNames.get(id);
   if (gostName) return { name: gostName, source: '' };
   // Use the original transport name even for results saved by an older panel.

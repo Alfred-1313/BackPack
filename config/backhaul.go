@@ -26,14 +26,20 @@ type BackhaulConfig struct {
 	HealthPort uint16 `toml:"health_port,omitempty"`
 	// IPXProfile selects the IPX outer protocol.
 	IPXProfile string `toml:"ipx_profile,omitempty"`
-	// Native performance settings. Zero keeps the engine defaults.
-	Preset      string              `toml:"preset,omitempty"`
-	Lanes       int                 `toml:"lanes,omitempty"`
-	PacketQueue int                 `toml:"packet_queue,omitempty"`
-	MTU         int                 `toml:"mtu,omitempty"`
-	Mux         *BackhaulMuxOptions `toml:"mux,omitempty"`
-	HTTPPath    string              `toml:"http_path,omitempty"`
-	HTTPHost    string              `toml:"http_host,omitempty"`
+	// Preset records which performance preset supplied the settings.
+	Preset string `toml:"preset,omitempty"`
+	// Lanes sets the number of parallel native stream connections.
+	Lanes int `toml:"lanes,omitempty"`
+	// PacketQueue sets the native TUN packet buffer size.
+	PacketQueue int `toml:"packet_queue,omitempty"`
+	// MTU sets the native TUN packet size.
+	MTU int `toml:"mtu,omitempty"`
+	// Mux controls the native XTcpMux and XWsMux options.
+	Mux *BackhaulMuxOptions `toml:"mux,omitempty"`
+	// HTTPPath is the request path for the native Dagger HTTP transports.
+	HTTPPath string `toml:"http_path,omitempty"`
+	// HTTPHost sets the host name for a native Dagger HTTP upgrade.
+	HTTPHost string `toml:"http_host,omitempty"`
 }
 
 func (c BackhaulConfig) Present() bool { return c.Role != "" || c.Mode != "" }
@@ -41,11 +47,18 @@ func (c BackhaulConfig) Present() bool { return c.Role != "" || c.Mode != "" }
 // BackhaulMuxOptions applies to the built-in XTcpMux and XWsMux engines.
 // The server-only listener and forwarding settings stay on Iran.
 type BackhaulMuxOptions struct {
-	Backups          []string `toml:"backups,omitempty"`
-	HeartbeatSeconds int      `toml:"heartbeat_seconds,omitempty"`
-	TimeoutSeconds   int      `toml:"timeout_seconds,omitempty"`
-	IPv6             *bool    `toml:"ipv6,omitempty"`
-	ProxyProtocol    bool     `toml:"proxy_protocol,omitempty"`
-	MaxConnections   int      `toml:"max_connections,omitempty"`
-	BandwidthMbps    int      `toml:"bandwidth_mbps,omitempty"`
+	// Backups lists alternative endpoints to dial.
+	Backups []string `toml:"backups,omitempty"`
+	// HeartbeatSeconds sets the SMUX keepalive interval.
+	HeartbeatSeconds int `toml:"heartbeat_seconds,omitempty"`
+	// TimeoutSeconds sets the SMUX keepalive timeout.
+	TimeoutSeconds int `toml:"timeout_seconds,omitempty"`
+	// IPv6 controls whether the listener also accepts IPv6.
+	IPv6 *bool `toml:"ipv6,omitempty"`
+	// ProxyProtocol sends the original client address to the forwarded service.
+	ProxyProtocol bool `toml:"proxy_protocol,omitempty"`
+	// MaxConnections bounds concurrent forwarded connections. Zero is unlimited.
+	MaxConnections int `toml:"max_connections,omitempty"`
+	// BandwidthMbps sets the forwarding bandwidth cap. Zero is unlimited.
+	BandwidthMbps int `toml:"bandwidth_mbps,omitempty"`
 }

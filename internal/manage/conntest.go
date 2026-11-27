@@ -35,6 +35,7 @@ import (
 
 	"github.com/backpack/backpack/config"
 	"github.com/backpack/backpack/internal/app"
+	"github.com/backpack/backpack/internal/matrix"
 	"github.com/backpack/backpack/internal/spooftest"
 	"github.com/backpack/backpack/internal/tunnel/l3"
 	"github.com/backpack/backpack/internal/tunnel/naive"
@@ -700,6 +701,10 @@ func StartConnTestIran(o ConnTestOptions) (*ConnTestIran, string, error) {
 		for _, c := range cases {
 			if !s.root {
 				c.skip = "needs root on both servers"
+			} else if c.tr == matrix.ID {
+				if _, err := matrix.Binary(); err != nil {
+					c.skip = err.Error()
+				}
 			} else if _, ok := strings.CutPrefix(c.tr, ctDaggerPrefix); ok {
 				c.skip = s.daggerSkip(c.tr)
 			} else if ctFamily(host) != "IPv4" && !strings.HasPrefix(c.tr, ctBackhaulPrefix) {
@@ -1783,6 +1788,10 @@ func ctDial(ctx context.Context, c *connTestCase, l3Echo int) (net.Conn, error) 
 		// system default (cubic) a lossy long path held a direct tunnel to a
 		// fraction of what the reverse ones, all BBR, were measured at.
 		d.Control = network.CongestionControl
+	}
+	if c.tr == matrix.ID {
+		d = matrix.Dialer(c.name)
+		d.Timeout = 3 * time.Second
 	}
 	return d.DialContext(ctx, proto, addr)
 }

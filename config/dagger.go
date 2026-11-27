@@ -20,8 +20,9 @@ type DaggerConfig struct {
 	ConnectionPool int `toml:"connection_pool,omitempty"`
 	// HeartbeatSeconds applies to both ends of a TUN tunnel.
 	HeartbeatSeconds int `toml:"heartbeat_seconds,omitempty"`
-	// QuantumMTU and QuantumCipher are shared on both ends of Quantum.
-	QuantumMTU    int    `toml:"quantum_mtu,omitempty"`
+	// QuantumMTU is the packet size used by both ends of Quantum.
+	QuantumMTU int `toml:"quantum_mtu,omitempty"`
+	// QuantumCipher selects the Quantum header cipher on both ends.
 	QuantumCipher string `toml:"quantum_cipher,omitempty"`
 	// UploadMode is the streaming mode used by the split HTTP client.
 	UploadMode string `toml:"upload_mode,omitempty"`

@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/backpack/backpack/internal/gostdirect"
+	"github.com/backpack/backpack/internal/matrix"
 	"github.com/backpack/backpack/internal/omni"
 )
 
@@ -44,6 +45,7 @@ const ctStoppedCleanupLimit = 15 * time.Second
 
 func ctExtraCases() []*connTestCase {
 	cases := make([]*connTestCase, 0, len(omni.Options())+1)
+	cases = append(cases, &connTestCase{kind: "direct", tr: matrix.ID, extra: true})
 	for _, mode := range omni.Options() {
 		cases = append(cases, &connTestCase{kind: mode["direction"], tr: ctOmniPrefix + mode["value"], extra: true})
 	}
@@ -237,7 +239,11 @@ func (w *ctExtraWorker) perform(ctx context.Context, link ConnTestLink, job ctEx
 	}
 	switch job.Action {
 	case "port":
-		if gostdirect.ModeVersion(job.Mode) == 0 {
+		if job.Mode == matrix.ID {
+			if _, err := matrix.Binary(); err != nil {
+				return 0, err
+			}
+		} else if gostdirect.ModeVersion(job.Mode) == 0 {
 			if err := ctCheckOmniTestHelper(ctx); err != nil {
 				return 0, err
 			}
@@ -278,6 +284,9 @@ func (w *ctExtraWorker) perform(ctx context.Context, link ConnTestLink, job ctEx
 }
 
 func (w *ctExtraInstance) join(ctx context.Context, link ConnTestLink, job ctExtraJob) error {
+	if job.Mode == matrix.ID {
+		return w.joinMatrix(ctx, link, job)
+	}
 	if strings.HasPrefix(job.Mode, ctBackhaulPrefix) {
 		return w.joinBackhaul(ctx, link, job)
 	}
@@ -426,6 +435,9 @@ func (s *ConnTestIran) setupExtra(ctx context.Context, c *connTestCase, mode str
 	ctrl.mu.Unlock()
 	if !ready {
 		return errors.New("Kharej did not enable the transport-test control channel; update both servers")
+	}
+	if mode == matrix.ID {
+		return s.setupMatrix(ctx, c, ctrl)
 	}
 	if strings.HasPrefix(mode, ctBackhaulPrefix) {
 		return s.setupBackhaul(ctx, c, mode)

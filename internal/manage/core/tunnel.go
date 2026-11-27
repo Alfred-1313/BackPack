@@ -69,6 +69,13 @@ func List() []Tunnel {
 func tunnelOf(name string, cfg config.Config) (Tunnel, bool) {
 	t := Tunnel{Name: name, Service: app.ServiceName(name)}
 	switch {
+	case cfg.Matrix.Present():
+		c := cfg.Matrix
+		t.Role, t.Transport, t.Ports = "node", "matrix", c.Ports
+		if c.Local.Name == "main" {
+			t.Role = "main"
+		}
+		t.Addr = net.JoinHostPort(c.Local.IP, strconv.Itoa(int(c.Local.Port)))
 	case cfg.Backhaul.Present():
 		c := cfg.Backhaul
 		t.Role, t.Transport, t.Ports = c.Role, "backhaul/"+c.Mode, c.Ports

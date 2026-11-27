@@ -299,6 +299,10 @@ export const proxyTest = () => post('/api/manage/proxy', new URLSearchParams({ a
 /* The link that builds a tunnel's other end, and the commands that use it. */
 export const tunnelLink = (name, host = '') =>
   get('/api/tunnel/link?name=' + encodeURIComponent(name) + (host ? '&host=' + encodeURIComponent(host) : ''));
+export const matrixStatus = name => get('/api/matrix?name=' + encodeURIComponent(name));
+export const matrixCreate = form => post('/api/matrix', { action: 'create', form });
+export const matrixInvite = name => post('/api/matrix', { action: 'invite', name });
+export const matrixEdit = edit => post('/api/matrix', { action: 'edit', edit });
 
 /* ---- A tunnel's traffic limit: bytes in all, 0 for none ------------------ */
 export const tunnelQuota = name => get('/api/tunnel/quota?name=' + encodeURIComponent(name));

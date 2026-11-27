@@ -14,6 +14,7 @@ import (
 	"github.com/backpack/backpack/internal/control"
 	"github.com/backpack/backpack/internal/daggerconnect"
 	"github.com/backpack/backpack/internal/manage"
+	"github.com/backpack/backpack/internal/matrix"
 	"github.com/backpack/backpack/internal/node"
 	"github.com/backpack/backpack/internal/omni"
 	"github.com/backpack/backpack/internal/tunhist"
@@ -78,6 +79,13 @@ func relayEngineChecks(parent context.Context) []healthRow {
 	}
 	ctx, cancel := context.WithTimeout(parent, 2*time.Second)
 	defer cancel()
+	tinc := healthRow{Group: group, Name: matrix.Label, Level: "fail", Detail: "Not installed"}
+	if version, err := matrix.Version(ctx); err == nil {
+		tinc.Level, tinc.Version, tinc.Detail = "ok", version, "Installed"
+	} else {
+		tinc.Detail = err.Error()
+	}
+	checks = append(checks, tinc)
 	items := make([]healthRow, len(helpers))
 	var pending sync.WaitGroup
 	for i, helper := range helpers {

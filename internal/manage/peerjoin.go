@@ -24,8 +24,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/backpack/backpack/config"
 	"github.com/backpack/backpack/internal/app"
 	"github.com/backpack/backpack/internal/gostdirect"
+	"github.com/backpack/backpack/internal/matrix"
 	"github.com/backpack/backpack/internal/omni"
 	"github.com/backpack/backpack/internal/tunnel/l3"
 )
@@ -37,12 +39,14 @@ var peerJoinSlots = make(chan struct{}, 8)
 
 type peerJoinLink struct {
 	Addr, Key, Pin string
+	Matrix         bool `json:"-"`
 }
 
 type peerJoinResult struct {
 	Link, Driver, Token, Mode, Name string
 	MuxToken                        string
 	OmniOptions                     omni.SetupOptions
+	Matrix                          *config.MatrixConfig `json:",omitempty"`
 }
 
 // beginPeerJoin lets the Kharej operator supply the peer via an authenticated
@@ -62,12 +66,18 @@ func beginPeerJoin(parent context.Context, name, kind string, allowIPv6 bool, se
 }
 
 func beginPeerJoinAt(parent context.Context, host, name, kind string, setup func(context.Context, string, string) (peerJoinResult, error)) (SetupLinkInfo, error) {
+	return beginPeerJoinProtocol(parent, host, name, kind, false, func(ctx context.Context, host, peer, _ string) (peerJoinResult, error) {
+		return setup(ctx, host, peer)
+	})
+}
+
+func beginPeerJoinProtocol(parent context.Context, host, name, kind string, matrixJoin bool, setup func(context.Context, string, string, string) (peerJoinResult, error)) (SetupLinkInfo, error) {
 	select {
 	case peerJoinSlots <- struct{}{}:
 	default:
 		return SetupLinkInfo{}, errors.New("too many pending Setup commands; try again when one expires")
 	}
-	info, err := startPeerJoin(parent, host, name, kind, setup, func() { <-peerJoinSlots })
+	info, err := startPeerJoinProtocol(parent, host, name, kind, matrixJoin, setup, func() { <-peerJoinSlots })
 	if err != nil {
 		<-peerJoinSlots
 	}
@@ -75,6 +85,12 @@ func beginPeerJoinAt(parent context.Context, host, name, kind string, setup func
 }
 
 func startPeerJoin(parent context.Context, host, name, kind string, setup func(context.Context, string, string) (peerJoinResult, error), finished func()) (SetupLinkInfo, error) {
+	return startPeerJoinProtocol(parent, host, name, kind, false, func(ctx context.Context, host, peer, _ string) (peerJoinResult, error) {
+		return setup(ctx, host, peer)
+	}, finished)
+}
+
+func startPeerJoinProtocol(parent context.Context, host, name, kind string, matrixJoin bool, setup func(context.Context, string, string, string) (peerJoinResult, error), finished func()) (SetupLinkInfo, error) {
 	if parent == nil {
 		parent = context.Background()
 	}
@@ -110,12 +126,15 @@ func startPeerJoin(parent context.Context, host, name, kind string, setup func(c
 	addr := netip.AddrPortFrom(ip.Unmap(), uint16(listener.Addr().(*net.TCPAddr).Port))
 	keyBytes, _ := base64.StdEncoding.DecodeString(key)
 	payload := append([]byte{1}, keyBytes...)
+	if matrixJoin {
+		payload[0] = 2
+	}
 	payload = append(payload, sum[:]...)
 	payload = binary.BigEndian.AppendUint16(payload, addr.Port())
 	payload = append(payload, addr.Addr().AsSlice()...)
 	raw := peerJoinScheme + base64.RawURLEncoding.EncodeToString(payload)
 	var mu sync.Mutex
-	var peer string
+	var peer, acceptedKey string
 	var result peerJoinResult
 	var lastError error
 	server := &http.Server{
@@ -127,8 +146,19 @@ func startPeerJoin(parent context.Context, host, name, kind string, setup func(c
 		MaxHeaderBytes:    4096,
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Cache-Control", "no-store")
-			if r.Method != http.MethodPost || r.URL.Path != "/join" || r.ContentLength != 0 ||
+			if r.Method != http.MethodPost || r.URL.Path != "/join" ||
 				subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+key)) != 1 {
+				http.NotFound(w, r)
+				return
+			}
+			var publicKey string
+			if matrixJoin {
+				body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1600))
+				if err != nil || json.Unmarshal(body, &publicKey) != nil || publicKey == "" {
+					http.Error(w, "invalid Matrix Setup request", http.StatusBadRequest)
+					return
+				}
+			} else if r.ContentLength != 0 {
 				http.NotFound(w, r)
 				return
 			}
@@ -143,13 +173,14 @@ func startPeerJoin(parent context.Context, host, name, kind string, setup func(c
 			defer mu.Unlock()
 			if peer == "" {
 				peer = address.Unmap().String()
+				acceptedKey = publicKey
 				applyCtx, cancel := context.WithTimeout(ctx, 75*time.Second)
-				result, lastError = setup(applyCtx, host, peer)
+				result, lastError = setup(applyCtx, host, peer, publicKey)
 				cancel()
 				// A lost response can be retried from this peer for a short period.
 				time.AfterFunc(time.Minute, stop)
 			}
-			if peer != address.Unmap().String() {
+			if peer != address.Unmap().String() || acceptedKey != publicKey {
 				http.Error(w, "this Setup command is already paired", http.StatusConflict)
 				return
 			}
@@ -173,7 +204,7 @@ func startPeerJoin(parent context.Context, host, name, kind string, setup func(c
 		_ = server.Serve(wrapped)
 	}()
 	return SetupLinkInfo{Name: name, For: "kharej", Kind: kind, Apply: "sudo backpack link apply '" + raw + "'",
-		Install: app.SourceInstallCommand("link", "apply", raw), Where: "Kharej terminal", Pending: true}, nil
+		Install: app.SourceInstallCommand("link", "apply", raw), Where: "Peer terminal", Pending: true, Matrix: matrixJoin}, nil
 }
 
 func decodePeerJoin(raw string) (peerJoinLink, error) {
@@ -183,13 +214,14 @@ func decodePeerJoin(raw string) (peerJoinLink, error) {
 		body, err := base64.RawURLEncoding.DecodeString(encoded)
 		if err == nil && len(body) != 0 {
 			switch body[0] {
-			case 1:
+			case 1, 2:
 				if len(body) == 71 || len(body) == 83 {
 					ip, _ := netip.AddrFromSlice(body[67:])
 					return peerJoinLink{
-						Key:  base64.StdEncoding.EncodeToString(body[1:33]),
-						Pin:  base64.RawURLEncoding.EncodeToString(body[33:65]),
-						Addr: netip.AddrPortFrom(ip, binary.BigEndian.Uint16(body[65:67])).String(),
+						Key:    base64.StdEncoding.EncodeToString(body[1:33]),
+						Pin:    base64.RawURLEncoding.EncodeToString(body[33:65]),
+						Addr:   netip.AddrPortFrom(ip, binary.BigEndian.Uint16(body[65:67])).String(),
+						Matrix: body[0] == 2,
 					}, nil
 				}
 			case '{':
@@ -230,22 +262,43 @@ func fetchPeerJoin(raw string) (peerJoinResult, error) {
 	defer tr.CloseIdleConnections()
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://"+addr.String()+"/join", nil)
+	var body io.Reader
+	var private string
+	if link.Matrix {
+		key, pub, err := matrix.GenerateKey()
+		if err != nil {
+			return peerJoinResult{}, err
+		}
+		private = key
+		encoded, _ := json.Marshal(pub)
+		body = bytes.NewReader(encoded)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://"+addr.String()+"/join", body)
 	if err != nil {
 		return peerJoinResult{}, err
 	}
 	req.Header.Set("Authorization", "Bearer "+link.Key)
 	res, err := tr.RoundTrip(req)
+	origin := "Iran"
+	if link.Matrix {
+		origin = "the Matrix controller"
+	}
 	if err != nil {
-		return peerJoinResult{}, fmt.Errorf("could not reach Iran for Setup: %w", err)
+		return peerJoinResult{}, fmt.Errorf("could not reach %s for Setup: %w", origin, err)
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
 		msg, _ := io.ReadAll(io.LimitReader(res.Body, 1024))
-		return peerJoinResult{}, fmt.Errorf("Iran rejected Setup: %s", strings.TrimSpace(string(msg)))
+		return peerJoinResult{}, fmt.Errorf("%s rejected Setup: %s", origin, strings.TrimSpace(string(msg)))
 	}
 	var out peerJoinResult
 	err = json.NewDecoder(io.LimitReader(res.Body, 64<<10)).Decode(&out)
+	if err == nil && link.Matrix {
+		if out.Driver != matrix.ID || out.Matrix == nil {
+			return peerJoinResult{}, errors.New("invalid Matrix Setup response")
+		}
+		out.Matrix.PrivateKey = private
+	}
 	return out, err
 }
 
@@ -336,6 +389,19 @@ func applyPeerJoin(raw string, options LinkApplyOptions) (LinkApplied, error) {
 	defer cancel()
 	done := LinkApplied{Name: result.Name, Transport: result.Mode, Kind: "direct", External: true}
 	switch result.Driver {
+	case matrix.ID:
+		if result.Matrix == nil {
+			return done, errors.New("missing Matrix node settings")
+		}
+		if options.Name != "" {
+			done.Name = options.Name
+		}
+		done.Service, done.Active, err = installMatrix(ctx, done.Name, *result.Matrix)
+		done.External = false
+		if err == nil && len(result.Matrix.Peers) > 0 {
+			done.AwaitPeer = matrixWaitPeer(done.Name, result.Matrix.Peers[0])
+		}
+		return done, err
 	case "gost":
 		token, err := gostdirect.ReadTokenInfo(result.Token)
 		if err != nil || token.Version != gostdirect.ModeVersion(result.Mode) {

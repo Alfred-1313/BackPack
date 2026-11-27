@@ -54,6 +54,8 @@ export function addView(ctx) {
       const managedDirect = new Map([
         ...omniEntries('direct'),
         ...daggerEntries('direct'),
+        ['matrix', { value: 'matrix', mode: 'matrix', label: 'Matrix', port: true,
+          forward: true, udp: true, needsRoot: true, setupFamilies: ['ipv4', 'ipv6'] }],
         ['gost-direct', { value: 'gost-direct', mode: 'gost-direct', label: 'GOST 3',
           port: true, secret: true, forward: true }],
         ['gost-direct-v2', { value: 'gost-direct-v2', mode: 'gost-direct-v2', label: 'GOST 2',
@@ -124,6 +126,16 @@ export function addView(ctx) {
       const directPort = directFields.querySelector('[name="tunnelPort"]');
       const directToken = directFields.querySelector('[data-when="server-!gre"] [name="token"]');
       const directForward = directFields.querySelector('[name="ports"]');
+      const matrixMain = el('select', { id: 'matrixMain' }, [
+        el('option', { value: 'kharej', text: 'Kharej (other server)', selected: true }),
+        el('option', { value: 'iran', text: 'Iran (this server)' }),
+      ]);
+      const matrixSubnet = el('input', { id: 'matrixSubnet', type: 'text', placeholder: 'Automatic or 10.203.42.0/24', spellcheck: 'false' });
+      const matrixRows = [
+        el('div', { class: 'f3', hidden: true }, el('label', { for: 'matrixMain', text: 'Main server' }), matrixMain),
+        el('div', { class: 'f3', hidden: true }, el('label', { for: 'matrixSubnet', text: 'Private network' }), matrixSubnet),
+      ];
+      directFields.querySelector('[name="name"]').closest('.f3').after(...matrixRows);
       const tokenWrap = el('div', { class: 'withb' });
       const copyToken = el('button', { type: 'button', class: 'mini3', text: 'Copy' });
       directToken.before(tokenWrap);
@@ -135,7 +147,7 @@ export function addView(ctx) {
         el('div', { class: 'tx' }, el('b', { text: 'Forward UDP as well as TCP' })),
         el('div', { class: 'sw3', 'data-name': 'routedAcceptUdp', 'aria-label': 'Forward UDP as well as TCP' }, el('i')));
       directForward.closest('.f3').after(forwardUDP);
-      const directPortValues = { native: '', routed: '' };
+      const directPortValues = { native: '', routed: '', matrix: '' };
       let directPortMode = 'native';
 
       /* The preset the form is already showing counts as chosen.
@@ -588,16 +600,19 @@ export function addView(ctx) {
         directPeer.closest('.f3').querySelector('.hint').textContent = routed || pairedDirect()
           ? 'Leave blank to detect the address from the Setup connection.'
           : 'The server this side dials out to.';
-        const portMode = routed ? 'routed' : 'native';
+        const isMatrix = routed?.mode === 'matrix';
+        for (const row of matrixRows) row.hidden = !isMatrix;
+        const portMode = isMatrix ? 'matrix' : routed ? 'routed' : 'native';
         if (portMode !== directPortMode) {
           directPortValues[directPortMode] = directPort.value;
           directPort.value = directPortValues[portMode];
           directPortMode = portMode;
         }
         const gost = routed?.mode?.startsWith('gost-direct');
-        directPort.placeholder = gost ? '1–65535' : routed ? 'Automatic' : 'e.g. 9000';
+        directPort.placeholder = isMatrix ? '2097' : gost ? '1–65535' : routed ? 'Automatic' : 'e.g. 9000';
         directPort.closest('.f3').querySelector('.hint').textContent = routed
-          ? (gost ? 'Enter the port GOST listens on in Kharej.' : 'Leave blank to allocate a tunnel port automatically.')
+          ? (isMatrix ? 'Tinc uses this port for TCP and UDP. Blank uses 2097.' :
+            gost ? 'Enter the port GOST listens on in Kharej.' : 'Leave blank to allocate a tunnel port automatically.')
           : 'Kharej binds it; Iran reaches it. On PCK nothing else may use this port on the kharej.';
         if (routed) {
           directPort.closest('.f3').hidden = !routed.port;
@@ -608,7 +623,7 @@ export function addView(ctx) {
         forwardRow.querySelector('label').textContent = gost ? 'Forwarded TCP port' : 'Forwarded ports';
         forwardRow.querySelector('.hint').textContent = gost
           ? 'Enter one TCP forward. For example, 443=8443 sends Iran port 443 to Kharej port 8443.'
-          : forwardPortsHint;
+          : isMatrix ? 'Optional. Enter local ports, or use a peer private address such as 443=10.203.42.1:8443.' : forwardPortsHint;
         directForward.placeholder = gost ? '443=8443' : routed ? '443, 2053=8443' : '2087';
         forwardUDP.hidden = !routed?.udp;
         if (direct && !routed) suggestDirect(chosen.side);
@@ -1327,7 +1342,7 @@ export function addView(ctx) {
           lastSetupProfile = null;
           return;
         }
-        if (pairedDirect() || officialDagger() === 'tun') {
+        if (pairedDirect() || officialDagger() === 'tun' || directSetup()?.mode === 'matrix') {
           const standard = group.parentElement.querySelector('[data-mode="dir"]');
           if (standard) standard.hidden = true;
         }
@@ -1676,6 +1691,17 @@ export function addView(ctx) {
         const tuning = setupTuningPayload();
         const dagger = officialDagger();
         const setupFamily = addressChoice.value;
+        if (directSetup()?.mode === 'matrix') {
+          const port = String(payload.tunnelPort || '').trim();
+          if (port && (!/^\d+$/.test(port) || Number(port) < 1 || Number(port) > 65535)) {
+            throw new Error('Enter a Tinc port from 1 to 65535.');
+          }
+          const r = await api.matrixCreate({
+            name: payload.name, main: matrixMain.value, subnet: matrixSubnet.value.trim(), port: Number(port),
+            ports: payload.ports || '', acceptUdp: !!payload.routedAcceptUdp, tuning, setupFamily,
+          });
+          return { r, name: payload.name };
+        }
         if (dagger) {
           const form = { name: payload.name, port: Number(payload.tunnelPort || 0), ports: payload.ports || '',
             transport: dagger, tuning, setupFamily };

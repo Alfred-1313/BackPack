@@ -17,17 +17,36 @@ them both ends have to agree on. This says what exists.
 | Key | Type | Description |
 |---|---|---|
 | `health_port` | `uint16` | HealthPort is the Backhaul TUN health-check port shared by the endpoints. |
+| `http_host` | `string` | HTTPHost sets the host name for a native Dagger HTTP upgrade. |
+| `http_path` | `string` | HTTPPath is the request path for the native Dagger HTTP transports. |
 | `ipx_profile` | `string` | IPXProfile selects the IPX outer protocol. |
 | `iran_host` | `string` | IranHost is the listener's address, or its local IPv4 address for IPX. |
 | `iran_tunnel` | `string` | IranTunnel is the IPv4/CIDR address inside the tunnel on Iran. |
 | `kharej_ip` | `string` | KharejIP is the Kharej IPv4 endpoint for IPX. |
 | `kharej_tunnel` | `string` | KharejTunnel is the IPv4/CIDR address inside the tunnel on Kharej. |
+| `lanes` | `int` | Lanes sets the number of parallel native stream connections. |
 | `mode` | `string` | Mode selects XTcpMux, XWsMux, TUN over TCP or TUN over IPX. |
+| `mtu` | `int` | MTU sets the native TUN packet size. |
+| `mux` | `*BackhaulMuxOptions` | Mux controls the native XTcpMux and XWsMux options. |
 | `native` | `bool` | Native selects the built-in BackPack implementation. |
+| `packet_queue` | `int` | PacketQueue sets the native TUN packet buffer size. |
 | `port` | `uint16` | Port is the Iran listener port for TCP-based modes. |
 | `ports` | `[]string` | Ports holds optional TCP forwarding rules on Iran. |
+| `preset` | `string` | Preset records which performance preset supplied the settings. |
 | `role` | `string` | Role selects the Iran server or the Kharej client. |
 | `token` | `string` | Token is the shared tunnel secret. IPX uses a base64-encoded 32-byte key. |
+
+## BackhaulMuxOptions
+
+| Key | Type | Description |
+|---|---|---|
+| `backups` | `[]string` | Backups lists alternative endpoints to dial. |
+| `bandwidth_mbps` | `int` | BandwidthMbps sets the forwarding bandwidth cap. Zero is unlimited. |
+| `heartbeat_seconds` | `int` | HeartbeatSeconds sets the SMUX keepalive interval. |
+| `ipv6` | `*bool` | IPv6 controls whether the listener also accepts IPv6. |
+| `max_connections` | `int` | MaxConnections bounds concurrent forwarded connections. Zero is unlimited. |
+| `proxy_protocol` | `bool` | ProxyProtocol sends the original client address to the forwarded service. |
+| `timeout_seconds` | `int` | TimeoutSeconds sets the SMUX keepalive timeout. |
 
 ## Config
 
@@ -38,6 +57,7 @@ them both ends have to agree on. This says what exists.
 | `dagger` | `DaggerConfig` | Dagger selects the separately installed DaggerConnect engine. |
 | `direct` | `LegacyDirectConfig` | Direct is the [direct] stream tunnel, removed in v2.0.0. It is read only so that such a file is recognised and refused by name rather than read as empty; see config/legacydirect.go. |
 | `l3` | `L3Config` | L3 is a direct layer-3 tunnel, and is present only in a configuration that asks for one. It shares nothing with Server and Client: a file without an [l3] table leaves this zero, L3.Enabled() reads false, and the reverse tunnel runs exactly as it always has. See config/l3.go. |
+| `matrix` | `MatrixConfig` | Matrix configures this host as Main or as a node in a private Tinc network. |
 | `server` | `ServerConfig` | Server is the reverse tunnel's Iran end: it listens for the client and exposes the forwarded ports. Present only in a configuration that asks for one; the three engines are mutually exclusive. |
 
 ## DaggerConfig
@@ -45,7 +65,9 @@ them both ends have to agree on. This says what exists.
 | Key | Type | Description |
 |---|---|---|
 | `cert_file` | `string` | CertFile is the HTTPS listener's certificate file. |
+| `connection_pool` | `int` | ConnectionPool applies to the dialing side of stream transports. |
 | `flavor` | `string` | Flavor selects the DaggerConnect transport or Quantum Gaming profile. |
+| `heartbeat_seconds` | `int` | HeartbeatSeconds applies to both ends of a TUN tunnel. |
 | `http_host` | `string` | HTTPHost is the host name sent by the HTTP or HTTPS transport. |
 | `http_path` | `string` | HTTPPath is the path sent by the HTTP or HTTPS transport. |
 | `iran_ip` | `string` | IranIP is the Iran endpoint's public IPv4. |
@@ -58,9 +80,12 @@ them both ends have to agree on. This says what exists.
 | `loopback_only` | `bool` | LoopbackOnly keeps temporary forwarded listeners private. |
 | `port` | `uint16` | Port is the DaggerConnect tunnel port. |
 | `ports` | `string` | Ports are comma-separated mappings, optionally prefixed by tcp: or udp:. |
+| `quantum_cipher` | `string` | QuantumCipher selects the Quantum header cipher on both ends. |
+| `quantum_mtu` | `int` | QuantumMTU is the packet size used by both ends of Quantum. |
 | `role` | `string` | Role is server on Iran and client on Kharej. |
 | `tun_port` | `uint16` | TUNPort is the service port for the TCP and UDP TUN profiles. |
 | `tun_profile` | `string` | TUNProfile is the encapsulation of the TUN transport. |
+| `upload_mode` | `string` | UploadMode is the streaming mode used by the split HTTP client. |
 
 ## KCP tuning
 
@@ -76,6 +101,29 @@ them both ends have to agree on. This says what exists.
 | `kcp_rcvwnd` | `int` | RcvWnd is the receive window in packets. |
 | `kcp_resend` | `int` | Resend is how many duplicate acknowledgements trigger a fast retransmit. |
 | `kcp_sndwnd` | `int` | SndWnd is the send window in packets. |
+
+## MatrixConfig
+
+| Key | Type | Description |
+|---|---|---|
+| `accept_udp` | `bool` | AcceptUDP also enables UDP for the configured port mappings. |
+| `local` | `MatrixHost` | Local contains this node's identity and addresses. |
+| `mtu` | `int` | MTU sets the Tinc interface's packet size. Zero selects 1350 bytes. |
+| `peers` | `[]MatrixHost` | Peers lists enrolled public host records. A node needs a record for Main. |
+| `ports` | `[]string` | Ports maps local ports to ports on enrolled private addresses. |
+| `private_key` | `string` | PrivateKey is this node's local RSA private key in PEM format. |
+| `subnet` | `string` | Subnet is the private IPv4 /24 shared by this Matrix network. |
+| `txqueuelen` | `int` | TxQueueLen sets the interface transmit queue. Zero selects 1000 packets. |
+
+## MatrixHost
+
+| Key | Type | Description |
+|---|---|---|
+| `address` | `string` | Address is this host's reachable outer IPv4 or IPv6 address. |
+| `ip` | `string` | IP is the node's private IPv4 address inside Subnet. |
+| `key` | `string` | Key is the host's public RSA key in PEM format. |
+| `name` | `string` | Name is the Tinc identity, either main or node_N. |
+| `port` | `uint16` | Port is the daemon's TCP and UDP listening port. |
 
 ## PckConfig
 
@@ -359,4 +407,4 @@ them both ends have to agree on. This says what exists.
 
 ---
 
-*Generated from `config/` on 2026-11-25. Last verified against Backpack v2.0.0.*
+*Generated from `config/` on 2026-11-27. Last verified against Backpack v2.0.0.*

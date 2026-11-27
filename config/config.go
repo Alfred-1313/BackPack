@@ -646,6 +646,8 @@ type Config struct {
 	L3 L3Config `toml:"l3"`
 	// Dagger selects the separately installed DaggerConnect engine.
 	Dagger DaggerConfig `toml:"dagger"`
+	// Matrix configures this host as Main or as a node in a private Tinc network.
+	Matrix MatrixConfig `toml:"matrix"`
 	// Backhaul selects the official Backhaul Premium engine.
 	Backhaul BackhaulConfig `toml:"backhaul"`
 	// Direct is the [direct] stream tunnel, removed in v2.0.0. It is read only

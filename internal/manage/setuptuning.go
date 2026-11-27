@@ -6,6 +6,7 @@ import (
 
 	"github.com/backpack/backpack/internal/daggerconnect"
 	"github.com/backpack/backpack/internal/easytier"
+	"github.com/backpack/backpack/internal/matrix"
 	"github.com/backpack/backpack/internal/nativebackhaul"
 	"github.com/backpack/backpack/internal/omni"
 )
@@ -76,6 +77,9 @@ func buildSetupPerformance() map[string]SetupPerformance {
 	gost.Restart = true
 	m["gost-direct"] = gost
 	m["gost-direct-v2"] = gost
+	tinc := performance("Interface transmit queue (packets)", 256, 1000, 4096, 32, 16384)
+	tinc.MTU = true
+	m[matrix.ID] = tinc
 	for _, carrier := range []string{"gretap", "l2tpv3", "easytier"} {
 		p := performance("Interface transmit queue (packets)", 1024, 4096, 16384, 576, 1450)
 		p.OverrideLabel = "MTU (bytes)"
