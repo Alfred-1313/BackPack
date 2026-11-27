@@ -108,6 +108,7 @@ export function healthView(ctx) {
         };
         const counts = { ok: 0, warn: 0, error: 0 };
         checks.forEach(c => { counts[lvl(c)] = (counts[lvl(c)] || 0) + 1; });
+        const versionLabel = c => c.versionLabel || c.Version || c.version;
 
         body.innerHTML =
           `<div class="hcsum">
@@ -123,7 +124,7 @@ export function healthView(ctx) {
                   <span class="hcdot"></span>
                   <div class="hctx">
                     <b>${esc(c.Name || c.name)}</b>
-                    ${(c.Version || c.version) ? `<small class="hcversion">${esc(c.Version || c.version)}</small>` : ''}
+                    ${versionLabel(c) ? `<small class="hcversion">${esc(versionLabel(c))}</small>` : ''}
                     <span>${esc(c.Detail || c.detail || '')}</span>
                     ${(c.Fix || c.fix) ? `<i class="hcfix">${esc(c.Fix || c.fix)}</i>` : ''}
                   </div>

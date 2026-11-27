@@ -24,12 +24,13 @@ import (
 // adds no judgement of its own, so the two can never disagree.
 
 type healthRow struct {
-	Group   string `json:"group"`
-	Name    string `json:"name"`
-	Level   string `json:"level"`
-	Detail  string `json:"detail"`
-	Fix     string `json:"fix"`
-	Version string `json:"version,omitempty"`
+	Group        string `json:"group"`
+	Name         string `json:"name"`
+	Level        string `json:"level"`
+	Detail       string `json:"detail"`
+	Fix          string `json:"fix"`
+	Version      string `json:"version,omitempty"`
+	VersionLabel string `json:"versionLabel,omitempty"`
 }
 
 // handleHealth runs the full diagnostic pass when the Health modal opens.
@@ -49,12 +50,14 @@ func relayEngineChecks(parent context.Context) []healthRow {
 	}
 	dagger := healthRow{Group: group, Name: "DaggerConnect", Level: "ok",
 		Version: "Launcher " + daggerconnect.LauncherVersion,
-		Detail:  "Core " + daggerconnect.CoreVersion + " is fetched for the licensed tunnel"}
+		Detail:  "Licensed core is fetched when the tunnel starts"}
 	if err := daggerconnect.LauncherStatus(); err != nil {
 		dagger.Level, dagger.Version, dagger.Detail = "fail", "", "Official launcher missing or unusable"
 		if !os.IsNotExist(err) {
 			dagger.Detail += ". " + err.Error()
 		}
+	} else {
+		dagger.VersionLabel = "v4.3.1"
 	}
 	checks = append(checks, dagger)
 	omniRow := healthRow{Group: group, Name: "OmniTunnel", Level: "fail", Detail: "Not installed"}
