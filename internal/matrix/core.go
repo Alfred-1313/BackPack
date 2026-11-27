@@ -24,8 +24,22 @@ import (
 
 const ID = "matrix"
 const Label = "Matrix (Tinc)"
+const Direct = "direct"
+const Reverse = "reverse"
+const DirectID = ID + "-" + Direct
+const ReverseID = ID + "-" + Reverse
 const Main = "main"
 const DefaultPort = 2097
+
+func IsDirectionalMode(id string) bool { return id == DirectID || id == ReverseID }
+
+// EndpointIDs assigns the listener's identity to the side that owns Main.
+func EndpointIDs(direction string) (iran, kharej int) {
+	if direction == Reverse {
+		return 1, 2
+	}
+	return 2, 1
+}
 
 var aptMu sync.Mutex
 var versionPattern = regexp.MustCompile(`\btinc version ([0-9][a-zA-Z0-9.+-]*)`)
@@ -131,6 +145,9 @@ func Subnet(text string) (netip.Prefix, error) {
 }
 
 func Validate(c config.MatrixConfig) error {
+	if c.Direction != "" && c.Direction != Direct && c.Direction != Reverse {
+		return errors.New("invalid Matrix direction")
+	}
 	block, err := Subnet(c.Subnet)
 	if err != nil {
 		return err

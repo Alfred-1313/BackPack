@@ -508,6 +508,9 @@ func IsDirectKind(t Tunnel) bool {
 // TunnelDirection reports whether a tunnel is dialled from Iran or waits for
 // kharej to dial in — "direct" or "reverse".
 func TunnelDirection(t Tunnel) string {
+	if t.Transport == "matrix" {
+		return t.MatrixDirection
+	}
 	if IsDirectKind(t) || t.Transport == "dagger/tun" {
 		return "direct"
 	}
@@ -518,6 +521,9 @@ func TunnelDirection(t Tunnel) string {
 // taken off: "pck" rather than "l3/pck", "wss" rather than "direct/wss". A
 // reverse transport has no prefix and is returned unchanged.
 func TunnelCarrier(t Tunnel) string {
+	if t.Transport == "matrix" {
+		return "Tinc"
+	}
 	if _, rest, found := strings.Cut(t.Transport, "/"); found {
 		return rest
 	}

@@ -701,7 +701,7 @@ func StartConnTestIran(o ConnTestOptions) (*ConnTestIran, string, error) {
 		for _, c := range cases {
 			if !s.root {
 				c.skip = "needs root on both servers"
-			} else if c.tr == matrix.ID {
+			} else if matrix.IsDirectionalMode(c.tr) {
 				if _, err := matrix.Binary(); err != nil {
 					c.skip = err.Error()
 				}
@@ -1789,7 +1789,7 @@ func ctDial(ctx context.Context, c *connTestCase, l3Echo int) (net.Conn, error) 
 		// fraction of what the reverse ones, all BBR, were measured at.
 		d.Control = network.CongestionControl
 	}
-	if c.tr == matrix.ID {
+	if matrix.IsDirectionalMode(c.tr) {
 		d = matrix.Dialer(c.name)
 		d.Timeout = 3 * time.Second
 	}

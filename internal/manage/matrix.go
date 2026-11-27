@@ -24,6 +24,7 @@ import (
 )
 
 type MatrixForm struct {
+	Direction   string      `json:"direction"`
 	Name        string      `json:"name"`
 	Main        string      `json:"main"`
 	Subnet      string      `json:"subnet"`
@@ -40,10 +41,10 @@ type MatrixPeerStatus struct {
 }
 
 type MatrixStatus struct {
-	Role, Subnet, IP string
-	Peers            []MatrixPeerStatus
-	Ports            []string
-	AcceptUDP        bool
+	Role, Subnet, IP, Direction string
+	Peers                       []MatrixPeerStatus
+	Ports                       []string
+	AcceptUDP                   bool
 }
 
 type MatrixEdit struct {
@@ -109,6 +110,31 @@ func matrixNode(block netip.Prefix, id int, addr, key string, port uint16) confi
 	return config.MatrixHost{Name: name, IP: netip.AddrFrom4(ip).String(), Address: addr, Key: key, Port: port}
 }
 
+func (f MatrixForm) connectionDirection() (string, error) {
+	direction := f.Direction
+	// Older clients set Main directly. Translate that into the same direction
+	// instead of changing which end listens when those clients are upgraded.
+	if direction == "" {
+		direction = matrix.Direct
+		if f.Main == "iran" {
+			direction = matrix.Reverse
+		}
+	}
+	var main string
+	switch direction {
+	case matrix.Direct:
+		main = "kharej"
+	case matrix.Reverse:
+		main = "iran"
+	default:
+		return "", errors.New("choose Direct or Reverse for Matrix")
+	}
+	if f.Main != "" && f.Main != main {
+		return "", errors.New("the Matrix Main server must match the selected direction")
+	}
+	return direction, nil
+}
+
 func StartMatrixSetup(ctx, lifetime context.Context, f MatrixForm) (SetupLinkInfo, error) {
 	f.Name = strings.TrimSpace(f.Name)
 	if err := core.CheckName(f.Name); err != nil {
@@ -117,9 +143,9 @@ func StartMatrixSetup(ctx, lifetime context.Context, f MatrixForm) (SetupLinkInf
 	if _, err := os.Stat(app.ConfigPath(f.Name)); !os.IsNotExist(err) {
 		return SetupLinkInfo{}, errors.New("a tunnel with this name already exists")
 	}
-	f.Main = orDefault(f.Main, "kharej")
-	if f.Main != "iran" && f.Main != "kharej" {
-		return SetupLinkInfo{}, errors.New("choose where Matrix Main runs")
+	direction, err := f.connectionDirection()
+	if err != nil {
+		return SetupLinkInfo{}, err
 	}
 	host, err := matrixHost(f.SetupFamily)
 	if err != nil {
@@ -152,10 +178,7 @@ func StartMatrixSetup(ctx, lifetime context.Context, f MatrixForm) (SetupLinkInf
 	if err != nil {
 		return SetupLinkInfo{}, err
 	}
-	localID, remoteID := 1, 2
-	if f.Main == "kharej" {
-		localID, remoteID = 2, 1
-	}
+	localID, remoteID := matrix.EndpointIDs(direction)
 	local := matrixNode(block, localID, host, public, f.Port)
 	ports := parsePorts(f.Ports)
 	if err := matrix.ValidatePorts(ports, local.IP, []config.MatrixHost{matrixNode(block, remoteID, host, "", f.Port)}); err != nil {
@@ -164,14 +187,14 @@ func StartMatrixSetup(ctx, lifetime context.Context, f MatrixForm) (SetupLinkInf
 	if err := matrix.Ensure(ctx); err != nil {
 		return SetupLinkInfo{}, err
 	}
-	return beginPeerJoinProtocol(lifetime, host, f.Name, "direct", true, func(ctx context.Context, _, addr, key string) (peerJoinResult, error) {
+	return beginPeerJoinProtocol(lifetime, host, f.Name, direction, true, func(ctx context.Context, _, addr, key string) (peerJoinResult, error) {
 		peer := matrixNode(block, remoteID, addr, key, f.Port)
-		near := config.MatrixConfig{Subnet: block.String(), Local: local, Peers: []config.MatrixHost{peer},
+		near := config.MatrixConfig{Direction: direction, Subnet: block.String(), Local: local, Peers: []config.MatrixHost{peer},
 			PrivateKey: private, Ports: ports, AcceptUDP: f.AcceptUDP, MTU: mtu, TxQueueLen: queue}
 		if _, _, err := installMatrix(ctx, f.Name, near); err != nil {
 			return peerJoinResult{}, err
 		}
-		far := config.MatrixConfig{Subnet: near.Subnet, Local: peer, Peers: []config.MatrixHost{local}, MTU: mtu, TxQueueLen: queue}
+		far := config.MatrixConfig{Direction: direction, Subnet: near.Subnet, Local: peer, Peers: []config.MatrixHost{local}, MTU: mtu, TxQueueLen: queue}
 		return peerJoinResult{Driver: matrix.ID, Name: f.Name, Mode: matrix.ID, Matrix: &far}, nil
 	})
 }
@@ -224,7 +247,7 @@ func StartMatrixInvite(ctx context.Context, name string) (SetupLinkInfo, error) 
 		return SetupLinkInfo{}, errors.New("open node invitations on the Matrix Main server")
 	}
 	host := cfg.Matrix.Local.Address
-	return beginPeerJoinProtocol(ctx, host, name, "direct", true, func(_ context.Context, _, addr, key string) (peerJoinResult, error) {
+	return beginPeerJoinProtocol(ctx, host, name, orDefault(cfg.Matrix.Direction, matrix.Direct), true, func(_ context.Context, _, addr, key string) (peerJoinResult, error) {
 		matrixMu.Lock()
 		defer matrixMu.Unlock()
 		cfg, err := core.LoadTunnelConfig(name)
@@ -250,7 +273,7 @@ func StartMatrixInvite(ctx context.Context, name string) (SetupLinkInfo, error) 
 		if err := saveMatrix(name, c); err != nil {
 			return peerJoinResult{}, err
 		}
-		far := config.MatrixConfig{Subnet: c.Subnet, Local: peer, Peers: []config.MatrixHost{c.Local}, MTU: c.MTU, TxQueueLen: c.TxQueueLen}
+		far := config.MatrixConfig{Direction: c.Direction, Subnet: c.Subnet, Local: peer, Peers: []config.MatrixHost{c.Local}, MTU: c.MTU, TxQueueLen: c.TxQueueLen}
 		return peerJoinResult{Driver: matrix.ID, Name: name, Mode: matrix.ID, Matrix: &far}, nil
 	})
 }
@@ -265,7 +288,7 @@ func ReadMatrixStatus(name string) (MatrixStatus, error) {
 	if c.Local.Name == matrix.Main {
 		role = matrix.Main
 	}
-	out := MatrixStatus{Role: role, Subnet: c.Subnet, IP: c.Local.IP, Ports: c.Ports,
+	out := MatrixStatus{Role: role, Subnet: c.Subnet, IP: c.Local.IP, Direction: c.Direction, Ports: c.Ports,
 		AcceptUDP: c.AcceptUDP, Peers: make([]MatrixPeerStatus, len(c.Peers))}
 	for i, peer := range c.Peers {
 		out.Peers[i] = MatrixPeerStatus{Name: peer.Name, IP: peer.IP, Address: peer.Address, Online: matrix.Online(name, peer.Name)}

@@ -44,18 +44,23 @@ export function addView(ctx) {
         .map(item => ['dagger-' + item.value, {
           ...item, dagger: true, mode: item.value, value: 'dagger-' + item.value, port: item.value !== 'tun',
         }]);
+      const matrixEntry = direction => {
+        const value = 'matrix-' + direction;
+        return [value, { value, mode: 'matrix', label: 'Matrix', port: true,
+          forward: true, udp: true, needsRoot: true, setupFamilies: ['ipv4', 'ipv6'] }];
+      };
       const managedReverse = new Map([
         ...backhaulChoices.map(item => ['native-' + item.value, {
           ...item, native: true, port: true, value: 'native-' + item.value, mode: item.value,
         }]),
         ...omniEntries('reverse'),
         ...daggerEntries('reverse'),
+        matrixEntry('reverse'),
       ]);
       const managedDirect = new Map([
         ...omniEntries('direct'),
         ...daggerEntries('direct'),
-        ['matrix', { value: 'matrix', mode: 'matrix', label: 'Matrix', port: true,
-          forward: true, udp: true, needsRoot: true, setupFamilies: ['ipv4', 'ipv6'] }],
+        matrixEntry('direct'),
         ['gost-direct', { value: 'gost-direct', mode: 'gost-direct', label: 'GOST 3',
           port: true, secret: true, forward: true }],
         ['gost-direct-v2', { value: 'gost-direct-v2', mode: 'gost-direct-v2', label: 'GOST 2',
@@ -77,6 +82,7 @@ export function addView(ctx) {
       const daggerUpgrade = () => ['dagger-http', 'dagger-https'].includes(reverseSetup()?.mode);
       const daggerRoute = () => daggerUpgrade() || reverseSetup()?.mode === 'dagger-xhttp';
       const directSetup = () => chosen.direction === 'direct' && managedDirect.get(chosen.carrier);
+      const matrixSelected = () => (reverseSetup() || directSetup())?.mode === 'matrix';
       const officialDagger = () => {
         const setup = reverseSetup() || directSetup();
         return setup?.dagger ? setup.mode : '';
@@ -126,10 +132,12 @@ export function addView(ctx) {
       const directPort = directFields.querySelector('[name="tunnelPort"]');
       const directToken = directFields.querySelector('[data-when="server-!gre"] [name="token"]');
       const directForward = directFields.querySelector('[name="ports"]');
-      const matrixMain = el('select', { id: 'matrixMain' }, [
-        el('option', { value: 'kharej', text: 'Kharej (other server)', selected: true }),
-        el('option', { value: 'iran', text: 'Iran (this server)' }),
-      ]);
+      const directNameRow = directFields.querySelector('[name="name"]').closest('.f3');
+      const reverseNameRow = root.querySelector('#aname').closest('.f3');
+      const reversePort = root.querySelector('#aport');
+      const reversePortHint = reversePort.closest('.f3').querySelector('.hint');
+      const standardReversePortHint = reversePortHint?.textContent;
+      const reverseForward = root.querySelector('#aports');
       const matrixSubnet = el('input', { id: 'matrixSubnet', type: 'text', placeholder: 'Automatic or 10.203.42.0/24', spellcheck: 'false' });
       const randomMatrixSubnet = el('button', { type: 'button', class: 'mini3 rnd', text: 'Random', 'aria-label': 'Choose a random private network', 'aria-controls': matrixSubnet.id });
       randomMatrixSubnet.addEventListener('click', async () => {
@@ -141,12 +149,9 @@ export function addView(ctx) {
         } catch (e) { oops(e); }
         finally { randomMatrixSubnet.disabled = false; }
       });
-      const matrixRows = [
-        el('div', { class: 'f3', hidden: true }, el('label', { for: 'matrixMain', text: 'Main server' }), matrixMain),
-        el('div', { class: 'f3', hidden: true }, el('label', { for: 'matrixSubnet', text: 'Private network' }),
-          el('div', { class: 'withb' }, matrixSubnet, randomMatrixSubnet)),
-      ];
-      directFields.querySelector('[name="name"]').closest('.f3').after(...matrixRows);
+      const matrixSubnetRow = el('div', { class: 'f3', hidden: true }, el('label', { for: 'matrixSubnet', text: 'Private network' }),
+        el('div', { class: 'withb' }, matrixSubnet, randomMatrixSubnet));
+      directNameRow.after(matrixSubnetRow);
       const tokenWrap = el('div', { class: 'withb' });
       const copyToken = el('button', { type: 'button', class: 'mini3', text: 'Copy' });
       directToken.before(tokenWrap);
@@ -555,6 +560,9 @@ export function addView(ctx) {
       function applyShape() {
         const direct = chosen.direction === 'direct';
         const routed = directSetup();
+        const setup = reverseSetup();
+        const reverseMatrix = setup?.mode === 'matrix';
+        const isMatrix = matrixSelected();
         show('.step3rev', !direct);
         show('.step3direct', direct);
         /* The line above the carriers was the markup's, written for Reverse,
@@ -611,9 +619,10 @@ export function addView(ctx) {
         directPeer.closest('.f3').querySelector('.hint').textContent = routed || pairedDirect()
           ? 'Leave blank to detect the address from the Setup connection.'
           : 'The server this side dials out to.';
-        const isMatrix = routed?.mode === 'matrix';
-        for (const row of matrixRows) row.hidden = !isMatrix;
-        const portMode = isMatrix ? 'matrix' : routed ? 'routed' : 'native';
+        const subnetAnchor = reverseMatrix ? reverseNameRow : directNameRow;
+        if (matrixSubnetRow.previousElementSibling !== subnetAnchor) subnetAnchor.after(matrixSubnetRow);
+        matrixSubnetRow.hidden = !isMatrix;
+        const portMode = routed?.mode === 'matrix' ? 'matrix' : routed ? 'routed' : 'native';
         if (portMode !== directPortMode) {
           directPortValues[directPortMode] = directPort.value;
           directPort.value = directPortValues[portMode];
@@ -636,7 +645,9 @@ export function addView(ctx) {
           ? 'Enter one TCP forward. For example, 443=8443 sends Iran port 443 to Kharej port 8443.'
           : isMatrix ? 'Optional. Enter local ports, or use a peer private address such as 443=10.203.42.1:8443.' : forwardPortsHint;
         directForward.placeholder = gost ? '443=8443' : routed ? '443, 2053=8443' : '2087';
-        forwardUDP.hidden = !routed?.udp;
+        const udpAnchor = (reverseMatrix ? reverseForward : directForward).closest('.f3');
+        if (forwardUDP.previousElementSibling !== udpAnchor) udpAnchor.after(forwardUDP);
+        forwardUDP.hidden = !routed?.udp && !reverseMatrix;
         if (direct && !routed) suggestDirect(chosen.side);
         if (pairedDirect()) {
           root.querySelectorAll('[name="greLocal"], [name="localIp"], [name="peerIp"]').forEach(input => {
@@ -653,7 +664,6 @@ export function addView(ctx) {
         /* Groups that were moved out of .step3rev / .step3direct carry the mode
            they belong to, because the container that used to decide it is no
            longer their parent. */
-        const setup = reverseSetup();
         root.querySelectorAll('[data-mode]').forEach(g => {
           const wrong = g.dataset.mode !== (direct ? 'dir' : 'rev');
           g.hidden = wrong ||
@@ -671,11 +681,12 @@ export function addView(ctx) {
           const local = directFields.querySelector('[name="greLocal"]');
           if (local) local.closest('.f3').hidden = true;
         }
-        const reversePort = root.querySelector('#aport');
         reversePort.closest('.f3').hidden = !!setup && !setup.port;
-        reversePort.placeholder = setup ? '1–65535' : '4443 or 85.10.11.51:4443';
-        root.querySelector('#aports').closest('.f3').querySelector('label').textContent =
-          setup && !setup.dagger ? 'Forwarded TCP ports' : 'Forwarded ports';
+        reversePort.placeholder = reverseMatrix ? '2097' : setup ? '1–65535' : '4443 or 85.10.11.51:4443';
+        if (reversePortHint) reversePortHint.textContent = reverseMatrix
+          ? 'Tinc listens on Iran over TCP and UDP. Blank uses 2097.' : standardReversePortHint;
+        reverseForward.closest('.f3').querySelector('label').textContent =
+          setup && !setup.dagger && !reverseMatrix ? 'Forwarded TCP ports' : 'Forwarded ports';
         if (routed?.dagger) directFields.hidden = true;
         // The token and the far end's address are the panel's business now.
         root.querySelectorAll('.tokgone, .addrgone').forEach(n => { n.hidden = true; });
@@ -1702,13 +1713,13 @@ export function addView(ctx) {
         const tuning = setupTuningPayload();
         const dagger = officialDagger();
         const setupFamily = addressChoice.value;
-        if (directSetup()?.mode === 'matrix') {
+        if (matrixSelected()) {
           const port = String(payload.tunnelPort || '').trim();
           if (port && (!/^\d+$/.test(port) || Number(port) < 1 || Number(port) > 65535)) {
             throw new Error('Enter a Tinc port from 1 to 65535.');
           }
           const r = await api.matrixCreate({
-            name: payload.name, main: matrixMain.value, subnet: matrixSubnet.value.trim(), port: Number(port),
+            name: payload.name, direction: chosen.direction, subnet: matrixSubnet.value.trim(), port: Number(port),
             ports: payload.ports || '', acceptUdp: !!payload.routedAcceptUdp, tuning, setupFamily,
           });
           return { r, name: payload.name };

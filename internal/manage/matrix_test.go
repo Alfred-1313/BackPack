@@ -11,6 +11,37 @@ import (
 	"github.com/backpack/backpack/internal/matrix"
 )
 
+func TestMatrixDirectionUsesTheSelectedListener(t *testing.T) {
+	for _, tc := range []struct {
+		form             MatrixForm
+		direction        string
+		iranID, kharejID int
+	}{
+		{MatrixForm{Direction: matrix.Direct}, matrix.Direct, 2, 1},
+		{MatrixForm{Direction: matrix.Reverse}, matrix.Reverse, 1, 2},
+		{MatrixForm{Main: "iran"}, matrix.Reverse, 1, 2},
+		{MatrixForm{}, matrix.Direct, 2, 1},
+	} {
+		direction, err := tc.form.connectionDirection()
+		iran, kharej := matrix.EndpointIDs(direction)
+		if err != nil || direction != tc.direction || iran != tc.iranID || kharej != tc.kharejID {
+			t.Fatalf("unexpected Matrix roles for %+v: %q %d/%d (%v)", tc.form, direction, iran, kharej, err)
+		}
+	}
+	have := map[string]string{}
+	for _, c := range ctExtraCases() {
+		if matrix.IsDirectionalMode(c.tr) {
+			have[c.tr] = c.kind
+		}
+	}
+	if have[matrix.DirectID] != matrix.Direct || have[matrix.ReverseID] != matrix.Reverse {
+		t.Fatalf("Matrix Connection Test directions: %v", have)
+	}
+	if _, err := (MatrixForm{Direction: matrix.Reverse, Main: "kharej"}).connectionDirection(); err == nil {
+		t.Fatal("accepted a Matrix Main that conflicts with the selected direction")
+	}
+}
+
 func TestMatrixSetupKeepsThePrivateKeyOnItsNode(t *testing.T) {
 	priv, pub, err := matrix.GenerateKey()
 	if err != nil {

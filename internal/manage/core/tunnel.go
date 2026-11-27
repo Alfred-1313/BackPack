@@ -19,12 +19,13 @@ import (
 
 // Tunnel is a discovered tunnel derived from a config file on disk.
 type Tunnel struct {
-	Name      string
-	Role      string // "server" or "client"
-	Transport string
-	Addr      string   // listener or dial target visible to the peer
-	Ports     []string // server only
-	Service   string
+	Name            string
+	Role            string // "server" or "client"
+	Transport       string
+	MatrixDirection string
+	Addr            string   // listener or dial target visible to the peer
+	Ports           []string // server only
+	Service         string
 
 	// Unrunnable says why this tunnel's config can no longer start, in the
 	// engine's own words; empty when it can. Set for the two kinds v2.0.0
@@ -72,6 +73,7 @@ func tunnelOf(name string, cfg config.Config) (Tunnel, bool) {
 	case cfg.Matrix.Present():
 		c := cfg.Matrix
 		t.Role, t.Transport, t.Ports = "node", "matrix", c.Ports
+		t.MatrixDirection = c.Direction
 		if c.Local.Name == "main" {
 			t.Role = "main"
 		}

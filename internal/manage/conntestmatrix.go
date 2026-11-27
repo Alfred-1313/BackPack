@@ -52,7 +52,7 @@ func (p *ctHelperProcess) startMatrix(name string, c config.MatrixConfig) error 
 }
 
 func (s *ConnTestIran) setupMatrix(ctx context.Context, c *connTestCase, ctrl *ctExtraControl) error {
-	job := ctExtraJob{Action: "port", Name: c.name, Mode: matrix.ID}
+	job := ctExtraJob{Action: "port", Name: c.name, Mode: c.tr}
 	outer, err := ctrl.exchange(ctx, c.extraWorker, job)
 	if err != nil {
 		return err
@@ -61,11 +61,11 @@ func (s *ConnTestIran) setupMatrix(ctx context.Context, c *connTestCase, ctrl *c
 		return errors.New("invalid Matrix test port")
 	}
 	block := ctMatrixSubnet(c.name)
-	mainKey, mainPublic, err := matrix.GenerateKey()
+	nearKey, nearPublic, err := matrix.GenerateKey()
 	if err != nil {
 		return err
 	}
-	nodeKey, nodePublic, err := matrix.GenerateKey()
+	farKey, farPublic, err := matrix.GenerateKey()
 	if err != nil {
 		return err
 	}
@@ -75,10 +75,11 @@ func (s *ConnTestIran) setupMatrix(ctx context.Context, c *connTestCase, ctrl *c
 	if nearPort == 0 {
 		return errors.New("no local Matrix test port")
 	}
-	main := matrixNode(block, 1, s.Kharej(), mainPublic, uint16(outer.Port))
-	node := matrixNode(block, 2, s.link.Host, nodePublic, uint16(nearPort))
-	local := config.MatrixConfig{Subnet: block.String(), Local: node, Peers: []config.MatrixHost{main}, PrivateKey: nodeKey}
-	far := config.MatrixConfig{Subnet: block.String(), Local: main, Peers: []config.MatrixHost{node}}
+	iranID, kharejID := matrix.EndpointIDs(c.kind)
+	nearNode := matrixNode(block, iranID, s.link.Host, nearPublic, uint16(nearPort))
+	farNode := matrixNode(block, kharejID, s.Kharej(), farPublic, uint16(outer.Port))
+	local := config.MatrixConfig{Direction: c.kind, Subnet: block.String(), Local: nearNode, Peers: []config.MatrixHost{farNode}, PrivateKey: nearKey}
+	far := config.MatrixConfig{Direction: c.kind, Subnet: block.String(), Local: farNode, Peers: []config.MatrixHost{nearNode}}
 	dir, err := os.MkdirTemp(s.dir, "matrix-")
 	if err != nil {
 		return err
@@ -87,11 +88,11 @@ func (s *ConnTestIran) setupMatrix(ctx context.Context, c *connTestCase, ctrl *c
 	if err := c.helper.startMatrix(c.name, local); err != nil {
 		return err
 	}
-	body, err := json.Marshal(ctMatrixOffer{Side: far, Key: mainKey})
+	body, err := json.Marshal(ctMatrixOffer{Side: far, Key: farKey})
 	if err != nil {
 		return err
 	}
-	c.peerIP, c.peerStarted = main.IP, true
+	c.peerIP, c.peerStarted = farNode.IP, true
 	job.Action, job.Token = "join", base64.RawURLEncoding.EncodeToString(body)
 	_, err = ctrl.exchange(ctx, c.extraWorker, job)
 	return err
@@ -105,9 +106,16 @@ func (w *ctExtraInstance) joinMatrix(ctx context.Context, link ConnTestLink, job
 	}
 	c := offer.Side
 	block := ctMatrixSubnet(job.Name)
-	if c.Subnet != block.String() || c.Local.Name != matrix.Main || c.Local.IP != block.Addr().Next().String() ||
-		len(c.Peers) != 1 || c.Peers[0].Address != link.Host || c.Peers[0].Name != "node_2" ||
-		c.Peers[0].IP != block.Addr().Next().Next().String() || len(c.Ports) != 0 {
+	direction := matrix.Direct
+	if job.Mode == matrix.ReverseID {
+		direction = matrix.Reverse
+	}
+	iranID, kharejID := matrix.EndpointIDs(direction)
+	expectedIran := matrixNode(block, iranID, link.Host, "", 0)
+	expectedKharej := matrixNode(block, kharejID, "", "", 0)
+	if c.Direction != direction || c.Subnet != block.String() || c.Local.Name != expectedKharej.Name || c.Local.IP != expectedKharej.IP ||
+		len(c.Peers) != 1 || c.Peers[0].Address != expectedIran.Address || c.Peers[0].Name != expectedIran.Name ||
+		c.Peers[0].IP != expectedIran.IP || len(c.Ports) != 0 {
 		return errors.New("unexpected Matrix test settings")
 	}
 	c.PrivateKey = offer.Key
@@ -115,7 +123,7 @@ func (w *ctExtraInstance) joinMatrix(ctx context.Context, link ConnTestLink, job
 	if err != nil {
 		return err
 	}
-	w.name, w.mode, w.helper = job.Name, matrix.ID, &ctHelperProcess{dir: dir}
+	w.name, w.mode, w.helper = job.Name, job.Mode, &ctHelperProcess{dir: dir}
 	if err := w.helper.startMatrix(job.Name, c); err != nil {
 		return err
 	}

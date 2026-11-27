@@ -31,8 +31,8 @@ const ctBarSegments = 8
 
 // ctTransportNames are the names the menus use.
 var ctTransportNames = map[string]string{
-	matrix.ID: matrix.Label,
-	"tcp":     "TCP", "tcpmux": "TCP MUX", "stealth": "Stealth", "pck": "PCK",
+	matrix.ID: matrix.Label, matrix.DirectID: matrix.Label, matrix.ReverseID: matrix.Label,
+	"tcp": "TCP", "tcpmux": "TCP MUX", "stealth": "Stealth", "pck": "PCK",
 	"ws": "WS", "wss": "WSS", "wsmux": "WS MUX", "wssmux": "WSS MUX",
 	"kcp": "KCP FEC", "quic": "QUIC", "udp": "UDP", "xdi": "xDi", ctXdiFEC: "xDi + FEC", "sni": "SNI", "gre": "GRE",
 	"gretap": "GRETAP", "l2tpv3": "L2TPv3 (IP)", "easytier": "EasyTier",

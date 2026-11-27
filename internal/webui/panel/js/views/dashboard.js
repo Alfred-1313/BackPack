@@ -204,8 +204,8 @@ function card(t, idx) {
                : (tone === 'warn' || t.kcpLossPercent > 2 ? 'dot wr' : 'dot');
   const label = stateLabel(t);
   const hasPing = t.ping !== undefined && t.ping >= 0;
-  const dir = t.direction === 'direct' ? 'Direct' : 'Reverse';
-  const carrier = (t.carrier || t.transport || '').toUpperCase();
+  const dir = t.direction === 'direct' ? 'Direct' : t.transport === 'matrix' && !t.direction ? '' : 'Reverse';
+  const carrier = t.transport === 'matrix' ? 'Tinc' : (t.carrier || t.transport || '').toUpperCase();
   // ports arrives as one ", "-joined string, not a list — an empty one is
   // falsy and so used to fall through to a harmless [], which is why only a
   // tunnel that actually forwards a port ever hit this.
@@ -247,7 +247,7 @@ ${field(t, idx)}
   </div>
 
   <div class="kind">
-    <span>${dir}</span><span>${esc(carrier)}</span>
+    ${dir ? `<span>${dir}</span>` : ''}<span>${esc(carrier)}</span>
     ${t.preset ? `<span class="pr" title="Performance preset">${esc(t.preset)}</span>` : ''}
     ${ports ? `<span class="q">${esc(ports)}</span>` : ''}
     ${st ? `<button type="button" class="per" data-per-open aria-haspopup="true"

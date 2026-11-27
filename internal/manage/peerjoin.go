@@ -393,6 +393,7 @@ func applyPeerJoin(raw string, options LinkApplyOptions) (LinkApplied, error) {
 		if result.Matrix == nil {
 			return done, errors.New("missing Matrix node settings")
 		}
+		done.Kind = orDefault(result.Matrix.Direction, matrix.Direct)
 		if options.Name != "" {
 			done.Name = options.Name
 		}

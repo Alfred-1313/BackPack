@@ -107,6 +107,7 @@ them both ends have to agree on. This says what exists.
 | Key | Type | Description |
 |---|---|---|
 | `accept_udp` | `bool` | AcceptUDP also enables UDP for the configured port mappings. |
+| `direction` | `string` | Direction records which side initiates the Tinc connection for this network. |
 | `local` | `MatrixHost` | Local contains this node's identity and addresses. |
 | `mtu` | `int` | MTU sets the Tinc interface's packet size. Zero selects 1350 bytes. |
 | `peers` | `[]MatrixHost` | Peers lists enrolled public host records. A node needs a record for Main. |

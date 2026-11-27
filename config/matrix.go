@@ -3,6 +3,8 @@ package config
 // Matrix is one node of a BackPack-managed Tinc network. The private key
 // belongs to this node alone. Peers carry host records with public keys.
 type MatrixConfig struct {
+	// Direction records which side initiates the Tinc connection for this network.
+	Direction string `toml:"direction,omitempty" json:"direction,omitempty"`
 	// Subnet is the private IPv4 /24 shared by this Matrix network.
 	Subnet string `toml:"subnet" json:"subnet"`
 	// Local contains this node's identity and addresses.
