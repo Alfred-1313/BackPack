@@ -1,5 +1,5 @@
 import * as api from '../api.js';
-import { copyText, flashCopied } from '../lib/dom.js';
+import { copyText, el, flashCopied } from '../lib/dom.js';
 import { openScreen } from '../ui/screen.js';
 import { oops } from '../ui/toast.js';
 
@@ -19,6 +19,7 @@ export function mtProxyView(ctx) {
       const setStatus = (text, error = false) => {
         status.textContent = text;
         status.classList.toggle('error', error);
+        status.classList.remove('mtp-measured');
       };
       mode.value = ctx.query?.get('mode') === 'web' ? 'web' : 'native';
       const isWeb = () => mode.value === 'web';
@@ -211,9 +212,14 @@ export function mtProxyView(ctx) {
       field('mtpCheck').addEventListener('click', event => work(event.currentTarget, async () => {
         setStatus('Authenticating the proxy through the tunnel\u2026');
         const { ms } = await action({ action: 'check' });
-        setStatus(isWeb()
-          ? 'The WEB bridge authenticated over HTTPS in ' + ms + ' ms. Open the link in compatible Telegram Desktop.'
-          : 'MTProxy authenticated through the tunnel in ' + ms + ' ms. Open the link in Telegram to check the full connection.');
+        if (isWeb()) {
+          setStatus('The WEB bridge authenticated over HTTPS in ' + ms + ' ms. Open the link in compatible Telegram Desktop.');
+          return;
+        }
+        setStatus('MTProxy authenticated through the tunnel in ');
+        status.classList.add('mtp-measured');
+        status.append(el('span', { class: 'mtp-latency', text: ms + ' ms' }),
+          '. Open the link in Telegram to check the full connection.');
       }));
       field('mtpSaveSponsor').addEventListener('click', event => work(event.currentTarget, async () => {
         show(await action({ action: 'sponsor', sponsor: field('mtpSponsor').value.trim() }));
