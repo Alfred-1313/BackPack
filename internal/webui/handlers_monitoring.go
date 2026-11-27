@@ -11,7 +11,6 @@ import (
 
 	"github.com/backpack/backpack/internal/alerthist"
 	"github.com/backpack/backpack/internal/app"
-	"github.com/backpack/backpack/internal/backhaulpremium"
 	"github.com/backpack/backpack/internal/control"
 	"github.com/backpack/backpack/internal/daggerconnect"
 	"github.com/backpack/backpack/internal/manage"
@@ -49,14 +48,6 @@ func relayEngineChecks(parent context.Context) []healthRow {
 	checks := []healthRow{
 		{Group: group, Name: "BackPack", Level: "ok", Version: app.Version, Detail: "Includes built-in Backhaul transports"},
 	}
-	backhaul := healthRow{Group: group, Name: "Backhaul Premium", Level: "ok", Version: backhaulpremium.Version, Detail: "Installed separately"}
-	if err := backhaulpremium.CheckInstalled(); err != nil {
-		backhaul.Level, backhaul.Version, backhaul.Detail = "fail", "", "Not installed"
-		if !os.IsNotExist(err) {
-			backhaul.Detail = err.Error()
-		}
-	}
-	checks = append(checks, backhaul)
 	dagger := healthRow{Group: group, Name: "DaggerConnect", Level: "ok",
 		Version: "Launcher " + daggerconnect.LauncherVersion,
 		Detail:  "Licensed core is fetched when the tunnel starts"}
