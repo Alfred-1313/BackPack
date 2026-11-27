@@ -1,6 +1,7 @@
 package manage
 
 import (
+	"github.com/BurntSushi/toml"
 	"testing"
 
 	"github.com/backpack/backpack/config"
@@ -71,5 +72,53 @@ func TestRoutedLinkSetupFromPeer(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestEasyTierSetupMirrorsDirectionAndProtocol(t *testing.T) {
+	for _, reverse := range []bool{false, true} {
+		for _, protocol := range []string{"", "tcp", "udp", "ws", "wss"} {
+			form := NewDirectTunnel{
+				Carrier: l3.CarrierEasyTier, Side: "iran", Name: "easytier-transport-fixture",
+				PeerAddr: "203.0.113.50", Token: "fixture-secret", TunnelPort: "20081",
+				LocalIP: "10.244.246.1/30", PeerIP: "10.244.246.2", Ports: "443",
+			}
+			form.EasyTierReverse, form.EasyTierProtocol = reverse, protocol
+			near, err := form.spec()
+			if err != nil {
+				t.Fatal(err)
+			}
+			nearMode, farMode := "dial", "listen"
+			if reverse {
+				nearMode, farMode = "listen", "dial"
+			}
+			var cfg config.Config
+			if _, err := toml.Decode(near.Render(), &cfg); err != nil {
+				t.Fatal(err)
+			}
+			link, err := DecodeShareLink(pendingShareLinkFrom(near, "192.0.2.90", linkExtras{}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			peer := MirrorForPeer(link).ToNewDirectTunnel()
+			far, err := peer.spec()
+			if err != nil {
+				t.Fatal(err)
+			}
+			var other config.Config
+			if _, err := toml.Decode(far.Render(), &other); err != nil {
+				t.Fatal(err)
+			}
+			if cfg.L3.Mode != nearMode || other.L3.Mode != farMode || other.L3.EasyTierProtocol != protocol ||
+				other.L3.EasyTierReverse != reverse || len(cfg.L3.Ports) == 0 || len(other.L3.Ports) > 0 {
+				t.Fatalf("wrong paired EasyTier config for reverse %t, protocol %q", reverse, protocol)
+			}
+			if reverse && far.Addr != "192.0.2.90:20081" {
+				t.Fatal("Kharej must dial the Iran address carried by the reverse setup link")
+			}
+			if directSpecFrom(near.Name, cfg.L3).Side != sideIran {
+				t.Fatal("editing an Iran listener would have moved it to Kharej")
+			}
+		}
 	}
 }

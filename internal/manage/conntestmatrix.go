@@ -7,11 +7,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"net"
 	"net/netip"
 	"os"
-	"time"
 
 	"github.com/BurntSushi/toml"
 	"github.com/backpack/backpack/config"
@@ -127,20 +124,5 @@ func (w *ctExtraInstance) joinMatrix(ctx context.Context, link ConnTestLink, job
 	if err := w.helper.startMatrix(job.Name, c); err != nil {
 		return err
 	}
-	echoCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
-	defer cancel()
-	addr := net.JoinHostPort(c.Local.IP, fmt.Sprint(link.L3))
-	for echoCtx.Err() == nil {
-		if listener, err := net.Listen("tcp4", addr); err == nil {
-			w.echo = &ctEchoes{}
-			w.echo.add(listener)
-			go ctServeTCPEcho(listener, w.echo)
-			return nil
-		}
-		if exited, detail := w.helper.startupFailure(); exited {
-			return errors.New(detail)
-		}
-		ctSleep(echoCtx, 100*time.Millisecond)
-	}
-	return errors.New("Matrix did not bring up its test interface")
+	return w.listenRoutedTestEcho(ctx, c.Local.IP, link.L3)
 }

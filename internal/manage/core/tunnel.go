@@ -23,6 +23,7 @@ type Tunnel struct {
 	Role            string // "server" or "client"
 	Transport       string
 	MatrixDirection string
+	EasyTierReverse bool
 	Addr            string   // listener or dial target visible to the peer
 	Ports           []string // server only
 	Service         string
@@ -137,6 +138,13 @@ func tunnelOf(name string, cfg config.Config) (Tunnel, bool) {
 	case cfg.L3.Enabled():
 		t.Role = L3Role(cfg.L3.Mode)
 		t.Transport = "l3/" + OrDefault(cfg.L3.Carrier, "udp")
+		t.EasyTierReverse = cfg.L3.Carrier == l3.CarrierEasyTier && cfg.L3.EasyTierReverse
+		if t.EasyTierReverse {
+			t.Role = L3Role("dial")
+			if cfg.L3.Mode == "dial" {
+				t.Role = L3Role("listen")
+			}
+		}
 		t.Addr = cfg.L3.Addr
 		t.Ports = cfg.L3.Ports
 		if l3.RemovedCarrier(cfg.L3.Carrier) {

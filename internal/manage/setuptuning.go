@@ -89,6 +89,7 @@ func buildSetupPerformance() map[string]SetupPerformance {
 		}
 		m[carrier] = p
 	}
+	m["easytier-reverse"] = m["easytier"]
 	return m
 }
 

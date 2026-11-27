@@ -139,6 +139,8 @@ them both ends have to agree on. This says what exists.
 | Key | Type | Description |
 |---|---|---|
 | `easytier_network` | `string` | EasyTierNetwork is the network name shared by the two EasyTier endpoints. |
+| `easytier_protocol` | `string` | EasyTierProtocol selects the outer transport. Empty preserves TCP. |
+| `easytier_reverse` | `bool` | EasyTierReverse makes Iran listen and Kharej initiate the connection. |
 | `l2tp_peer_session_id` | `uint32` | L2TPPeerSessionID matches the session ID on the other endpoint. |
 | `l2tp_peer_tunnel_id` | `uint32` | L2TPPeerTunnelID matches the tunnel ID on the other endpoint. |
 | `l2tp_session_id` | `uint32` | L2TPSessionID identifies this endpoint's L2TPv3 Ethernet session. |

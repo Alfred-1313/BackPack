@@ -82,6 +82,9 @@ func SetupLinkFor(name, host string) (SetupLinkInfo, error) {
 	}
 	info := SetupLinkInfo{Name: name, Link: raw, For: l.PeerSide(), Kind: l.Kind, Host: host,
 		NeedsAddress: host == "" && l.PeerNeedsAddress()}
+	if l.Tr == l3.CarrierEasyTier && l.EasyTierReverse {
+		info.Kind = "reverse"
+	}
 	// A GRE link's kharej names this server, so the address the link holds is
 	// the one that counts, and without it `link apply` refuses: the line has to
 	// carry --host, and the screen has to say which address goes there.

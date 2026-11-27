@@ -35,12 +35,15 @@ var ctTransportNames = map[string]string{
 	"tcp": "TCP", "tcpmux": "TCP MUX", "stealth": "Stealth", "pck": "PCK",
 	"ws": "WS", "wss": "WSS", "wsmux": "WS MUX", "wssmux": "WSS MUX",
 	"kcp": "KCP FEC", "quic": "QUIC", "udp": "UDP", "xdi": "xDi", ctXdiFEC: "xDi + FEC", "sni": "SNI", "gre": "GRE",
-	"gretap": "GRETAP", "l2tpv3": "L2TPv3 (IP)", "easytier": "EasyTier",
+	"gretap": "GRETAP", "l2tpv3": "L2TPv3 (IP)", "easytier": "EasyTier / TCP",
 	"naive": "Naive / HTTP2", "anytls": "AnyTLS", "xhttp": "XHTTP / TLS", "reality": "REALITY / Vision", "gost": "GOST 3",
 	ctSpoofToKharej: "Iran→Kharej", ctSpoofToIran: "Kharej→Iran",
 }
 
 func ctName(tr string) string {
+	if _, scheme, ok := ctEasyTierMode(tr); ok {
+		return "EasyTier / " + strings.ToUpper(scheme)
+	}
 	if version := gostdirect.ModeVersion(tr); version != 0 {
 		return fmt.Sprintf("GOST %d", version)
 	}

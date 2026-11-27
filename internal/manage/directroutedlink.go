@@ -35,7 +35,7 @@ func (n *NewDirectTunnel) setL2TPIDs() error {
 func (n NewDirectTunnel) easyTierSpec(side directSide) (l3Spec, error) {
 	port := strings.TrimSpace(n.TunnelPort)
 	if !validPort(port) {
-		return l3Spec{}, fmt.Errorf("choose an EasyTier TCP port between 1 and 65535")
+		return l3Spec{}, fmt.Errorf("choose an EasyTier port between 1 and 65535")
 	}
 	name := strings.TrimSpace(n.Name)
 	if name == "" {
@@ -47,15 +47,22 @@ func (n NewDirectTunnel) easyTierSpec(side directSide) (l3Spec, error) {
 	if fileExists(app.ConfigPath(name)) {
 		return l3Spec{}, fmt.Errorf("a tunnel named %q already exists", name)
 	}
+	protocol, err := easytier.Protocol(n.EasyTierProtocol)
+	if err != nil {
+		return l3Spec{}, err
+	}
 	host := "0.0.0.0"
+	if n.SetupFamily == "ipv6" {
+		host = "::"
+	}
 	token := strings.TrimSpace(n.Token)
-	if side == sideIran {
+	if (side == sideIran) != n.EasyTierReverse {
 		host = strings.Trim(strings.TrimSpace(n.PeerAddr), "[]")
 		if host == "" || strings.ContainsAny(host, "/ \t\r\n") || strings.Contains(host, ":") && net.ParseIP(host) == nil {
-			return l3Spec{}, fmt.Errorf("enter a peer IP or hostname for EasyTier on the Iran side")
+			return l3Spec{}, fmt.Errorf("enter a peer IP or hostname on the EasyTier dialing side")
 		}
 		if token == "" {
-			return l3Spec{}, fmt.Errorf("enter the EasyTier network secret from Kharej")
+			return l3Spec{}, fmt.Errorf("enter the shared EasyTier network secret")
 		}
 	} else if token == "" {
 		token = randomToken(64)
@@ -70,12 +77,16 @@ func (n NewDirectTunnel) easyTierSpec(side directSide) (l3Spec, error) {
 		return l3Spec{}, fmt.Errorf("the selected EasyTier subnet is already used by %s", owner)
 	}
 	spec := l3Spec{
-		Name: name, Side: side, Carrier: l3.CarrierEasyTier,
+		RoutedLinkSettings: n.RoutedLinkSettings,
+		Name:               name, Side: side, Carrier: l3.CarrierEasyTier,
 		Addr: net.JoinHostPort(host, port), Token: token, Iface: freeL3Iface(),
 		LocalIP: local, PeerIP: peer, MTU: n.MTU, AutoMTU: n.AutoMTU, MSSClamp: n.MSSClamp,
 		MaxConnections: n.MaxConnections, BandwidthMbps: n.BandwidthMbps,
 	}
 	spec.EasyTierNetwork = orDefault(strings.TrimSpace(n.EasyTierNetwork), "backpack")
+	if n.EasyTierProtocol != "" {
+		spec.EasyTierProtocol = protocol
+	}
 	findL3Preset(strings.ToLower(strings.TrimSpace(n.Preset))).apply(&spec)
 	if side == sideIran {
 		spec.Ports, spec.AcceptUDP = parsePorts(n.Ports), n.AcceptUDP

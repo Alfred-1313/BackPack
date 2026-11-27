@@ -9,9 +9,13 @@ import (
 
 func (s L3Spec) renderRoutedLink() string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "# Backpack %s direct tunnel\n\n[l3]\n", s.Carrier)
+	direction := "direct"
+	if s.Carrier == l3.CarrierEasyTier && s.EasyTierReverse {
+		direction = "reverse"
+	}
+	fmt.Fprintf(&b, "# Backpack %s %s tunnel\n\n[l3]\n", s.Carrier, direction)
 	mode := "dial"
-	if s.Side == SideKharej {
+	if (s.Side == SideKharej) != (direction == "reverse") {
 		mode = "listen"
 	}
 	writeKV(&b, "mode", quote(mode))
@@ -28,6 +32,12 @@ func (s L3Spec) renderRoutedLink() string {
 	} else {
 		writeKV(&b, "token", quote(s.Token))
 		writeKV(&b, "easytier_network", quote(s.EasyTierNetwork))
+		if s.EasyTierProtocol != "" {
+			writeKV(&b, "easytier_protocol", quote(s.EasyTierProtocol))
+		}
+		if s.EasyTierReverse {
+			writeKV(&b, "easytier_reverse", "true")
+		}
 	}
 	writeKV(&b, "iface", quote(s.Iface))
 	writeKV(&b, "local_ip", quote(s.LocalIP))

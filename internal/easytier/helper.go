@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 )
@@ -20,6 +21,18 @@ const release = "v2.6.4"
 // EncryptedMTUOverhead is what the pinned helper reserves from --mtu when
 // creating its encrypted TUN interface.
 const EncryptedMTUOverhead = 20
+
+// Protocol validates the outer carrier used by both EasyTier endpoints.
+func Protocol(value string) (string, error) {
+	switch scheme := strings.ToLower(strings.TrimSpace(value)); scheme {
+	case "":
+		return "tcp", nil
+	case "tcp", "udp", "ws", "wss":
+		return scheme, nil
+	default:
+		return "", fmt.Errorf("invalid EasyTier protocol %q (use TCP, UDP, WS or WSS)", value)
+	}
+}
 
 var installMu sync.Mutex
 

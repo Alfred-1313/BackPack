@@ -322,6 +322,13 @@ func StartDirectPeerSetup(ctx context.Context, form NewDirectTunnel) (SetupLinkI
 			return SetupLinkInfo{}, err
 		}
 	}
+	if form.EasyTierReverse && form.Carrier != l3.CarrierEasyTier {
+		return SetupLinkInfo{}, errors.New("reverse routing is only available for EasyTier")
+	}
+	kind := "direct"
+	if form.EasyTierReverse {
+		kind = "reverse"
+	}
 	if form.Carrier == l3.CarrierEasyTier && form.Token == "" {
 		form.Token = randomToken(64)
 	}
@@ -349,8 +356,11 @@ func StartDirectPeerSetup(ctx context.Context, form NewDirectTunnel) (SetupLinkI
 	}
 	form.Name = spec.Name
 	setup := func(_ context.Context, host, peer string) (peerJoinResult, error) {
-		if form.PeerAddr == "" {
+		if form.PeerAddr == "" && !form.EasyTierReverse {
 			form.PeerAddr = peer
+		}
+		if form.Carrier == l3.CarrierEasyTier && ctFamily(host) == "IPv6" {
+			form.SetupFamily = "ipv6"
 		}
 		service, _, err := CreateDirectTunnel(form)
 		if err != nil {
@@ -361,13 +371,13 @@ func StartDirectPeerSetup(ctx context.Context, form NewDirectTunnel) (SetupLinkI
 		return peerJoinResult{Link: info.Link}, err
 	}
 	if family == "" {
-		return beginPeerJoin(ctx, form.Name, "direct", form.Carrier == l3.CarrierEasyTier, setup)
+		return beginPeerJoin(ctx, form.Name, kind, form.Carrier == l3.CarrierEasyTier, setup)
 	}
 	host, err := setupPublicAddress(family)
 	if err != nil {
 		return SetupLinkInfo{}, err
 	}
-	return beginPeerJoinAt(ctx, host, form.Name, "direct", setup)
+	return beginPeerJoinAt(ctx, host, form.Name, kind, setup)
 }
 
 func applyPeerJoin(raw string, options LinkApplyOptions) (LinkApplied, error) {

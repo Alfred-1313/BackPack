@@ -207,7 +207,7 @@ func PanelDirectCarriers() []map[string]string {
 		"desc": "Ethernet over IPv4 using IP protocol 115 · unencrypted",
 	}, map[string]string{
 		"value": l3.CarrierEasyTier, "label": "EasyTier", "needsRoot": "1",
-		"desc": "Encrypted private EasyTier network over TCP",
+		"desc": "Encrypted private EasyTier network",
 	})
 }
 
@@ -1180,7 +1180,7 @@ func applyDirectEdit(l config.L3Config, e DirectEdit) (config.L3Config, error) {
 // cannot quietly drop a spoof or pck profile.
 func directSpecFrom(name string, l config.L3Config) l3Spec {
 	side := sideIran
-	if strings.EqualFold(strings.TrimSpace(l.Mode), "listen") {
+	if strings.EqualFold(strings.TrimSpace(l.Mode), "listen") != (l.Carrier == l3.CarrierEasyTier && l.EasyTierReverse) {
 		side = sideKharej
 	}
 	return l3Spec{

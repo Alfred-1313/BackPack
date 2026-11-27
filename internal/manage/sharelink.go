@@ -114,6 +114,8 @@ type ShareLink struct {
 	L2TPSessionID     uint32 `json:"ls,omitempty"`
 	L2TPPeerSessionID uint32 `json:"lr,omitempty"`
 	EasyTierNetwork   string `json:"en,omitempty"`
+	EasyTierProtocol  string `json:"ep,omitempty"`
+	EasyTierReverse   bool   `json:"er,omitempty"`
 
 	// Imported transports' extra peer settings.
 	PeerHost        string `json:"ph,omitempty"`
@@ -401,11 +403,17 @@ type PeerForm struct {
 // and so needs the link's Host.
 func (l ShareLink) PeerNeedsAddress() bool {
 	side := l.PeerSide()
+	if l.Tr == l3.CarrierEasyTier && l.EasyTierReverse {
+		return side == "kharej"
+	}
 	return (l.Kind == "reverse" && side == "kharej") || (l.Kind == "direct" && side == "iran")
 }
 
 // NeedsServerAddr reports whether the side this form builds dials the other.
 func (f PeerForm) NeedsServerAddr() bool {
+	if f.Carrier == l3.CarrierEasyTier && f.EasyTierReverse {
+		return f.Side == "kharej"
+	}
 	return (f.Kind == "reverse" && f.Side == "kharej") || (f.Kind == "direct" && f.Side == "iran")
 }
 
@@ -527,8 +535,12 @@ func MirrorForPeer(l ShareLink) PeerForm {
 			f.L2TPSessionID, f.L2TPPeerSessionID = l.L2TPPeerSessionID, l.L2TPSessionID
 			paired = append(paired, "l2tpTunnelId", "l2tpPeerTunnelId", "l2tpSessionId", "l2tpPeerSessionId")
 		case l3.CarrierEasyTier:
-			f.EasyTierNetwork = l.EasyTierNetwork
-			paired = append(paired, "easytierNetwork")
+			f.EasyTierNetwork, f.EasyTierProtocol, f.EasyTierReverse = l.EasyTierNetwork, l.EasyTierProtocol, l.EasyTierReverse
+			paired = append(paired, "easytierNetwork", "easytierProtocol", "easytierReverse")
+			if f.Side == "kharej" && l.EasyTierReverse {
+				f.ServerAddr = l.Host
+				paired = append(paired, "serverAddr")
+			}
 		}
 	}
 
@@ -709,8 +721,8 @@ func shareLinkOf(name, host string, cfg config.Config) (string, error) {
 	case cfg.L3.Enabled():
 		l.Kind = "direct"
 		l.From = "kharej"
-		if !strings.EqualFold(strings.TrimSpace(cfg.L3.Mode), "listen") {
-			l.From = "iran" // the dialling side of a direct tunnel is Iran
+		if !strings.EqualFold(strings.TrimSpace(cfg.L3.Mode), "listen") != (cfg.L3.Carrier == l3.CarrierEasyTier && cfg.L3.EasyTierReverse) {
+			l.From = "iran"
 		}
 		l.Tok = cfg.L3.Token
 		l.Tr = orDefault(cfg.L3.Carrier, "udp")
@@ -742,6 +754,9 @@ func shareLinkOf(name, host string, cfg config.Config) (string, error) {
 		l.L2TPTunnelID, l.L2TPPeerTunnelID = cfg.L3.L2TPTunnelID, cfg.L3.L2TPPeerTunnelID
 		l.L2TPSessionID, l.L2TPPeerSessionID = cfg.L3.L2TPSessionID, cfg.L3.L2TPPeerSessionID
 		l.EasyTierNetwork = cfg.L3.EasyTierNetwork
+		if l.Tr == l3.CarrierEasyTier {
+			l.EasyTierProtocol, l.EasyTierReverse = cfg.L3.EasyTierProtocol, cfg.L3.EasyTierReverse
+		}
 		sc := cfg.L3.SpoofConfig
 		l.Profile, l.Uplink, l.Downlink = sc.SpoofProfile, sc.SpoofUplink, sc.SpoofDownlink
 		l.SrcIPs = strings.Join(nonEmpty(append([]string{sc.SpoofSrcIP}, sc.SpoofSrcPool...)), ", ")

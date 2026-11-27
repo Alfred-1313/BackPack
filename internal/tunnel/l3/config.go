@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/backpack/backpack/config"
+	"github.com/backpack/backpack/internal/easytier"
 	"github.com/backpack/backpack/internal/tunnel/mssclamp"
 	"github.com/backpack/backpack/internal/tunnel/portmap"
 	"github.com/backpack/backpack/internal/utils/network"
@@ -208,6 +209,13 @@ func (c *Config) Validate() error {
 	// Lower-cased first: whether this is a kernel GRE link decides what addr
 	// and token have to be.
 	c.Carrier = strings.ToLower(strings.TrimSpace(c.Carrier))
+	if c.Carrier == CarrierEasyTier {
+		scheme, err := easytier.Protocol(c.EasyTierProtocol)
+		if err != nil {
+			return err
+		}
+		c.EasyTierProtocol = scheme
+	}
 	kernel := PortlessLinkCarrier(c.Carrier)
 
 	if strings.TrimSpace(c.Addr) == "" {

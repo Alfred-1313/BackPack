@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/backpack/backpack/config"
+	"github.com/backpack/backpack/internal/easytier"
 	"github.com/backpack/backpack/internal/tunnel/l3"
 )
 
@@ -511,6 +512,9 @@ func TunnelDirection(t Tunnel) string {
 	if t.Transport == "matrix" {
 		return t.MatrixDirection
 	}
+	if t.EasyTierReverse {
+		return "reverse"
+	}
 	if IsDirectKind(t) || t.Transport == "dagger/tun" {
 		return "direct"
 	}
@@ -562,7 +566,8 @@ func L3EncapLabel(l config.L3Config) string {
 	case l3.CarrierL2TPv3:
 		return "L2TPv3 over IPv4 (IP protocol 115), unencrypted"
 	case l3.CarrierEasyTier:
-		return "EasyTier over TCP, encrypted"
+		protocol, _ := easytier.Protocol(l.EasyTierProtocol)
+		return "EasyTier over " + strings.ToUpper(protocol) + ", encrypted"
 	}
 	// PCK is not wrapped at all: it is KCP and smux streams inside crafted TCP
 	// segments, and "GRE + Noise" would name a layer it has none of.

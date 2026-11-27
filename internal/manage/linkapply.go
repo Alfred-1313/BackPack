@@ -300,11 +300,21 @@ func applyDirectLink(link ShareLink, o LinkApplyOptions) (LinkApplied, error) {
 	if ip := net.ParseIP(link.Host); ip != nil && ip.To4() == nil {
 		n.SetupFamily = "ipv6"
 	}
+	if n.EasyTierReverse && o.Host != "" {
+		n.PeerAddr = strings.TrimSpace(o.Host)
+	}
 	service, active, err := CreateDirectTunnel(n)
 	if err != nil {
 		return LinkApplied{}, err
 	}
-	return LinkApplied{Name: form.Name, Service: service, Kind: "direct", Transport: link.Tr, Active: active}, nil
+	done := LinkApplied{Name: form.Name, Service: service, Kind: "direct", Transport: link.Tr, Active: active}
+	if link.Tr == l3.CarrierEasyTier {
+		done.AwaitPeer = routedPeerProbe(hostOf(form.LocalIP), hostOf(form.PeerIP))
+		if n.EasyTierReverse {
+			done.Kind = "reverse"
+		}
+	}
+	return done, nil
 }
 
 // freeName is name, or name-2, name-3 … when that one is taken: a command has

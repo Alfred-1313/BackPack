@@ -36,7 +36,7 @@ export function setupLinkHTML(info) {
       fields.push(['Local tunnel ID', peer.l2tpTunnelId], ['Peer tunnel ID', peer.l2tpPeerTunnelId],
         ['Local session ID', peer.l2tpSessionId], ['Peer session ID', peer.l2tpPeerSessionId]);
     } else if (easyTier) {
-      fields.push(['TCP tunnel port', peer.tunnelPort], ['EasyTier network name', peer.easytierNetwork],
+      fields.push(['Tunnel port', peer.tunnelPort], ['EasyTier network name', peer.easytierNetwork],
         ['EasyTier network secret', peer.token]);
     } else {
       fields.push(['GRE key', String(peer.greKey || 0)]);

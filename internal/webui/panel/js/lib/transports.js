@@ -7,7 +7,6 @@ const sources = new Map([
   ['native-tun-tcp', 'Backhaul'],
   ['gretap', 'Gretap'],
   ['l2tpv3', 'VortexL2'],
-  ['easytier', 'VortexL2'],
 ]);
 
 const gostNames = new Map([
@@ -17,6 +16,9 @@ const gostNames = new Map([
 ]);
 
 export function transportDisplay(id, label) {
+  if (id === 'easytier' || id === 'easytier-reverse') return { name: label || 'EasyTier', source: 'Easy-Mesh' };
+  const easyTier = id?.match(/^easytier-(?:direct|reverse)-(tcp|udp|ws|wss)$/);
+  if (easyTier) return { name: 'EasyTier / ' + easyTier[1].toUpperCase(), source: 'Easy-Mesh' };
   if (id === 'matrix') return { name: 'Matrix', source: 'Tinc' };
   if (id === 'matrix-direct') return { name: 'Matrix', source: 'Tinc · Direct' };
   if (id === 'matrix-reverse') return { name: 'Matrix', source: 'Tinc · Reverse' };

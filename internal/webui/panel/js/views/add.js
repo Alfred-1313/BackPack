@@ -56,6 +56,9 @@ export function addView(ctx) {
         ...omniEntries('reverse'),
         ...daggerEntries('reverse'),
         matrixEntry('reverse'),
+        ['easytier-reverse', { value: 'easytier-reverse', mode: 'easytier', label: 'EasyTier',
+          port: true, forward: true, udp: true, setupFamilies: ['ipv4', 'ipv6'],
+          desc: 'Private EasyTier network. Needs root.' }],
       ]);
       const managedDirect = new Map([
         ...omniEntries('direct'),
@@ -83,6 +86,12 @@ export function addView(ctx) {
       const daggerRoute = () => daggerUpgrade() || reverseSetup()?.mode === 'dagger-xhttp';
       const directSetup = () => chosen.direction === 'direct' && managedDirect.get(chosen.carrier);
       const matrixSelected = () => (reverseSetup() || directSetup())?.mode === 'matrix';
+      const easyTierSelected = () => chosen.direction === 'direct'
+        ? chosen.carrier === 'easytier' : reverseSetup()?.mode === 'easytier';
+      const easyTierProtocol = el('select', { id: 'easyTierProtocol' },
+        ['tcp', 'udp', 'ws', 'wss'].map(value => el('option', { value, text: value.toUpperCase() })));
+      const easyTierProtocolRow = el('div', { class: 'f3 full', hidden: true },
+        el('label', { for: 'easyTierProtocol', text: 'EasyTier transport' }), easyTierProtocol);
       const officialDagger = () => {
         const setup = reverseSetup() || directSetup();
         return setup?.dagger ? setup.mode : '';
@@ -562,6 +571,8 @@ export function addView(ctx) {
         const routed = directSetup();
         const setup = reverseSetup();
         const reverseMatrix = setup?.mode === 'matrix';
+        const reverseEasyTier = setup?.mode === 'easytier';
+        const isEasyTier = easyTierSelected();
         const isMatrix = matrixSelected();
         show('.step3rev', !direct);
         show('.step3direct', direct);
@@ -575,7 +586,7 @@ export function addView(ctx) {
             : chosen.carrier === 'l2tpv3'
               ? 'Direct: L2TPv3 carries Ethernet over IP protocol 115.'
               : chosen.carrier === 'easytier'
-                ? 'Direct: EasyTier connects over TCP using a shared network name and secret.'
+                ? 'Direct: Iran connects to Kharej using an encrypted EasyTier network.'
                 : officialDagger() === 'tun'
                   ? 'Direct: DaggerConnect pairs both IPv4 endpoints using the Setup command.'
                   : 'Direct: Iran connects to Kharej. Peer-to-peer carriers exchange packets in both directions.'
@@ -622,6 +633,10 @@ export function addView(ctx) {
         const subnetAnchor = reverseMatrix ? reverseNameRow : directNameRow;
         if (matrixSubnetRow.previousElementSibling !== subnetAnchor) subnetAnchor.after(matrixSubnetRow);
         matrixSubnetRow.hidden = !isMatrix;
+        const protocolAnchor = direct ? directPort : reversePort;
+        const protocolPortRow = protocolAnchor.closest('.f3');
+        if (easyTierProtocolRow.previousElementSibling !== protocolPortRow) protocolPortRow.after(easyTierProtocolRow);
+        easyTierProtocolRow.hidden = !isEasyTier;
         const portMode = routed?.mode === 'matrix' ? 'matrix' : routed ? 'routed' : 'native';
         if (portMode !== directPortMode) {
           directPortValues[directPortMode] = directPort.value;
@@ -629,11 +644,12 @@ export function addView(ctx) {
           directPortMode = portMode;
         }
         const gost = routed?.mode?.startsWith('gost-direct');
-        directPort.placeholder = isMatrix ? '2097' : gost ? '1–65535' : routed ? 'Automatic' : 'e.g. 9000';
+        directPort.placeholder = isEasyTier ? '2090' : isMatrix ? '2097' : gost ? '1–65535' : routed ? 'Automatic' : 'e.g. 9000';
         directPort.closest('.f3').querySelector('.hint').textContent = routed
           ? (isMatrix ? 'Tinc uses this port for TCP and UDP. Blank uses 2097.' :
             gost ? 'Enter the port GOST listens on in Kharej.' : 'Leave blank to allocate a tunnel port automatically.')
-          : 'Kharej binds it; Iran reaches it. On PCK nothing else may use this port on the kharej.';
+          : isEasyTier ? 'Kharej listens on this port. Blank uses 2090.'
+            : 'Kharej binds it; Iran reaches it. On PCK nothing else may use this port on the kharej.';
         if (routed) {
           directPort.closest('.f3').hidden = !routed.port;
           directToken.closest('.f3').hidden = !routed.secret;
@@ -645,9 +661,9 @@ export function addView(ctx) {
           ? 'Enter one TCP forward. For example, 443=8443 sends Iran port 443 to Kharej port 8443.'
           : isMatrix ? 'Optional. Enter local ports, or use a peer private address such as 443=10.203.42.1:8443.' : forwardPortsHint;
         directForward.placeholder = gost ? '443=8443' : routed ? '443, 2053=8443' : '2087';
-        const udpAnchor = (reverseMatrix ? reverseForward : directForward).closest('.f3');
+        const udpAnchor = (reverseMatrix || reverseEasyTier ? reverseForward : directForward).closest('.f3');
         if (forwardUDP.previousElementSibling !== udpAnchor) udpAnchor.after(forwardUDP);
-        forwardUDP.hidden = !routed?.udp && !reverseMatrix;
+        forwardUDP.hidden = !routed?.udp && !reverseMatrix && !isEasyTier;
         if (direct && !routed) suggestDirect(chosen.side);
         if (pairedDirect()) {
           root.querySelectorAll('[name="greLocal"], [name="localIp"], [name="peerIp"]').forEach(input => {
@@ -682,11 +698,12 @@ export function addView(ctx) {
           if (local) local.closest('.f3').hidden = true;
         }
         reversePort.closest('.f3').hidden = !!setup && !setup.port;
-        reversePort.placeholder = reverseMatrix ? '2097' : setup ? '1–65535' : '4443 or 85.10.11.51:4443';
+        reversePort.placeholder = reverseEasyTier ? '2090' : reverseMatrix ? '2097' : setup ? '1–65535' : '4443 or 85.10.11.51:4443';
         if (reversePortHint) reversePortHint.textContent = reverseMatrix
-          ? 'Tinc listens on Iran over TCP and UDP. Blank uses 2097.' : standardReversePortHint;
+          ? 'Tinc listens on Iran over TCP and UDP. Blank uses 2097.'
+          : reverseEasyTier ? 'Iran listens on this port. Blank uses 2090.' : standardReversePortHint;
         reverseForward.closest('.f3').querySelector('label').textContent =
-          setup && !setup.dagger && !reverseMatrix ? 'Forwarded TCP ports' : 'Forwarded ports';
+          setup && !setup.dagger && !reverseMatrix && !reverseEasyTier ? 'Forwarded TCP ports' : 'Forwarded ports';
         if (routed?.dagger) directFields.hidden = true;
         // The token and the far end's address are the panel's business now.
         root.querySelectorAll('.tokgone, .addrgone').forEach(n => { n.hidden = true; });
@@ -1713,6 +1730,18 @@ export function addView(ctx) {
         const tuning = setupTuningPayload();
         const dagger = officialDagger();
         const setupFamily = addressChoice.value;
+        if (easyTierSelected()) {
+          const port = String(payload.tunnelPort || '2090').trim();
+          if (!/^\d+$/.test(port) || Number(port) < 1 || Number(port) > 65535) {
+            throw new Error('Enter an EasyTier port from 1 to 65535.');
+          }
+          const r = await api.directPeerSetup({
+            ...payload, side: 'iran', carrier: 'easytier', tunnelPort: port, setupFamily,
+            easytierProtocol: easyTierProtocol.value, easytierReverse: chosen.direction === 'reverse',
+            acceptUdp: !!payload.routedAcceptUdp, preset: tuning?.preset, mtu: tuning?.value,
+          });
+          return { r, name: payload.name };
+        }
         if (matrixSelected()) {
           const port = String(payload.tunnelPort || '').trim();
           if (port && (!/^\d+$/.test(port) || Number(port) < 1 || Number(port) > 65535)) {

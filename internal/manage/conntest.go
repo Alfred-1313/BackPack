@@ -701,6 +701,8 @@ func StartConnTestIran(o ConnTestOptions) (*ConnTestIran, string, error) {
 		for _, c := range cases {
 			if !s.root {
 				c.skip = "needs root on both servers"
+			} else if _, _, ok := ctEasyTierMode(c.tr); ok {
+				c.skip = ctDirectPrerequisite(l3.CarrierEasyTier, host)
 			} else if matrix.IsDirectionalMode(c.tr) {
 				if _, err := matrix.Binary(); err != nil {
 					c.skip = err.Error()

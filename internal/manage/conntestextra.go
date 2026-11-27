@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/backpack/backpack/internal/easytier"
 	"github.com/backpack/backpack/internal/gostdirect"
 	"github.com/backpack/backpack/internal/matrix"
 	"github.com/backpack/backpack/internal/omni"
@@ -48,6 +49,7 @@ func ctExtraCases() []*connTestCase {
 	cases = append(cases,
 		&connTestCase{kind: matrix.Direct, tr: matrix.DirectID, extra: true},
 		&connTestCase{kind: matrix.Reverse, tr: matrix.ReverseID, extra: true})
+	cases = append(cases, ctEasyTierCases()...)
 	for _, mode := range omni.Options() {
 		cases = append(cases, &connTestCase{kind: mode["direction"], tr: ctOmniPrefix + mode["value"], extra: true})
 	}
@@ -241,7 +243,11 @@ func (w *ctExtraWorker) perform(ctx context.Context, link ConnTestLink, job ctEx
 	}
 	switch job.Action {
 	case "port":
-		if matrix.IsDirectionalMode(job.Mode) {
+		if _, _, ok := ctEasyTierMode(job.Mode); ok {
+			if _, err := easytier.Binary(); err != nil {
+				return 0, err
+			}
+		} else if matrix.IsDirectionalMode(job.Mode) {
 			if _, err := matrix.Binary(); err != nil {
 				return 0, err
 			}
@@ -286,6 +292,9 @@ func (w *ctExtraWorker) perform(ctx context.Context, link ConnTestLink, job ctEx
 }
 
 func (w *ctExtraInstance) join(ctx context.Context, link ConnTestLink, job ctExtraJob) error {
+	if _, _, ok := ctEasyTierMode(job.Mode); ok {
+		return w.joinEasyTier(ctx, link, job)
+	}
 	if matrix.IsDirectionalMode(job.Mode) {
 		return w.joinMatrix(ctx, link, job)
 	}
@@ -437,6 +446,9 @@ func (s *ConnTestIran) setupExtra(ctx context.Context, c *connTestCase, mode str
 	ctrl.mu.Unlock()
 	if !ready {
 		return errors.New("Kharej did not enable the transport-test control channel; update both servers")
+	}
+	if _, _, ok := ctEasyTierMode(mode); ok {
+		return s.setupEasyTier(ctx, c, ctrl)
 	}
 	if matrix.IsDirectionalMode(mode) {
 		return s.setupMatrix(ctx, c, ctrl)

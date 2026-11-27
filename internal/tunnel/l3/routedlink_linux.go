@@ -147,16 +147,18 @@ func (t *Tunnel) runEasyTier(ctx context.Context) error {
 	}
 	args := []string{"--instance-name", c.Iface, "--dev-name", c.Iface, "--ipv4", c.LocalIP,
 		"--network-name", c.EasyTierNetwork, "--private-mode", "true",
+		"--default-protocol", c.EasyTierProtocol,
 		"--rpc-portal", "127.0.0.1:0", "--disable-ipv6",
 		"--mtu", strconv.Itoa(c.MTU), "--manual-routes", c.PeerIP + "/32"}
 	peer := c.PeerIP
+	endpoint := c.EasyTierProtocol + "://" + c.Addr
 	if c.Mode == ModeDial {
-		args = append(args, "--no-listener", "--peers", "tcp://"+c.Addr)
+		args = append(args, "--no-listener", "--peers", endpoint)
 		if host, _, err := net.SplitHostPort(c.Addr); err == nil {
 			peer = host
 		}
 	} else {
-		args = append(args, "--listeners", "tcp://"+c.Addr)
+		args = append(args, "--listeners", endpoint)
 	}
 	child, cancel := context.WithCancel(ctx)
 	cmd := exec.CommandContext(child, path, args...)
@@ -197,5 +199,5 @@ func (t *Tunnel) runEasyTier(ctx context.Context) error {
 	link := &greLink{name: c.Iface, mssClamp: c.MSSClamp, mtu: mtu, log: t.log,
 		cleanup: func() {}} // EasyTier owns the TUN device
 	t.log.Infof("l3: EasyTier up on %s, mtu %d", c.Iface, mtu)
-	return t.watchRoutedLink(ctx, link, peer, "EasyTier TCP", ended)
+	return t.watchRoutedLink(ctx, link, peer, "EasyTier "+strings.ToUpper(c.EasyTierProtocol), ended)
 }

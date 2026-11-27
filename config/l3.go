@@ -14,6 +14,10 @@ type RoutedLinkSettings struct {
 	L2TPPeerSessionID uint32 `toml:"l2tp_peer_session_id" json:"l2tpPeerSessionId,omitempty"`
 	// EasyTierNetwork is the network name shared by the two EasyTier endpoints.
 	EasyTierNetwork string `toml:"easytier_network" json:"easytierNetwork,omitempty"`
+	// EasyTierProtocol selects the outer transport. Empty preserves TCP.
+	EasyTierProtocol string `toml:"easytier_protocol" json:"easytierProtocol,omitempty"`
+	// EasyTierReverse makes Iran listen and Kharej initiate the connection.
+	EasyTierReverse bool `toml:"easytier_reverse" json:"easytierReverse,omitempty"`
 }
 
 // L3Config is a direct layer-3 tunnel: an interface on each host carrying
