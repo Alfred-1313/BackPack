@@ -69,6 +69,7 @@ const samples = {
   tunnelToken: [[]], tunnelSuggest: [[]],
   tunnelCreate: [[{}]], directOptions: [[]], directDefaults: [['iran']], directCreate: [[{}]],
   health: [[]], linkTestStatus: [[]], linkTestRun: [['t1']],
+  xrayReleases: [[]], xrayCoreStatus: [[], ['xray-core-1']], xrayCoreUpdate: [['26.7.28']],
   logs: [['t1'], ['t1', 'peer']], history: [['t1'], ['t1', 30]],
   confHistory: [['t1']], confRestore: [['t1', 1790000000]],
   backupImport: [[new Blob(['{}'])]], autoBackup: [[]], setAutoBackup: [[true], [false]],

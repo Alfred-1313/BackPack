@@ -128,8 +128,12 @@ export function healthView(ctx) {
                     <span>${esc(c.Detail || c.detail || '')}</span>
                     ${(c.Fix || c.fix) ? `<i class="hcfix">${esc(c.Fix || c.fix)}</i>` : ''}
                   </div>
+                  ${c.coreUpdate ? `<button type="button" class="bt hcupdate" data-version="${esc(c.version || '')}">Update core</button>` : ''}
                 </div>`).join('')}
             </div>`).join('');
+        body.querySelector('.hcupdate')?.addEventListener('click', ev => {
+          xrayCoreDialog(ev.currentTarget.dataset.version, load);
+        });
         /* The footer counted the preview's own example run. */
         const foot = root.querySelector('.df .note');
         if (foot) {
@@ -149,4 +153,117 @@ export function healthView(ctx) {
       ctx.setTeardown(close);
     },
   }).catch(oops);
+}
+
+function xrayCoreDialog(current, reload) {
+  const dialog = document.createElement('dialog');
+  dialog.className = 'dlg xray-core';
+  dialog.setAttribute('aria-labelledby', 'xray-core-title');
+  dialog.innerHTML = `
+    <form>
+      <div class="dh">
+        <div class="ttl">
+          <strong id="xray-core-title">Update Xray core</strong>
+          <small>${current ? `Installed on this server · ${esc(current)}` : 'Installed version unavailable'}</small>
+        </div>
+        <button class="x" type="button" aria-label="Close">${svg('close')}</button>
+      </div>
+      <div class="panes pane">
+        <div class="f">
+          <label for="xray-release">Latest releases</label>
+          <select id="xray-release" class="sel" disabled aria-describedby="xray-release-note">
+            <option value="">Select a version</option>
+          </select>
+          <div class="hint" id="xray-release-note" aria-live="polite">Loading official releases…</div>
+        </div>
+        <div class="f">
+          <label for="xray-custom">Custom version</label>
+          <input id="xray-custom" type="text" placeholder="e.g. 26.7.28" maxlength="64"
+            spellcheck="false" autocomplete="off" aria-describedby="xray-custom-note">
+          <div class="hint" id="xray-custom-note">A custom version takes priority over the selected release.</div>
+        </div>
+        <p class="xr-note">Running tunnels will use the new core the next time they start.</p>
+        <p class="xr-status" role="status" aria-live="polite"></p>
+      </div>
+      <div class="df">
+        <span class="sp"></span>
+        <button type="button" class="bt xr-dismiss">Cancel</button>
+        <button type="submit" class="bt primary" disabled>Update core</button>
+      </div>
+    </form>`;
+
+  const select = dialog.querySelector('select');
+  const custom = dialog.querySelector('input');
+  const submit = dialog.querySelector('[type="submit"]');
+  const dismiss = dialog.querySelector('.xr-dismiss');
+  const status = dialog.querySelector('.xr-status');
+  const releaseNote = dialog.querySelector('#xray-release-note');
+  let running = false;
+  let loaded = false;
+  const chosen = () => custom.value.trim() || select.value;
+  const controls = () => {
+    select.disabled = running || !loaded;
+    custom.disabled = running;
+    submit.disabled = running || !chosen();
+    dismiss.textContent = running ? 'Close' : 'Cancel';
+  };
+  const showStatus = (message, error = false) => {
+    status.textContent = message;
+    status.classList.toggle('error', error);
+  };
+  const watch = async job => {
+    while (dialog.open && job.running) {
+      showStatus(job.step || `Preparing ${job.target}…`);
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      if (!dialog.open) return;
+      job = await api.xrayCoreStatus(job.id);
+    }
+    if (!dialog.open) return;
+    if (!job.succeeded) throw new Error(job.error || 'The Xray update was interrupted.');
+    dialog.close();
+    toast(`Xray ${job.target} installed`);
+    await reload();
+  };
+  const run = async start => {
+    running = true;
+    controls();
+    try {
+      const job = await start();
+      if (job && dialog.open) await watch(job);
+    } catch (e) {
+      showStatus(e.message, true);
+    } finally {
+      running = false;
+      controls();
+    }
+  };
+  select.addEventListener('change', controls);
+  custom.addEventListener('input', controls);
+  dialog.querySelector('form').addEventListener('submit', event => {
+    event.preventDefault();
+    const version = chosen();
+    if (running || !version) return;
+    showStatus(`Starting update to ${version}…`);
+    run(() => api.xrayCoreUpdate(version));
+  });
+  dismiss.addEventListener('click', () => dialog.close());
+  dialog.querySelector('.dh button').addEventListener('click', () => dialog.close());
+  dialog.addEventListener('keydown', event => {
+    if (event.key === 'Escape') event.stopPropagation();
+  });
+  dialog.addEventListener('close', () => dialog.remove(), { once: true });
+  document.body.append(dialog);
+  dialog.showModal();
+  run(() => api.xrayCoreStatus());
+  api.xrayReleases().then(releases => {
+    for (const release of releases) {
+      select.add(new Option(release.tag + (release.prerelease ? ' (pre-release)' : ''), release.tag));
+    }
+    loaded = releases.length > 0;
+    releaseNote.textContent = loaded ? '' : 'No releases for this server.';
+    controls();
+  }).catch(e => {
+    releaseNote.textContent = 'Could not load releases. You can enter a version manually.';
+    releaseNote.title = e.message;
+  });
 }

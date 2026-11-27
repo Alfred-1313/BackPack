@@ -41,6 +41,7 @@ import (
 	"github.com/backpack/backpack/internal/tunnel/l3"
 	"github.com/backpack/backpack/internal/tunnel/naive"
 	"github.com/backpack/backpack/internal/utils/network"
+	"github.com/backpack/backpack/internal/xraycore"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/net/proxy"
 )
@@ -126,11 +127,11 @@ var connTestBinary = os.Executable
 
 var errConnTestStopped = errors.New("the Iran server stopped this connection test")
 
-// Use the same pinned helper binaries as the setup wizard. Absence is a
+// Use the same managed helper binaries as the setup wizard. Absence is a
 // skipped test, rather than evidence that the network blocked a protocol.
 var connTestHelperBinary = func(tool string) (string, error) {
 	path := managedHelperPath(tool)
-	info, err := os.Stat(path)
+	info, err := os.Stat(xraycore.Resolve(path))
 	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0111 == 0 {
 		return "", helperMissing(tool, path)
 	}

@@ -168,6 +168,9 @@ export const routedPeerSetup = payload => post('/api/routed/peer-setup', payload
 
 /* ---- CLI: Manage → Health Check / Link Test -------------------------------- */
 export const health = () => get('/api/health');
+export const xrayReleases = () => get('/api/xray/releases');
+export const xrayCoreStatus = (id = '') => get('/api/xray/core?id=' + encodeURIComponent(id));
+export const xrayCoreUpdate = version => post('/api/xray/core', { version });
 export const linkTestStatus = () => get('/api/linktest');
 export const linkTestRun = name =>
   post('/api/linktest?name=' + encodeURIComponent(name));

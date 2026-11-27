@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/backpack/backpack/config"
+	"github.com/backpack/backpack/internal/xraycore"
 )
 
 func hostPort(addr string, loopback bool) (string, int, error) {
@@ -321,7 +322,7 @@ func xrayEndpoint(addr string) (string, int, error) {
 }
 
 func xrayIdentity(binary, mode, id, serverName string) error {
-	if err := readableFile(binary); err != nil {
+	if err := readableFile(xraycore.Resolve(binary)); err != nil {
 		return fmt.Errorf("Xray helper binary: %w", err)
 	}
 	if mode != "xhttp" && mode != "reality" {

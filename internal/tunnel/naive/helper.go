@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/backpack/backpack/config"
+	"github.com/backpack/backpack/internal/xraycore"
 	"github.com/sirupsen/logrus"
 )
 
@@ -98,7 +99,7 @@ func StartXrayClient(ctx context.Context, c *config.ClientConfig, log *logrus.Lo
 	if err != nil {
 		return nil, err
 	}
-	return startManaged(ctx, c.Xray.Binary, "xray-client", body, addr, os.Environ(), log, l.Close)
+	return startManaged(ctx, xraycore.Resolve(c.Xray.Binary), "xray-client", body, addr, os.Environ(), log, l.Close)
 }
 
 func StartXrayServer(ctx context.Context, c *config.ServerConfig, log *logrus.Logger) (*Helper, error) {
@@ -114,7 +115,7 @@ func StartXrayServer(ctx context.Context, c *config.ServerConfig, log *logrus.Lo
 		return nil, fmt.Errorf("reserve Xray server listener: %w", err)
 	}
 	defer l.Close()
-	return startManaged(ctx, c.Xray.Binary, "xray-server", body, c.Xray.Listen, os.Environ(), log, l.Close)
+	return startManaged(ctx, xraycore.Resolve(c.Xray.Binary), "xray-server", body, c.Xray.Listen, os.Environ(), log, l.Close)
 }
 
 func helperLabel(mode string) string {

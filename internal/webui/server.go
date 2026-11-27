@@ -451,6 +451,8 @@ func (s *server) routes() *http.ServeMux {
 	mux.HandleFunc("/api/telegram/test", s.requireAuth(s.handleTelegramTest))
 	mux.HandleFunc("/api/relays", s.requireAuth(s.handleRelayOptions))
 	mux.HandleFunc("/api/health", s.requireAuth(s.handleHealth))
+	mux.HandleFunc("/api/xray/releases", s.requireAdmin(s.handleXrayReleases))
+	mux.HandleFunc("/api/xray/core", s.requireAdmin(s.handleXrayCore))
 	mux.HandleFunc("/api/alerts", s.requireReadAuth(s.handleAlerts))
 	mux.HandleFunc("/api/linktest", s.requireAuth(s.handleLinkTest))
 	mux.HandleFunc("/api/confhist", s.requireAuth(s.handleConfHistory))

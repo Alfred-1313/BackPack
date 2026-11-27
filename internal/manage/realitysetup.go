@@ -18,6 +18,7 @@ import (
 	"github.com/backpack/backpack/config"
 	"github.com/backpack/backpack/internal/tui"
 	"github.com/backpack/backpack/internal/tunnel/naive"
+	"github.com/backpack/backpack/internal/xraycore"
 )
 
 type realitySetupProbe func(context.Context, string, string, string) error
@@ -111,7 +112,7 @@ func realityBinary(current string) string {
 		return current
 	}
 	for _, candidate := range []string{managedHelperPath("xray"), "/usr/local/lib/backpack/xray", "/usr/local/bin/xray"} {
-		if info, err := os.Stat(candidate); err == nil && !info.IsDir() && info.Mode()&0111 != 0 {
+		if executable(xraycore.Resolve(candidate)) {
 			return candidate
 		}
 	}

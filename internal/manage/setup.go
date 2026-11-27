@@ -17,6 +17,7 @@ import (
 	"github.com/backpack/backpack/internal/tui"
 	"github.com/backpack/backpack/internal/tunnel/naive"
 	"github.com/backpack/backpack/internal/utils/network"
+	"github.com/backpack/backpack/internal/xraycore"
 )
 
 // transportEntry is one selectable transport. An empty value marks an entry
@@ -129,8 +130,11 @@ func clearManagedTransport(s *TunnelSpec) {
 }
 
 func managedHelperPath(tool string) string {
+	if tool == "xray" {
+		return xraycore.DefaultPath()
+	}
 	version := map[string]string{
-		"naive": "v154.0.8037.49-5", "sing-box": "v1.14.2", "xray": "v26.3.27",
+		"naive": "v154.0.8037.49-5", "sing-box": "v1.14.2",
 		"gost": "v3.2.6", "gost-v2": "v2.12.0",
 	}[tool]
 	binary := tool

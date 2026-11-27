@@ -33,6 +33,7 @@ type healthRow struct {
 	Fix          string `json:"fix"`
 	Version      string `json:"version,omitempty"`
 	VersionLabel string `json:"versionLabel,omitempty"`
+	CoreUpdate   bool   `json:"coreUpdate,omitempty"`
 }
 
 // handleHealth runs the full diagnostic pass when the Health modal opens.
@@ -42,7 +43,13 @@ func (s *server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	for _, c := range checks {
 		out = append(out, healthRow{Group: c.Group, Name: c.Name, Level: healthLevel(c.Level), Detail: c.Detail, Fix: c.Fix})
 	}
-	writeJSON(w, append(out, relayEngineChecks(r.Context())...))
+	engines := relayEngineChecks(r.Context())
+	if who, ok := s.identify(r); ok && who.Scope >= ScopeAdmin {
+		for i := range engines {
+			engines[i].CoreUpdate = engines[i].Name == "Xray"
+		}
+	}
+	writeJSON(w, append(out, engines...))
 }
 
 func relayEngineChecks(parent context.Context) []healthRow {

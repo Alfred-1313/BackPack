@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/backpack/backpack/internal/app"
+	"github.com/backpack/backpack/internal/xraycore"
 )
 
 // The managed HTTPS carriers (Naive, XHTTP, REALITY) from the panel.
@@ -237,7 +238,7 @@ func EngineHelperStatus(ctx context.Context, tool string) (version string, insta
 	if err != nil {
 		return "", false
 	}
-	cmd := exec.CommandContext(ctx, path, probe.flag)
+	cmd := exec.CommandContext(ctx, xraycore.Resolve(path), probe.flag)
 	cmd.WaitDelay = 500 * time.Millisecond
 	output, err := cmd.CombinedOutput()
 	if err == nil {
@@ -258,7 +259,7 @@ func EngineHelperStatus(ctx context.Context, tool string) (version string, insta
 // managedHelper is the installed helper's path, or why it cannot be used.
 func managedHelper(tool string) (string, error) {
 	path := panelHelperPath(tool)
-	if !executable(path) {
+	if !executable(xraycore.Resolve(path)) {
 		return "", helperMissing(tool, path)
 	}
 	return path, nil
