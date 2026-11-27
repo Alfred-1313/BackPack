@@ -93,6 +93,12 @@ func RemoveLinkedPeer(raw, name string) (string, error) {
 	return match.Name, nil
 }
 
+type noLinkedPeerError string
+
+func (e noLinkedPeerError) Error() string {
+	return fmt.Sprintf("no matching Kharej tunnel for %q was found on this server", string(e))
+}
+
 func findRemovalPeer(link removalLink, name string, tunnels []Tunnel, load func(string) (config.Config, error)) (Tunnel, error) {
 	return findLinkedPeer(link, "", name, tunnels, load)
 }
@@ -117,7 +123,7 @@ func findLinkedPeer(link removalLink, nextID, name string, tunnels []Tunnel, loa
 		match = t
 	}
 	if match.Name == "" {
-		return Tunnel{}, fmt.Errorf("no matching Kharej tunnel for %q was found on this server", link.Name)
+		return Tunnel{}, noLinkedPeerError(link.Name)
 	}
 	return match, nil
 }

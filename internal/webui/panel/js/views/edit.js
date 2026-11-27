@@ -16,6 +16,7 @@ import { openScreen } from '../ui/screen.js';
 import { oops, toast } from '../ui/toast.js';
 import { go } from '../router.js';
 import { setupLinkHTML, bindSetupLink } from '../ui/setuplink.js';
+import { addView } from './add.js';
 
 /* The Iran end of a reverse tunnel: the one whose edits the kharej follows. */
 const tunnelIsIranEnd = (t, settings) => (settings.role || t?.role) === 'server';
@@ -654,6 +655,7 @@ function readDirect(root) {
 
 export async function editView(ctx) {
   const name = ctx.params.name;
+  if (!ctx.query.has('settings')) return addView(ctx, name);
   /* A deep link arrives before the first poll, so the tunnel may not be in the
      store yet; without this the header falls back to the preview's own text. */
   let t = store.tunnel(name);

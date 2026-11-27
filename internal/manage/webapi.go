@@ -409,6 +409,9 @@ type NewTunnel struct {
 	// it from the request, never the form: the HTTPS transports name it in the
 	// private certificate the setup link hands to Kharej.
 	Host string `json:"-"`
+
+	// Rebuilding must reject a busy control port before committing the replacement.
+	CheckControlPort bool `json:"-"`
 }
 
 // CreateTunnel builds a tunnel from a filled form and starts it. It returns the
@@ -428,6 +431,16 @@ func CreateTunnel(n NewTunnel) (service string, active bool, err error) {
 	s, err := specFromNew(n)
 	if err != nil {
 		return "", false, err
+	}
+	if n.CheckControlPort {
+		addr := orDefault(s.XrayServer.Listen, orDefault(s.NaiveServer.Listen, orDefault(s.GostServer.Listen, s.BindAddr)))
+		network := "tcp"
+		if isDatagram(s.Transport) {
+			network = "udp"
+		}
+		if forwardPortHeld(network, addr) {
+			return "", false, fmt.Errorf("tunnel port %s (%s) is already in use on this server", addrPort(addr), strings.ToUpper(network))
+		}
 	}
 	link, err := kharejLinkSettings(n, s.Transport)
 	if err != nil {

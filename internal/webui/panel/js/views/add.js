@@ -1,4 +1,4 @@
-import { transportOption } from '../lib/transports.js';
+import { transportDisplay, transportOption } from '../lib/transports.js';
 /* Add a tunnel: pick the side, then the transport family, then the transport,
  * then the settings that side actually has.
  *
@@ -22,10 +22,19 @@ import { go } from '../router.js';
 const forwardPortsHint = 'Users connect to these ports here. A bare port goes to the same port on the kharej; '
   + '443=8080 sends 443 to its 8080. Separate several with commas.';
 
-export function addView(ctx) {
-  openScreen('add', {
+export function addView(ctx, replaceName = '') {
+  return openScreen('add', {
     pick: '.dlg',
     bind: async (root, close) => {
+      ctx.setTeardown(close);
+      let replacement;
+      try {
+        replacement = replaceName ? await api.tunnelRebuildInfo(replaceName) : null;
+      } catch (err) {
+        close();
+        throw err;
+      }
+      if (!root.isConnected) return;
       dialogSubtitle(root, store.get().stats, 'this server’s end — the other is built from its setup link');
       let opts = { families: [], presets: [] };
       try { opts = await api.tunnelOptions(); } catch (e) { oops(e); }
@@ -428,7 +437,7 @@ export function addView(ctx) {
         applyShape();
         showPresetDefaults();
       }
-      paintCarriers();
+      const carriersReady = paintCarriers();
 
       function paintTransports() {
         const list = root.querySelector('#trlist');
@@ -949,12 +958,12 @@ export function addView(ctx) {
         } catch (e) {
           settle(0, false);
           spin?.setAttribute('hidden', '');
-          if (title) title.textContent = 'Nothing was created';
+          if (title) title.textContent = replacement ? 'Tunnel could not be rebuilt' : 'Nothing was created';
           if (sub) sub.textContent = 'This server refused the settings.';
           if (result) {
             result.innerHTML = `<div class="doneline warn"><span class="tick">!</span><div>
               <b>${esc(e.message || 'The panel could not build the tunnel')}</b>
-              <span>Go back and change what it names, then press Create again.</span>
+              <span>Go back and correct the settings, then try again.</span>
             </div></div>`;
           }
           building = false;
@@ -969,7 +978,9 @@ export function addView(ctx) {
           if (rows[1]) rows[1].hidden = true;
           spin?.setAttribute('hidden', '');
           if (title) title.textContent = 'Waiting for Kharej';
-          if (sub) sub.textContent = 'Run this Setup command on the other server.';
+          if (sub) sub.textContent = replacement
+            ? 'Run the Setup command on Kharej to apply the replacement. The current tunnel runs until then.'
+            : 'Run this Setup command on the other server.';
           if (result) {
             result.innerHTML = setupLinkHTML(r);
             bindSetupLink(result);
@@ -985,8 +996,10 @@ export function addView(ctx) {
         spin?.setAttribute('hidden', '');
         store.refresh();
 
-        if (title) title.textContent = up ? 'Built on this server' : 'Created, not up yet';
-        if (sub) sub.textContent = up ? 'Now build the other end with the line below.'
+        if (title) title.textContent = replacement ? 'Tunnel rebuilt on Iran'
+          : up ? 'Built on this server' : 'Created, not up yet';
+        if (sub) sub.textContent = replacement ? 'Run the Setup command to switch the existing Kharej tunnel.'
+          : up ? 'Now build the other end with the line below.'
           : 'Config written, service not started — its log says why.';
         if (result) {
           result.innerHTML = `<div class="sl-wait">Building the setup link…</div>`;
@@ -1318,7 +1331,7 @@ export function addView(ctx) {
         } else {
           const panes = paneList();
           const creates = panes.slice(at + 1, last).every((pane, i) => paneEmpty(pane, at + 1 + i, panes.length));
-          next.textContent = creates ? 'Create the tunnel' : 'Continue';
+          next.textContent = creates ? (replacement ? 'Save changes' : 'Create the tunnel') : 'Continue';
           next.onclick = null;
         }
         if (note) note.textContent = at === last - 1
@@ -1835,7 +1848,111 @@ export function addView(ctx) {
         paintNav(0);
         applyShape();
       }
+      function stageReplacement() {
+        const steps = paneList();
+        const connection = steps[1];
+        root.querySelector('.dh .ttl > div').textContent = 'Edit ' + replacement.name;
+        root.querySelector('#dlgSub').textContent = 'Choose a transport and configure both ends.';
+        const settings = el('button', { type: 'button', class: 'mini3', text: 'Edit settings' });
+        settings.addEventListener('click', () => go('/t/' + encodeURIComponent(replacement.name) + '/edit?settings=1'));
+        root.querySelector('.dh button.x').before(settings);
+        root.querySelector('#trlist').hidden = true;
+        directChoices.classList.add('rebuild-hidden');
+        const selectField = (id, label) => {
+          const select = el('select', { id });
+          const field = el('div', { class: 'f3' }, [el('label', { for: id, text: label }), select]);
+          return { field, select };
+        };
+        const direction = selectField('rebuildDirection', 'Tunnel type');
+        const family = selectField('rebuildFamily', 'Transport family');
+        const transport = selectField('rebuildTransport', 'Transport');
+        const option = (value, text) => el('option', { value, text });
+        direction.select.append(option('reverse', 'Reverse'), option('direct', 'Direct'));
+        connection.prepend(el('div', { class: 'grp3' }, [
+          el('div', { class: 'fgrid rebuild-selects' }, [direction.field, family.field, transport.field]),
+          el('p', { class: 'hint', text: 'Applying changes switches the transport. Run the new Setup command on Kharej.' }),
+        ]));
+
+        const display = entry => transportDisplay(entry.value, entry.label);
+        const related = entries => entries.map(entry => {
+          const { source } = display(entry);
+          return { ...entry, group: source?.split(' \u00b7 ')[0] || (entry.value.startsWith('gost-') ? 'GOST' : 'BackPack') };
+        });
+        const catalog = {
+          reverse: (opts.families || []).flatMap(group => group.entries.map(entry => ({ ...entry, group: group.label })))
+            .concat(related([...managedReverse.values()])),
+          direct: related([...(directOpts?.carriers || []), ...managedDirect.values()]),
+        };
+        const switchDirection = value => {
+          direction.select.value = value;
+          const key = value === 'direct' ? 'dir' : 'rev';
+          root.querySelector('.modeswap [data-args*="' + key + '"]')?.click();
+          root.querySelectorAll('[data-kind]').forEach(b => b.classList.toggle('on', b.dataset.kind === key));
+        };
+        const selectTransport = value => {
+          if (!value) return;
+          transport.select.value = value;
+          const fn = chosen.direction === 'direct' ? 'setCar' : 'setTr';
+          const button = [...root.querySelectorAll('[data-fn="' + fn + '"]')]
+            .find(b => b.dataset.args === "'" + value + "'");
+          button?.click();
+        };
+        const paintTransportSelect = preferred => {
+          const entries = catalog[chosen.direction];
+          const groups = [...new Set(entries.map(item => item.group))];
+          const selectedFamily = family.select.value;
+          family.select.replaceChildren(option('', 'All families'), ...groups.map(group => option(group, group)));
+          if (groups.includes(selectedFamily)) family.select.value = selectedFamily;
+          transport.select.replaceChildren();
+          for (const group of groups.filter(g => !family.select.value || g === family.select.value)) {
+            const list = entries.filter(entry => entry.group === group).map(entry => {
+              const { name, source } = display(entry);
+              return option(entry.value, source && source !== group ? name + ' \u00b7 ' + source : name);
+            });
+            transport.select.append(el('optgroup', { label: group }, list));
+          }
+          const hasPreferred = [...transport.select.options].some(e => e.value === preferred);
+          selectTransport(hasPreferred ? preferred : transport.select.options[0]?.value);
+        };
+        direction.select.addEventListener('change', () => {
+          switchDirection(direction.select.value);
+          family.select.value = '';
+          paintTransportSelect(chosen.direction === 'direct' ? chosen.carrier : chosen.transport);
+        });
+        family.select.addEventListener('change', () => paintTransportSelect(transport.select.value));
+        transport.select.addEventListener('change', () => selectTransport(transport.select.value));
+        root.querySelectorAll('[data-kind]').forEach(b => b.addEventListener('click', () => {
+          direction.select.value = chosen.direction;
+          family.select.value = '';
+          paintTransportSelect(chosen.direction === 'direct' ? chosen.carrier : chosen.transport);
+        }));
+        switchDirection(replacement.direction);
+        paintTransportSelect(replacement.transport);
+
+        for (const field of [root.querySelector('#aname'), directNameRow.querySelector('input')]) {
+          field.value = replacement.name;
+          field.readOnly = true;
+        }
+        const ports = (replacement.ports || []).filter(Boolean).join(', ');
+        reverseForward.value = directForward.value = ports;
+        if (replacement.port) {
+          (chosen.direction === 'direct' ? directPort : reversePort).value = replacement.port;
+        }
+        const preset = replacement.preset;
+        if (preset && !setupProfile()) {
+          [...root.querySelectorAll('.rp')].find(b => inShape(b) &&
+            (b.dataset.pre || b.querySelector('.key2')?.textContent) === preset)?.click();
+        }
+        steps.forEach((pane, i) => { pane.hidden = i !== 1; });
+        root.dispatchEvent(new CustomEvent('step', { detail: { at: 1, of: steps.length } }));
+      }
+
       stageSingle();
+      if (replacement) {
+        await carriersReady;
+        if (!root.isConnected) return;
+        stageReplacement();
+      }
       reveal();
       randomGreKey.addEventListener('click', async () => {
         const carrier = chosen.carrier;
@@ -1903,7 +2020,7 @@ export function addView(ctx) {
       async function checkForwardFields() {
         clearTimeout(forwardCheckTimer);
         forwardCheckRequest?.abort();
-        if (!root.isConnected || chosen.side !== 'server') return;
+        if (!root.isConnected || replacement || chosen.side !== 'server') return;
         const direct = chosen.direction === 'direct';
         const input = direct ? directForward : reverseForward;
         const relevant = node => !node.closest('[hidden]:not(.step)');
@@ -1952,6 +2069,12 @@ export function addView(ctx) {
        * when the wizard reaches its last step — which is also where the result
        * is shown, so pressing Continue on the step before it is the commit.
        */
+      async function createDestination(kind, form, create, response = r => r) {
+        if (!replacement) return { r: response(await create(form)), name: form.name };
+        const result = await api.tunnelRebuild({ name: replacement.name, revision: replacement.revision, kind, form });
+        return { r: result.setup.pending ? result.setup : result, name: form.name };
+      }
+
       async function submitTunnel() {
         /* Only what applies: a hidden field belongs to the other side or the
            other kind of tunnel, and sending it would describe a tunnel nobody
@@ -2029,31 +2152,28 @@ export function addView(ctx) {
             if (!input.checkValidity()) throw new Error('Check ' + row.querySelector('label').textContent + '.');
             if (input.value.trim() !== '') form[name] = input.type === 'number' ? input.valueAsNumber : input.value.trim();
           }
-          const r = await api.penguCreate(form);
-          return { r: r.setup, name: form.name };
+          return createDestination('pengu', form, api.penguCreate, r => r.setup);
         }
         if (easyTierSelected()) {
           const port = String(payload.tunnelPort || '2090').trim();
           if (!/^\d+$/.test(port) || Number(port) < 1 || Number(port) > 65535) {
             throw new Error('Enter an EasyTier port from 1 to 65535.');
           }
-          const r = await api.directPeerSetup({
+          return createDestination('direct-peer', {
             ...payload, side: 'iran', carrier: 'easytier', tunnelPort: port, setupFamily,
             easytierProtocol: easyTierProtocol.value, easytierReverse: chosen.direction === 'reverse',
             acceptUdp: !!payload.routedAcceptUdp, preset: tuning?.preset, mtu: tuning?.value,
-          });
-          return { r, name: payload.name };
+          }, api.directPeerSetup);
         }
         if (matrixSelected()) {
           const port = String(payload.tunnelPort || '').trim();
           if (port && (!/^\d+$/.test(port) || Number(port) < 1 || Number(port) > 65535)) {
             throw new Error('Enter a Tinc port from 1 to 65535.');
           }
-          const r = await api.matrixCreate({
+          return createDestination('matrix', {
             name: payload.name, direction: chosen.direction, subnet: matrixSubnet.value.trim(), port: Number(port),
             ports: payload.ports || '', acceptUdp: !!payload.routedAcceptUdp, tuning, setupFamily,
-          });
-          return { r, name: payload.name };
+          }, api.matrixCreate);
         }
         if (dagger) {
           const form = { name: payload.name, port: Number(payload.tunnelPort || 0), ports: payload.ports || '',
@@ -2070,23 +2190,21 @@ export function addView(ctx) {
           if (dagger !== 'tun' && (!/^\d+$/.test(payload.tunnelPort || '') || form.port < 1 || form.port > 65535)) {
             throw new Error('Enter a tunnel port from 1 to 65535.');
           }
-          const r = await api.daggerCreate(form);
-          return { r: r.setup?.pending ? r.setup : r, name: form.name };
+          return createDestination('dagger', form, api.daggerCreate, r => r.setup?.pending ? r.setup : r);
         }
         if (backhaulTUN() === 'tun-ipx') {
           if (!backhaulHealthPort.checkValidity()) throw new Error('Enter a health port from 1 to 65535.');
-          const r = await api.backhaulCreate({
+          return createDestination('backhaul', {
             name: payload.name, transport: 'tun-ipx', setupFamily, tuning, ports: payload.ports || '',
             ipxProfile: backhaulProfile.value, healthPort: Number(backhaulHealthPort.value || 0),
             iranTunnel: backhaulIranTUN.value.trim(), kharejTunnel: backhaulKharejTUN.value.trim(),
-          });
-          return { r: r.setup, name: payload.name };
+          }, api.backhaulCreate, r => r.setup);
         }
         if (setup?.native) {
           if (!/^\d+$/.test(payload.tunnelPort || '') || Number(payload.tunnelPort) < 1 || Number(payload.tunnelPort) > 65535) {
             throw new Error('Enter a tunnel port from 1 to 65535.');
           }
-          const r = await api.backhaulCreate({
+          return createDestination('backhaul', {
             name: payload.name, transport: setup.mode, port: Number(payload.tunnelPort),
             ports: payload.ports || '', secret: payload.token || '', iranHost: payload.iranHost || '',
             tuning, setupFamily, mux: backhaulMuxPayload(),
@@ -2094,16 +2212,14 @@ export function addView(ctx) {
             kharejTunnel: backhaulTUN() ? backhaulKharejTUN.value.trim() : undefined,
             httpPath: daggerRoute() ? setupGroups.httpPath.input.value.trim() : undefined,
             httpHost: daggerUpgrade() ? setupGroups.httpHost.input.value.trim() : undefined,
-          });
-          return { r, name: payload.name };
+          }, api.backhaulCreate);
         }
         const routed = setup || directSetup();
         if (routed) {
-          const r = await api.routedPeerSetup({
+          return createDestination('routed', {
             name: payload.name, transport: routed.mode, ports: payload.ports || '', secret: payload.token || '',
             peerAddr: payload.peerAddr || '', port: payload.tunnelPort || '', acceptUdp: !!payload.routedAcceptUdp, tuning,
-          });
-          return { r, name: payload.name };
+          }, api.routedPeerSetup);
         }
         if (automaticDirect()) {
           if (pairedDirect()) {
@@ -2114,14 +2230,13 @@ export function addView(ctx) {
             payload.mtu = tuning.value;
           }
           payload.setupFamily = setupFamily;
-          return { r: await api.directPeerSetup(payload), name: payload.name };
+          return createDestination('direct-peer', payload, api.directPeerSetup);
         }
         if (chosen.direction === 'reverse') payload.setupFamily = setupFamily;
         // Only this end: the other is built from its setup link.
-        const r = chosen.direction === 'direct'
-          ? await api.directCreate(payload)
-          : await api.tunnelCreate(payload);
-        return { r, name: payload.name };
+        return chosen.direction === 'direct'
+          ? createDestination('direct', payload, api.directCreate)
+          : createDestination('reverse', payload, api.tunnelCreate);
       }
 
       ctx.setTeardown(close);

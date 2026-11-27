@@ -217,7 +217,7 @@ func StartBackhaulIPX(request, lifetime context.Context, f BackhaulForm) (Backha
 	if err := core.CheckName(f.Name); err != nil {
 		return BackhaulSetup{}, err
 	}
-	if fileExists(app.ConfigPath(f.Name)) {
+	if fileExists(app.ConfigPath(f.Name)) && !canStageRebuild(lifetime, f.Name) {
 		return BackhaulSetup{}, errors.New("a tunnel with this name already exists")
 	}
 	if f.SetupFamily != "" && f.SetupFamily != "ipv4" {

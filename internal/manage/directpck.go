@@ -300,7 +300,7 @@ func pckParamsFor(cfg l3Spec) paqet.Params {
 // a build that still had them carries them along harmlessly, so they are
 // dropped rather than refused — refusing would break applying the setup link of
 // an Iran server that has not been updated yet.
-func (n NewDirectTunnel) pckSpec(side directSide) (l3Spec, error) {
+func (n NewDirectTunnel) pckSpec(side directSide, existing string) (l3Spec, error) {
 	port := strings.TrimSpace(n.TunnelPort)
 	if !validPort(port) {
 		return l3Spec{}, fmt.Errorf("tunnel port %q is not a port between 1 and 65535", n.TunnelPort)
@@ -321,7 +321,10 @@ func (n NewDirectTunnel) pckSpec(side directSide) (l3Spec, error) {
 	if !validName(name) {
 		return l3Spec{}, fmt.Errorf("tunnel name %q may use only letters, digits, dots and dashes", name)
 	}
-	spec.Name = uniqueName(name)
+	if name != existing && fileExists(app.ConfigPath(name)) {
+		return l3Spec{}, fmt.Errorf("a tunnel named %q already exists", name)
+	}
+	spec.Name = name
 
 	if side == sideKharej {
 		if other := pckPortOwner(port); other != "" {

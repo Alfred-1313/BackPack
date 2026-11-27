@@ -140,7 +140,7 @@ func StartMatrixSetup(ctx, lifetime context.Context, f MatrixForm) (SetupLinkInf
 	if err := core.CheckName(f.Name); err != nil {
 		return SetupLinkInfo{}, err
 	}
-	if _, err := os.Stat(app.ConfigPath(f.Name)); !os.IsNotExist(err) {
+	if _, err := os.Stat(app.ConfigPath(f.Name)); !os.IsNotExist(err) && !canStageRebuild(lifetime, f.Name) {
 		return SetupLinkInfo{}, errors.New("a tunnel with this name already exists")
 	}
 	direction, err := f.connectionDirection()

@@ -153,6 +153,8 @@ export const tunnelSuggest = () => get('/api/tunnel/suggest?what=port');
 export const forwardPortCheck = (body, signal) => post('/api/tunnel/forward-ports/check', body, signal);
 
 /* ---- CLI: 1 Setup Iran / 2 Setup Kharej ---------------------------------- */
+export const tunnelRebuildInfo = name => get('/api/tunnel/rebuild?name=' + encodeURIComponent(name));
+export const tunnelRebuild = payload => post('/api/tunnel/rebuild', payload);
 export const tunnelCreate = payload => post('/api/tunnel/create', payload);
 export const directOptions  = () => get('/api/direct/options');
 /* What a direct tunnel on this side should start out as: a subnet nothing here

@@ -437,6 +437,10 @@ func writeDirectConfig(name, body string) error {
 // the wizard refuses, this refuses, with the same wording — the two paths write
 // the same file and must reject the same input.
 func (n NewDirectTunnel) spec() (l3Spec, error) {
+	return n.specFor("")
+}
+
+func (n NewDirectTunnel) specFor(existing string) (l3Spec, error) {
 	var side directSide
 	switch strings.ToLower(strings.TrimSpace(n.Side)) {
 	case "iran":
@@ -462,15 +466,15 @@ func (n NewDirectTunnel) spec() (l3Spec, error) {
 	// A kernel GRE link has no port and no token, and names the other server
 	// on both sides; see directgre.go.
 	if l3.PortlessLinkCarrier(carrier) {
-		return n.greSpec(side, carrier)
+		return n.greSpecFor(side, carrier, existing)
 	}
 	if carrier == l3.CarrierEasyTier {
-		return n.easyTierSpec(side)
+		return n.easyTierSpec(side, existing)
 	}
 	// PCK is a port-forwarding transport with no TUN and none of its keys; see
 	// directpck.go.
 	if carrier == l3.CarrierPck {
-		return n.pckSpec(side)
+		return n.pckSpec(side, existing)
 	}
 
 	port := strings.TrimSpace(n.TunnelPort)
@@ -485,7 +489,9 @@ func (n NewDirectTunnel) spec() (l3Spec, error) {
 	if !validName(name) {
 		return l3Spec{}, fmt.Errorf("tunnel name %q may use only letters, digits, dots and dashes", name)
 	}
-	name = uniqueName(name)
+	if name != existing && fileExists(app.ConfigPath(name)) {
+		return l3Spec{}, fmt.Errorf("a tunnel named %q already exists", name)
+	}
 
 	token := strings.TrimSpace(n.Token)
 	if token == "" {

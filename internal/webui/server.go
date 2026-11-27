@@ -418,6 +418,7 @@ func (s *server) routes() *http.ServeMux {
 	mux.HandleFunc("/api/tunnel/forward-ports/check", s.requireAuth(s.handleForwardPortCheck))
 	mux.HandleFunc("/api/tunnel/defaults", s.requireAuth(s.handleTunnelDefaults))
 	mux.HandleFunc("/api/tunnel/create", s.requireAuth(s.handleTunnelCreate))
+	mux.HandleFunc("/api/tunnel/rebuild", s.requireAdmin(s.handleTunnelRebuild))
 	// The direct half, on its own endpoints so the reverse ones are untouched.
 	mux.HandleFunc("/api/gost/direct", s.requireAdmin(s.handleGostDirect))
 	mux.HandleFunc("/api/conntest/transport", s.requireAdmin(s.handleTransportProbe))

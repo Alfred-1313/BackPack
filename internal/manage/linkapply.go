@@ -99,6 +99,10 @@ func FindSetupLink(text string) string {
 }
 
 func isCompleteSetupLink(raw string) bool {
+	if strings.HasPrefix(raw, rebuildScheme) {
+		_, err := decodeRebuildLink(raw)
+		return err == nil
+	}
 	if strings.HasPrefix(raw, peerJoinScheme) {
 		_, err := decodePeerJoin(raw)
 		return err == nil
@@ -111,6 +115,9 @@ func isCompleteSetupLink(raw string) bool {
 // side it was made for.
 func ApplySetupLink(raw string, o LinkApplyOptions) (LinkApplied, error) {
 	raw = FindSetupLink(raw)
+	if strings.HasPrefix(raw, rebuildScheme) {
+		return applyRebuildLink(raw, o)
+	}
 	if strings.HasPrefix(raw, peerJoinScheme) {
 		return applyPeerJoin(raw, o)
 	}

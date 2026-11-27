@@ -175,7 +175,17 @@ func startPeerJoinProtocol(parent context.Context, host, name, kind string, matr
 				peer = address.Unmap().String()
 				acceptedKey = publicKey
 				applyCtx, cancel := context.WithTimeout(ctx, 75*time.Second)
-				result, lastError = setup(applyCtx, host, peer, publicKey)
+				if plan, ok := applyCtx.Value(rebuildContextKey{}).(RebuildPlan); ok && plan.name == name {
+					rebuildMu.Lock()
+					lastError = replaceTunnel(name, plan.revision, plan.external, func() error {
+						var err error
+						result, err = setup(applyCtx, host, peer, publicKey)
+						return err
+					})
+					rebuildMu.Unlock()
+				} else {
+					result, lastError = setup(applyCtx, host, peer, publicKey)
+				}
 				cancel()
 				// A lost response can be retried from this peer for a short period.
 				time.AfterFunc(time.Minute, stop)
@@ -350,7 +360,11 @@ func StartDirectPeerSetup(ctx context.Context, form NewDirectTunnel) (SetupLinkI
 			preview.PeerAddr = "2001:db8::1"
 		}
 	}
-	spec, err := preview.spec()
+	var existing string
+	if name := strings.TrimSpace(form.Name); canStageRebuild(ctx, name) {
+		existing = name
+	}
+	spec, err := preview.specFor(existing)
 	if err != nil {
 		return SetupLinkInfo{}, err
 	}
@@ -385,6 +399,10 @@ func applyPeerJoin(raw string, options LinkApplyOptions) (LinkApplied, error) {
 	if err != nil {
 		return LinkApplied{}, err
 	}
+	return applyPeerJoinResult(result, options)
+}
+
+func applyPeerJoinResult(result peerJoinResult, options LinkApplyOptions) (LinkApplied, error) {
 	if result.Link != "" {
 		link, err := DecodeShareLink(result.Link)
 		if err != nil {
@@ -397,6 +415,7 @@ func applyPeerJoin(raw string, options LinkApplyOptions) (LinkApplied, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 75*time.Second)
 	defer cancel()
+	var err error
 	done := LinkApplied{Name: result.Name, Transport: result.Mode, Kind: "direct", External: true}
 	switch result.Driver {
 	case matrix.ID:

@@ -32,7 +32,7 @@ func (n *NewDirectTunnel) setL2TPIDs() error {
 	return nil
 }
 
-func (n NewDirectTunnel) easyTierSpec(side directSide) (l3Spec, error) {
+func (n NewDirectTunnel) easyTierSpec(side directSide, existing string) (l3Spec, error) {
 	port := strings.TrimSpace(n.TunnelPort)
 	if !validPort(port) {
 		return l3Spec{}, fmt.Errorf("choose an EasyTier port between 1 and 65535")
@@ -44,7 +44,7 @@ func (n NewDirectTunnel) easyTierSpec(side directSide) (l3Spec, error) {
 	if !validName(name) {
 		return l3Spec{}, fmt.Errorf("invalid tunnel name %q", name)
 	}
-	if fileExists(app.ConfigPath(name)) {
+	if name != existing && fileExists(app.ConfigPath(name)) {
 		return l3Spec{}, fmt.Errorf("a tunnel named %q already exists", name)
 	}
 	protocol, err := easytier.Protocol(n.EasyTierProtocol)
