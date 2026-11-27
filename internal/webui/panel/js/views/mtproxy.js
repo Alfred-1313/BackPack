@@ -142,7 +142,7 @@ export function mtProxyView(ctx) {
         setStatus('', false, testStatus);
         removal.hidden = true;
         field('mtpHost').value = values.host ?? (web ? '' : settings.host || '');
-        field('mtpDomain').value = values.domain || '';
+        field('mtpDomain').value = values.domain ?? (web ? '' : 'www.google.com');
         field('mtpWebIP').value = values.webIp ?? (web && /^(?:\d+\.){3}\d+$/.test(settings.host) ? settings.host : '');
         field('mtpExisting').replaceChildren(...(settings.ports || []).map(p => new Option(
           'Forwards to ' + address(p.bind, p.destination), p.public,
