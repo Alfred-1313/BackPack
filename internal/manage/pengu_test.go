@@ -34,7 +34,10 @@ func TestPenguSetupAndConnectionTestUseTheSameModes(t *testing.T) {
 				form.Header = "PGprotocol-NUM2"
 				form.Window = 16
 			}
-			if mode.ID == "tls" {
+			if mode.ID == "xhttp" || mode.ID == "xhttps" {
+				form.HTTPPath = "/tunnel/forward"
+			}
+			if mode.ID == "tls" || mode.ID == "xhttps" {
 				form.TLSName = "tunnel.example.net"
 			}
 			iran, err := penguFromForm(form)
@@ -74,6 +77,15 @@ func TestPenguSetupAndConnectionTestUseTheSameModes(t *testing.T) {
 				tr := doc["transport"]
 				if tr["type"] != mode.Carrier {
 					t.Fatalf("carrier = %q, expected %q", tr["type"], mode.Carrier)
+				}
+				if form.HTTPPath != "" && tr["xhttp_path"] != form.HTTPPath {
+					t.Fatalf("HTTP path = %q, expected %q", tr["xhttp_path"], form.HTTPPath)
+				}
+				if form.TLSName != "" && !c.listens && tr["sni"] != form.TLSName {
+					t.Fatalf("TLS name = %q, expected %q", tr["sni"], form.TLSName)
+				}
+				if c.listens && tr["sni"] != nil {
+					t.Fatal("TLS name belongs on the dialer only")
 				}
 				if mode.IPX {
 					if _, found := tr["listen"]; found || doc["ipx"]["profile"] != mode.ID {

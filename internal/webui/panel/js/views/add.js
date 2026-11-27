@@ -41,7 +41,7 @@ export function addView(ctx) {
         return [value, { ...item, value, mode: item.value }];
       });
       const daggerEntries = direction => daggerChoices
-        .filter(item => item.direction === direction && !backhaulChoices.some(native => native.value === 'dagger-' + item.value))
+        .filter(item => item.direction === direction)
         .map(item => ['dagger-' + item.value, {
           ...item, dagger: true, mode: item.value, value: 'dagger-' + item.value, port: item.value !== 'tun',
         }]);
@@ -1661,7 +1661,10 @@ export function addView(ctx) {
         add(grid, 'iranTunnel', 'Iran tunnel IPv4/CIDR', { placeholder: 'Automatically assigned' }, mode => mode.tun);
         add(grid, 'kharejTunnel', 'Kharej tunnel IPv4/CIDR', { placeholder: 'Automatically assigned' }, mode => mode.tun,
           'Leave both blank to have BackPack allocate a private subnet.');
-        add(grid, 'tlsName', 'TLS server name', { placeholder: 'Use the core default' }, only('tls'));
+        add(grid, 'httpPath', 'HTTP POST path', { placeholder: '/xhttp', maxlength: 256 },
+          mode => mode.id === 'xhttp' || mode.id === 'xhttps');
+        add(grid, 'tlsName', 'TLS server name', { placeholder: 'Use the core default' },
+          mode => mode.id === 'tls' || mode.id === 'xhttps');
         add(fine, 'iranHost', 'Iran IP or hostname', { placeholder: 'Automatically detected' });
         add(fine, 'healthPort', 'Health check port', num(1, 65535));
         add(fine, 'workers', 'Worker CPU limit', num(0, 64, '0 = automatic'));

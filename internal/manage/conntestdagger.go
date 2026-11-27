@@ -21,7 +21,6 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/backpack/backpack/config"
 	"github.com/backpack/backpack/internal/daggerconnect"
-	"github.com/backpack/backpack/internal/nativebackhaul"
 )
 
 const ctDaggerPrefix = "dagger-"
@@ -31,10 +30,7 @@ var ctDaggerTUNProfiles = []string{"tcp", "udp", "icmp", "gre", "ipip", "bip"}
 
 func ctDaggerCases() []*connTestCase {
 	var cases []*connTestCase
-	for _, option := range daggerconnect.Options() {
-		if _, builtIn := nativebackhaul.Find("dagger-" + option.Value); builtIn {
-			continue
-		}
+	for _, option := range DaggerOptions() {
 		if option.Value == "tun" {
 			for _, profile := range ctDaggerTUNProfiles {
 				cases = append(cases, &connTestCase{kind: option.Direction, tr: ctDaggerTUNPrefix + profile, extra: true})

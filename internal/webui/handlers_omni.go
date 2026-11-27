@@ -66,7 +66,7 @@ func (s *server) handleDagger(w http.ResponseWriter, r *http.Request) {
 			SetupFamilies []string `json:"setupFamilies"`
 		}
 		var options []mode
-		for _, option := range daggerconnect.Options() {
+		for _, option := range manage.DaggerOptions() {
 			options = append(options, mode{option, manage.DaggerSetupFamilies(option.Value)})
 		}
 		writeJSON(w, options)

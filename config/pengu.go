@@ -42,6 +42,8 @@ type PenguConfig struct {
 	Header string `toml:"header"`
 	// TLSName is the server name used when dialing a TLS transport.
 	TLSName string `toml:"tls_name"`
+	// HTTPPath is the shared POST path for xhttp and xhttps.
+	HTTPPath string `toml:"http_path"`
 	// ICMPType selects the type used for the ICMP profile.
 	ICMPType *int `toml:"icmp_type"`
 	// ICMPCode selects the code used for the ICMP profile.

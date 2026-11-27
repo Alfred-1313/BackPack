@@ -32,6 +32,7 @@ type PenguForm struct {
 	Preset       string `json:"preset"`
 	Cipher       string `json:"cipher"`
 	TLSName      string `json:"tlsName"`
+	HTTPPath     string `json:"httpPath"`
 	Header       string `json:"header"`
 	Pool         int    `json:"pool"`
 	Workers      int    `json:"workers"`
@@ -77,6 +78,7 @@ func penguFromForm(f PenguForm) (config.PenguConfig, error) {
 		IranTunnel: strings.TrimSpace(f.IranTunnel), KharejTunnel: strings.TrimSpace(f.KharejTunnel),
 		Preset: f.Preset, Pool: f.Pool, Workers: f.Workers, MTU: f.MTU, Window: f.Window,
 		Cipher: f.Cipher, TLSName: strings.TrimSpace(f.TLSName), Header: f.Header,
+		HTTPPath: strings.TrimSpace(f.HTTPPath),
 		ICMPType: f.ICMPType, ICMPCode: f.ICMPCode,
 	}
 	penguDefaults(&c, mode)
@@ -176,7 +178,7 @@ func penguShare(name string, c config.PenguConfig) ShareLink {
 	l := ShareLink{Name: name, Kind: c.Direction, From: "iran", Tr: pengutunnel.Prefix + c.Mode,
 		Host: c.IranHost, PeerHost: c.KharejHost, Tok: c.Key, Port: linkPort(c.Port),
 		LocalIP: c.IranTunnel, PeerIP: c.KharejTunnel, HealthPort: uint32(c.HealthPort),
-		Preset: c.Preset, TunnelLanes: c.Pool, MTU: c.MTU, HelperSNI: c.TLSName,
+		Preset: c.Preset, TunnelLanes: c.Pool, MTU: c.MTU, HelperSNI: c.TLSName, HelperPath: c.HTTPPath,
 		PenguFamily: c.Family, PenguCipher: c.Cipher, PenguHeader: c.Header, PenguWorkers: c.Workers,
 		PenguWindow: c.Window, PenguICMPCode: c.ICMPCode,
 	}
@@ -190,7 +192,7 @@ func penguPeer(l ShareLink, mode string, port uint16) config.PenguConfig {
 	c := config.PenguConfig{Side: "kharej", Mode: mode, Direction: l.Kind, Family: l.PenguFamily,
 		IranHost: l.Host, KharejHost: l.PeerHost, Key: l.Tok, Port: port,
 		IranTunnel: l.LocalIP, KharejTunnel: l.PeerIP, HealthPort: uint16(l.HealthPort),
-		Preset: l.Preset, Pool: l.TunnelLanes, MTU: l.MTU, TLSName: l.HelperSNI,
+		Preset: l.Preset, Pool: l.TunnelLanes, MTU: l.MTU, TLSName: l.HelperSNI, HTTPPath: l.HelperPath,
 		Cipher: l.PenguCipher, Header: l.PenguHeader, Workers: l.PenguWorkers,
 		Window: l.PenguWindow, ICMPCode: l.PenguICMPCode,
 	}

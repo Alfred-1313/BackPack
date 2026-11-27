@@ -31,7 +31,7 @@ func TestDaggerLegacyTestModes(t *testing.T) {
 		rows[c.tr] = c
 	}
 	for _, option := range daggerconnect.Options() {
-		if _, builtIn := nativebackhaul.Find("dagger-" + option.Value); builtIn {
+		if option.Value == "http" || option.Value == "https" {
 			if rows[ctDaggerPrefix+option.Value] != nil {
 				t.Errorf("%s is already represented by its native BackPack test", option.Label)
 			}
@@ -66,7 +66,7 @@ func TestConnectionTestListsQuantumWithOrWithoutLicense(t *testing.T) {
 		for _, c := range s.cases {
 			rows[c.tr] = c.skip
 		}
-		for _, tr := range []string{"dagger-quantum", "dagger-quantum+", "dagger-quantum-gaming", "dagger-nova", "dagger-tun-gre"} {
+		for _, tr := range []string{"dagger-xhttp", "dagger-xhttps", "dagger-quantum", "dagger-quantum+", "dagger-quantum-gaming", "dagger-nova", "dagger-tun-gre"} {
 			reason, listed := rows[tr]
 			switch {
 			case !listed:

@@ -17,11 +17,11 @@ const gostNames = new Map([
 ]);
 
 export function transportDisplay(id, label) {
-  const pengu = id?.match(/^pengu(?:[-/])(?:(?:direct|reverse)-)?(tcpfwd|tls|num[123]|icmp|ipip|ospf|gre|ah|esp)$/);
+  const pengu = id?.match(/^pengu(?:[-/])(?:(?:direct|reverse)-)?(tcpfwd|tls|xhttp|xhttps|num[123]|icmp|ipip|ospf|gre|ah|esp)$/);
   if (pengu) {
     const mode = pengu[1];
     const name = mode === 'tcpfwd' ? 'tcpfwd' : mode === 'tls' ? 'TLS' :
-      mode.startsWith('num') ? 'PGprotocol-' + mode.toUpperCase() : 'TUN / IPX ' + mode.toUpperCase();
+      mode.startsWith('xhttp') ? mode : mode.startsWith('num') ? 'PGprotocol-' + mode.toUpperCase() : 'TUN / IPX ' + mode.toUpperCase();
     return { name, source: 'PenguTunnel' };
   }
   if (id === 'easytier' || id === 'easytier-reverse') return { name: label || 'EasyTier', source: 'Easy-Mesh' };
@@ -32,6 +32,7 @@ export function transportDisplay(id, label) {
   if (id === 'matrix-reverse') return { name: 'Matrix', source: 'Tinc · Reverse' };
   const gostName = gostNames.get(id);
   if (gostName) return { name: gostName, source: '' };
+  if (id === 'native-dagger-xhttp') return { name: 'xhttp', source: 'BackPack' };
   // Use the original transport name even for results saved by an older panel.
   const dagger = id?.replace(/^native-/, '').match(/^dagger-(http|https|xhttp|xhttps|quantum-gaming|quantum\+?|nova|dc6|tun(?:-(tcp|udp|icmp|gre|ipip|bip))?)$/);
   if (dagger) {

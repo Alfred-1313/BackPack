@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/backpack/backpack/internal/daggerconnect"
 	"github.com/backpack/backpack/internal/easytier"
 	"github.com/backpack/backpack/internal/matrix"
 	"github.com/backpack/backpack/internal/nativebackhaul"
@@ -60,10 +59,7 @@ func buildSetupPerformance() map[string]SetupPerformance {
 		m["native-"+mode.Value] = p
 	}
 	m["backhaul-tun-ipx"] = performance("TUN MTU (bytes)", 1280, 1320, 1400, 576, 1500)
-	for _, mode := range daggerconnect.Options() {
-		if _, native := nativebackhaul.Find("dagger-" + mode.Value); native {
-			continue
-		}
+	for _, mode := range DaggerOptions() {
 		p := performance("Parallel connections", 2, 6, 12, 1, 64)
 		if mode.Value == "tun" {
 			p = performance("Heartbeat interval (seconds)", 20, 10, 5, 1, 60)

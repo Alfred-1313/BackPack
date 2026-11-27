@@ -31,6 +31,8 @@ type Mode struct {
 var modes = []Mode{
 	{ID: "tcpfwd", Label: "tcpfwd", Carrier: "tcpfwd"},
 	{ID: "tls", Label: "TLS", Carrier: "tls"},
+	{ID: "xhttp", Label: "xhttp", Carrier: "xhttp"},
+	{ID: "xhttps", Label: "xhttps", Carrier: "xhttps"},
 	{ID: "num1", Label: "PGprotocol-NUM1", Carrier: "PGprotocol-NUM1", TUN: true},
 	{ID: "num2", Label: "PGprotocol-NUM2", Carrier: "PGprotocol-NUM2", TUN: true},
 	{ID: "num3", Label: "PGprotocol-NUM3", Carrier: "PGprotocol-NUM3", TUN: true},
@@ -61,6 +63,10 @@ func Listens(c config.PenguConfig) bool {
 func DeviceName(name string) string {
 	return fmt.Sprintf("bpg%x", sha256.Sum256([]byte(name)))[:15]
 }
+
+const DefaultHTTPPath = "/xhttp"
+
+var httpPath = regexp.MustCompile(`^/[a-zA-Z0-9._~/-]{0,255}$`)
 
 var hostname = regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$`)
 var forward = regexp.MustCompile(`^(udp/)?(?:(127\.0\.0\.1):)?([0-9]{1,5}(?:-[0-9]{1,5})?)(?:=(?:(127\.0\.0\.1):)?([0-9]{1,5}(?:-[0-9]{1,5})?))?$`)
@@ -157,8 +163,11 @@ func Validate(c config.PenguConfig) error {
 		!slices.Contains([]string{"PGprotocol-NUM1", "PGprotocol-NUM2", "PGprotocol-NUM3"}, c.Header)) {
 		return errors.New("invalid tcpfwd carrier header")
 	}
-	if c.TLSName != "" && (c.Mode != "tls" || !hostname.MatchString(c.TLSName)) {
+	if c.TLSName != "" && (c.Mode != "tls" && c.Mode != "xhttps" || !hostname.MatchString(c.TLSName)) {
 		return errors.New("enter a hostname for the PenguTunnel TLS server name")
+	}
+	if c.HTTPPath != "" && (c.Mode != "xhttp" && c.Mode != "xhttps" || !httpPath.MatchString(c.HTTPPath)) {
+		return errors.New("enter a PenguTunnel HTTP path such as /xhttp without a query or fragment")
 	}
 	if c.ICMPType != nil && (c.Mode != "icmp" || *c.ICMPType < 0 || *c.ICMPType > 255) ||
 		c.ICMPCode < 0 || c.ICMPCode > 255 || c.Mode != "icmp" && c.ICMPCode != 0 {
@@ -185,6 +194,12 @@ func Build(name string, c config.PenguConfig, iface, license string) ([]byte, er
 		}
 	}
 	transport := map[string]any{"type": mode.Carrier, "mode": role}
+	if c.Mode == "xhttp" || c.Mode == "xhttps" {
+		transport["xhttp_path"] = c.HTTPPath
+		if c.HTTPPath == "" {
+			transport["xhttp_path"] = DefaultHTTPPath
+		}
+	}
 	tun := map[string]any{"health_port": c.HealthPort}
 	tuning := map[string]any{"auto_tuning": true, "workers": c.Workers,
 		"profile": map[string]string{"balance": "resource", "turbo": "balance", "aggressive": "fast"}[c.Preset]}

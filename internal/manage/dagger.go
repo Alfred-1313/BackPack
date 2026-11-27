@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/BurntSushi/toml"
@@ -18,6 +19,15 @@ import (
 	"github.com/backpack/backpack/internal/daggerconnect"
 	"github.com/backpack/backpack/internal/manage/core"
 )
+
+// DaggerOptions lists the modes exposed by the panel and Connection Test.
+func DaggerOptions() []daggerconnect.Transport {
+	return slices.DeleteFunc(daggerconnect.Options(), func(option daggerconnect.Transport) bool {
+		// Split HTTP offers packet-up in the Dagger core. BackPack's built-in
+		// implementation uses one upload stream and a paired download.
+		return option.Value == "http" || option.Value == "https"
+	})
+}
 
 type DaggerForm struct {
 	Name           string      `json:"name"`
