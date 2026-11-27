@@ -11,6 +11,8 @@ export function mtProxyView(ctx) {
       const form = field('mtpCreate');
       const result = field('mtpResult');
       const status = field('mtpStatus');
+      const testProxy = field('mtpCheck');
+      const testStatus = field('mtpTestStatus');
       const submit = field('mtpSubmit');
       const savedActions = field('mtpSavedActions');
       const newSetup = field('mtpNew');
@@ -20,10 +22,10 @@ export function mtProxyView(ctx) {
       const portResult = field('mtpPortResult');
       const mode = field('mtpMode');
       const subtitle = field('mtpSubtitle');
-      const setStatus = (text, error = false) => {
-        status.textContent = text;
-        status.classList.toggle('error', error);
-        status.classList.remove('mtp-measured');
+      const setStatus = (text, error = false, target = status) => {
+        target.textContent = text;
+        target.classList.toggle('error', error);
+        target.classList.remove('mtp-measured');
       };
       mode.value = ctx.query?.get('mode') === 'web' ? 'web' : 'native';
       const isWeb = () => mode.value === 'web';
@@ -133,7 +135,8 @@ export function mtProxyView(ctx) {
 
       const openForm = (values = {}) => {
         const web = isWeb();
-        result.hidden = savedActions.hidden = !proxy;
+        result.hidden = savedActions.hidden = testProxy.hidden = testStatus.hidden = !proxy;
+        setStatus('', false, testStatus);
         removal.hidden = true;
         field('mtpHost').value = values.host ?? (web ? '' : settings.host || '');
         field('mtpDomain').value = values.domain || '';
@@ -164,6 +167,7 @@ export function mtProxyView(ctx) {
         clearTimeout(checkTimer);
         checkRequest?.abort();
         form.hidden = result.hidden = removal.hidden = submit.hidden = savedActions.hidden = true;
+        testProxy.hidden = testStatus.hidden = true;
         setStatus('Reading tunnel settings\u2026');
         const info = await api.mtProxySetup(name, requested);
         if (sequence !== loading || !root.isConnected) return;
@@ -188,17 +192,18 @@ export function mtProxyView(ctx) {
         if (info.note) return setStatus(info.note);
         openForm(values);
       };
-      const work = async (button, task) => {
+      const work = async (button, task, target = status) => {
         if (busy) return;
         busy = true;
         button.disabled = mode.disabled = true;
         try { await task(); }
-        catch (e) { setStatus(e.message, true); }
+        catch (e) { setStatus(e.message, true, target); }
         finally { busy = button.disabled = mode.disabled = false; }
       };
       const openRemoval = values => {
         replacement = values;
         form.hidden = result.hidden = submit.hidden = savedActions.hidden = true;
+        testProxy.hidden = testStatus.hidden = true;
         removal.hidden = false;
         field('mtpRemoveTitle').textContent = replacement ? 'Remove the current proxy to change ports' : 'Delete proxy';
         field('mtpRemoteRemoval').hidden = settings.managed;
@@ -282,18 +287,18 @@ export function mtProxyView(ctx) {
           field('mtpCommand').focus();
         });
       });
-      field('mtpCheck').addEventListener('click', event => work(event.currentTarget, async () => {
-        setStatus('Authenticating the proxy through the tunnel\u2026');
+      testProxy.addEventListener('click', () => work(testProxy, async () => {
+        setStatus('Authenticating the proxy through the tunnel\u2026', false, testStatus);
         const { ms } = await action({ action: 'check' });
         if (isWeb()) {
-          setStatus('The WEB bridge authenticated over HTTPS in ' + ms + ' ms. Open the link in compatible Telegram Desktop.');
+          setStatus('The WEB bridge authenticated over HTTPS in ' + ms + ' ms. Open the link in compatible Telegram Desktop.', false, testStatus);
           return;
         }
-        setStatus('MTProxy authenticated through the tunnel in ');
-        status.classList.add('mtp-measured');
-        status.append(el('span', { class: 'mtp-latency', text: ms + ' ms' }),
+        setStatus('MTProxy authenticated through the tunnel in ', false, testStatus);
+        testStatus.classList.add('mtp-measured');
+        testStatus.append(el('span', { class: 'mtp-latency', text: ms + ' ms' }),
           '. Open the link in Telegram to check the full connection.');
-      }));
+      }, testStatus));
       field('mtpSaveSponsor').addEventListener('click', event => work(event.currentTarget, async () => {
         show(await action({ action: 'sponsor', sponsor: field('mtpSponsor').value.trim() }));
         setStatus('Run the updated setup command on Kharej to apply the sponsor tag.');

@@ -69,7 +69,6 @@
       </form>
       <div id="mtpSavedActions" class="mtp-actions" hidden>
         <button id="mtpNew" type="button" class="bt">Create new setup</button>
-        <button id="mtpCheck" type="button" class="bt">Test proxy</button>
         <button id="mtpDelete" type="button" class="bt mtp-danger">Delete proxy</button>
       </div>
       <section id="mtpResult" hidden>
@@ -128,8 +127,11 @@
     </div>
   </div>
   <div class="df">
-    <span class="sp"></span>
-    <button class="bt" type="button" data-close>Close</button>
-    <button id="mtpSubmit" type="submit" class="bt primary" form="mtpCreate" hidden>Create proxy</button>
+    <p id="mtpTestStatus" class="mtp-status" role="status" hidden></p>
+    <div class="mtp-actions">
+      <button id="mtpCheck" type="button" class="bt" hidden>Test proxy</button>
+      <button class="bt" type="button" data-close>Close</button>
+      <button id="mtpSubmit" type="submit" class="bt primary" form="mtpCreate" hidden>Create proxy</button>
+    </div>
   </div>
 </div>

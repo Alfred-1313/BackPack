@@ -1,5 +1,7 @@
 .dlg.mtproxy { width: min(560px, 100%); height: auto; }
-.mtproxy .df { justify-content: flex-end; }
+.mtproxy .df { flex-direction: column; align-items: stretch; gap: 8px; }
+.mtproxy .df .mtp-actions { justify-content: flex-end; }
+.mtproxy .df .mtp-status { margin: 0; }
 .mtproxy .mtp-path { margin: 0 0 17px; padding: 10px 12px; border-radius: 10px; background: var(--sunk); color: var(--tx2); font-size: 12px; line-height: 1.5; }
 .mtproxy .mtp-status { margin: 0 0 14px; color: var(--mu); font-size: 12px; line-height: 1.5; }
 .mtproxy .mtp-status:empty { display: none; }
