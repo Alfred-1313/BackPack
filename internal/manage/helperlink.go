@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"os/exec"
 	"reflect"
 	"strconv"
 	"strings"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/backpack/backpack/config"
 	"github.com/backpack/backpack/internal/app"
+	"github.com/backpack/backpack/internal/backhaulpremium"
 	"github.com/backpack/backpack/internal/manage/core"
 	"github.com/backpack/backpack/internal/nativebackhaul"
 )
@@ -123,20 +125,60 @@ func applyBackhaulPeer(ctx context.Context, name string, c config.BackhaulConfig
 	link := backhaulShare(name, c)
 	out := LinkApplied{Name: name, Kind: link.Kind, Transport: c.Mode, StatusUnavailable: !c.Native}
 	out.Backups = link.Hosts
-	if c.Port != 0 {
+	if c.Port != 0 && c.Mode != "tun-ipx" {
 		out.Dials = net.JoinHostPort(c.IranHost, link.Port)
 	}
-	if option, ok := nativebackhaul.Find(c.Mode); c.Native && ok {
+	if c.Native {
+		if option, ok := nativebackhaul.Find(c.Mode); ok {
+			out.Transport = option.Label
+		}
+	} else if option, ok := backhaulpremium.Find(c.Mode); ok {
 		out.Transport = option.Label
 	}
 	if !c.Native && (c.Mode == "tun-tcp" || c.Mode == "tun-ipx") {
 		local, _, _ := strings.Cut(c.KharejTunnel, "/")
 		peer, _, _ := strings.Cut(c.IranTunnel, "/")
 		out.AwaitPeer = routedPeerProbe(local, peer)
+		if c.Mode == "tun-ipx" && out.AwaitPeer != nil {
+			out.AwaitPeer = awaitBackhaulIPX(app.ServiceName(name), out.AwaitPeer)
+		}
 	}
-	return installLinkedHelper(out, func(cfg config.Config) bool {
+	done, err := installLinkedHelper(out, func(cfg config.Config) bool {
 		return cfg.Backhaul.Role == "client" && reflect.DeepEqual(backhaulShare(name, cfg.Backhaul), link)
 	}, func() (string, bool, error) { return installBackhaul(ctx, name, c) })
+	if err == nil && c.Mode == "tun-ipx" && !done.Active && backhaulLicenseRejected(done.Service) {
+		err = backhaulpremium.ErrLicenseRejected
+	}
+	return done, err
+}
+
+// The engine exits with a non-restarting systemd status if its license fails.
+func backhaulLicenseRejected(service string) bool {
+	if service == "" {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "systemctl", "show", "-p", "ExecMainStatus", "--value", service).Output()
+	return err == nil && strings.TrimSpace(string(out)) == strconv.Itoa(backhaulpremium.LicenseExitCode)
+}
+
+func awaitBackhaulIPX(service string, probe func(time.Duration) (bool, string)) func(time.Duration) (bool, string) {
+	return func(within time.Duration) (bool, string) {
+		end := time.Now().Add(within)
+		for {
+			if backhaulLicenseRejected(service) {
+				return false, backhaulpremium.ErrLicenseRejected.Error()
+			}
+			remaining := time.Until(end)
+			if remaining <= 0 {
+				return false, "no reply across the tunnel"
+			}
+			if up, detail := probe(min(remaining, 2*time.Second)); up {
+				return true, detail
+			}
+		}
+	}
 }
 
 func applyDaggerPeer(ctx context.Context, name string, c config.DaggerConfig) (LinkApplied, error) {

@@ -47,6 +47,7 @@ func buildSetupPerformance() map[string]SetupPerformance {
 		}
 		m["native-"+mode.Value] = p
 	}
+	m["backhaul-tun-ipx"] = performance("TUN MTU (bytes)", 1280, 1320, 1400, 576, 1500)
 	for _, mode := range daggerconnect.Options() {
 		if _, native := nativebackhaul.Find("dagger-" + mode.Value); native {
 			continue

@@ -44,6 +44,7 @@ func TestConnectionTestCoversEveryPanelTransport(t *testing.T) {
 	for _, option := range nativebackhaul.Options() {
 		assertTest(option.Direction, ctBackhaulPrefix+option.Value)
 	}
+	assertTest("direct", ctBackhaulIPX)
 	for _, option := range omni.Options() {
 		assertTest(option["direction"], ctOmniPrefix+option["value"])
 	}

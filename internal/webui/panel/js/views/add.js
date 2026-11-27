@@ -50,7 +50,7 @@ export function addView(ctx) {
           forward: true, udp: true, needsRoot: true, setupFamilies: ['ipv4', 'ipv6'] }];
       };
       const managedReverse = new Map([
-        ...backhaulChoices.map(item => ['native-' + item.value, {
+        ...backhaulChoices.filter(item => item.direction === 'reverse').map(item => ['native-' + item.value, {
           ...item, native: true, port: true, value: 'native-' + item.value, mode: item.value,
         }]),
         ...omniEntries('reverse'),
@@ -63,6 +63,10 @@ export function addView(ctx) {
       const managedDirect = new Map([
         ...omniEntries('direct'),
         ...daggerEntries('direct'),
+        ...backhaulChoices.filter(item => item.value === 'tun-ipx').map(item => ['backhaul-tun-ipx', {
+          ...item, value: 'backhaul-tun-ipx', mode: item.value, port: false, secret: false,
+          forward: true, needsRoot: true, setupFamilies: ['ipv4'],
+        }]),
         matrixEntry('direct'),
         ['gost-direct', { value: 'gost-direct', mode: 'gost-direct', label: 'GOST 3',
           port: true, secret: true, forward: true }],
@@ -85,6 +89,29 @@ export function addView(ctx) {
       const daggerUpgrade = () => ['dagger-http', 'dagger-https'].includes(reverseSetup()?.mode);
       const daggerRoute = () => daggerUpgrade() || reverseSetup()?.mode === 'dagger-xhttp';
       const directSetup = () => chosen.direction === 'direct' && managedDirect.get(chosen.carrier);
+      const backhaulTUN = () => {
+        if (directSetup()?.mode === 'tun-ipx') return 'tun-ipx';
+        if (reverseSetup()?.mode === 'tun-tcp') return 'tun-tcp';
+        return '';
+      };
+      const backhaulProfile = el('select', { id: 'backhaulIPXProfile' },
+        ['tcp', 'udp', 'icmp', 'gre', 'ipip', 'bip'].map(value =>
+          el('option', { value, selected: value === 'icmp', text: value.toUpperCase() })));
+      const backhaulProfileRow = el('div', { class: 'f3 full' },
+        el('label', { for: backhaulProfile.id, text: 'IPX profile' }), backhaulProfile,
+        el('div', { class: 'hint', text: 'Uses the official Backhaul Premium core on both servers.' }));
+      const backhaulIranTUN = el('input', { id: 'backhaulIranTUN', type: 'text', placeholder: 'Automatically assigned' });
+      const backhaulKharejTUN = el('input', { id: 'backhaulKharejTUN', type: 'text', placeholder: 'Automatically assigned' });
+      const backhaulHealthPort = el('input', { id: 'backhaulHealthPort', type: 'number',
+        min: 1, max: 65535, placeholder: 'Automatically assigned' });
+      const backhaulHealthRow = el('div', { class: 'f3 full' },
+        el('label', { for: backhaulHealthPort.id, text: 'Health check port' }), backhaulHealthPort);
+      const backhaulTUNFields = el('div', { class: 'full', hidden: true },
+        backhaulProfileRow,
+        el('div', { class: 'f3 full' }, el('label', { for: backhaulIranTUN.id, text: 'Iran tunnel IPv4/CIDR' }), backhaulIranTUN),
+        el('div', { class: 'f3 full' }, el('label', { for: backhaulKharejTUN.id, text: 'Kharej tunnel IPv4/CIDR' }), backhaulKharejTUN,
+          el('div', { class: 'hint', text: 'Leave both blank to allocate a private subnet.' })),
+        backhaulHealthRow);
       const matrixSelected = () => (reverseSetup() || directSetup())?.mode === 'matrix';
       const easyTierSelected = () => chosen.direction === 'direct'
         ? chosen.carrier === 'easytier' : reverseSetup()?.mode === 'easytier';
@@ -572,6 +599,12 @@ export function addView(ctx) {
         const setup = reverseSetup();
         const reverseMatrix = setup?.mode === 'matrix';
         const reverseEasyTier = setup?.mode === 'easytier';
+        const tunMode = backhaulTUN();
+        const ipx = tunMode === 'tun-ipx';
+        const tunAnchor = (direct ? directForward : reverseForward).closest('.f3');
+        if (backhaulTUNFields.previousElementSibling !== tunAnchor) tunAnchor.after(backhaulTUNFields);
+        backhaulTUNFields.hidden = !tunMode;
+        backhaulProfileRow.hidden = backhaulHealthRow.hidden = !ipx;
         const isEasyTier = easyTierSelected();
         const isMatrix = matrixSelected();
         show('.step3rev', !direct);
@@ -656,10 +689,11 @@ export function addView(ctx) {
           directForward.closest('.f3').hidden = !routed.forward;
         }
         const forwardRow = directForward.closest('.f3');
-        forwardRow.querySelector('label').textContent = gost ? 'Forwarded TCP port' : 'Forwarded ports';
+        forwardRow.querySelector('label').textContent = ipx ? 'Forwarded TCP ports' : gost ? 'Forwarded TCP port' : 'Forwarded ports';
         forwardRow.querySelector('.hint').textContent = gost
           ? 'Enter one TCP forward. For example, 443=8443 sends Iran port 443 to Kharej port 8443.'
-          : isMatrix ? 'Optional. Enter local ports, or use a peer private address such as 443=10.203.42.1:8443.' : forwardPortsHint;
+          : ipx ? 'Optional. Forwards TCP to the Kharej tunnel address.'
+            : isMatrix ? 'Optional. Enter local ports, or use a peer private address such as 443=10.203.42.1:8443.' : forwardPortsHint;
         directForward.placeholder = gost ? '443=8443' : routed ? '443, 2053=8443' : '2087';
         const udpAnchor = (reverseMatrix || reverseEasyTier ? reverseForward : directForward).closest('.f3');
         if (forwardUDP.previousElementSibling !== udpAnchor) udpAnchor.after(forwardUDP);
@@ -1771,6 +1805,15 @@ export function addView(ctx) {
           const r = await api.daggerCreate(form);
           return { r: r.setup?.pending ? r.setup : r, name: form.name };
         }
+        if (backhaulTUN() === 'tun-ipx') {
+          if (!backhaulHealthPort.checkValidity()) throw new Error('Enter a health port from 1 to 65535.');
+          const r = await api.backhaulCreate({
+            name: payload.name, transport: 'tun-ipx', setupFamily, tuning, ports: payload.ports || '',
+            ipxProfile: backhaulProfile.value, healthPort: Number(backhaulHealthPort.value || 0),
+            iranTunnel: backhaulIranTUN.value.trim(), kharejTunnel: backhaulKharejTUN.value.trim(),
+          });
+          return { r: r.setup, name: payload.name };
+        }
         if (setup?.native) {
           if (!/^\d+$/.test(payload.tunnelPort || '') || Number(payload.tunnelPort) < 1 || Number(payload.tunnelPort) > 65535) {
             throw new Error('Enter a tunnel port from 1 to 65535.');
@@ -1779,6 +1822,8 @@ export function addView(ctx) {
             name: payload.name, transport: setup.mode, port: Number(payload.tunnelPort),
             ports: payload.ports || '', secret: payload.token || '', iranHost: payload.iranHost || '',
             tuning, setupFamily, mux: backhaulMuxPayload(),
+            iranTunnel: backhaulTUN() ? backhaulIranTUN.value.trim() : undefined,
+            kharejTunnel: backhaulTUN() ? backhaulKharejTUN.value.trim() : undefined,
             httpPath: daggerRoute() ? setupGroups.httpPath.input.value.trim() : undefined,
             httpHost: daggerUpgrade() ? setupGroups.httpHost.input.value.trim() : undefined,
           });

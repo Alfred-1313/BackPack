@@ -8,7 +8,6 @@ import (
 
 	"github.com/backpack/backpack/internal/daggerconnect"
 	"github.com/backpack/backpack/internal/manage"
-	"github.com/backpack/backpack/internal/nativebackhaul"
 	"github.com/backpack/backpack/internal/omni"
 )
 
@@ -92,14 +91,20 @@ func (s *server) handleBackhaul(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	switch r.Method {
 	case http.MethodGet:
-		writeJSON(w, nativebackhaul.Options())
+		writeJSON(w, manage.BackhaulOptions())
 	case http.MethodPost:
 		var form manage.BackhaulForm
 		if err := decodeJSON(w, r, &form); err != nil {
 			http.Error(w, "invalid Backhaul form", http.StatusBadRequest)
 			return
 		}
-		out, err := manage.CreateBackhaul(r.Context(), form)
+		var out manage.BackhaulSetup
+		var err error
+		if form.Mode == "tun-ipx" {
+			out, err = manage.StartBackhaulIPX(r.Context(), s.ctx, form)
+		} else {
+			out, err = manage.CreateBackhaul(r.Context(), form)
+		}
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return

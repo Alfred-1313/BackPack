@@ -512,6 +512,9 @@ func TunnelDirection(t Tunnel) string {
 	if t.Transport == "matrix" {
 		return t.MatrixDirection
 	}
+	if t.Transport == "backhaul/tun-ipx" {
+		return "direct"
+	}
 	if t.EasyTierReverse {
 		return "reverse"
 	}

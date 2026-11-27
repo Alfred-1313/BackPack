@@ -35,6 +35,7 @@ import (
 
 	"github.com/backpack/backpack/config"
 	"github.com/backpack/backpack/internal/app"
+	"github.com/backpack/backpack/internal/backhaulpremium"
 	"github.com/backpack/backpack/internal/matrix"
 	"github.com/backpack/backpack/internal/spooftest"
 	"github.com/backpack/backpack/internal/tunnel/l3"
@@ -709,7 +710,13 @@ func StartConnTestIran(o ConnTestOptions) (*ConnTestIran, string, error) {
 				}
 			} else if _, ok := strings.CutPrefix(c.tr, ctDaggerPrefix); ok {
 				c.skip = s.daggerSkip(c.tr)
-			} else if ctFamily(host) != "IPv4" && !strings.HasPrefix(c.tr, ctBackhaulPrefix) {
+			} else if c.tr == ctBackhaulIPX {
+				if ip := net.ParseIP(host); ip.To4() == nil {
+					c.skip = "Backhaul IPX requires an IPv4 path"
+				} else if err := backhaulpremium.BinaryStatus(); err != nil {
+					c.skip = "official Backhaul Premium core is not ready"
+				}
+			} else if ctFamily(host) != "IPv4" && !ctBackhaulTransport(c.tr) {
 				c.skip = "this transport setup requires an IPv4 path"
 			}
 			useExtraChannel = useExtraChannel || c.skip == ""

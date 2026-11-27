@@ -76,6 +76,9 @@ func Validate(c config.BackhaulConfig) error {
 		return errors.New("enter a nonzero Backhaul listener port")
 	}
 	if c.Mode == "tun-ipx" {
+		if c.MTU != 0 && (c.MTU < 576 || c.MTU > 1500) {
+			return errors.New("Backhaul IPX MTU must be from 576 to 1500")
+		}
 		host, _ := netip.ParseAddr(c.IranHost)
 		far, err := netip.ParseAddr(c.KharejIP)
 		if err != nil || !host.Is4() || !far.Is4() || host == far || !host.IsGlobalUnicast() || !far.IsGlobalUnicast() {
@@ -163,6 +166,9 @@ func Build(name string, c config.BackhaulConfig, iface string) ([]byte, error) {
 			doc["ipx"] = ipx
 			doc["security"] = map[string]any{"enable_encryption": true, "algorithm": "aes-256-gcm",
 				"psk": c.Token, "kdf_iterations": 100000}
+		}
+		if c.MTU != 0 {
+			mtu = c.MTU
 		}
 		doc["tun"] = map[string]any{"encapsulation": encap, "name": DeviceName(name), "local_addr": local,
 			"remote_addr": remote, "health_port": c.HealthPort, "mtu": mtu}

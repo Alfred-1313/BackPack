@@ -132,7 +132,7 @@ func Run(configPath string, ctx context.Context) {
 		if err := backhaulpremium.Run(ctx, tunnelNameFromPath(configPath), cfg.Backhaul); err != nil {
 			logger.Errorf("Backhaul stopped: %v", err)
 			if errors.Is(err, backhaulpremium.ErrLicenseRejected) {
-				os.Exit(78)
+				os.Exit(backhaulpremium.LicenseExitCode)
 			}
 			os.Exit(1)
 		}

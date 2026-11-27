@@ -24,6 +24,7 @@ import (
 )
 
 const Version = "v2.0.3"
+const LicenseExitCode = 78
 
 var ErrLicenseRejected = errors.New("Backhaul license validation failed")
 
@@ -42,6 +43,18 @@ func binaryPath() string {
 }
 
 var installMu sync.Mutex
+
+// BinaryStatus checks the pinned official binary without downloading it.
+func BinaryStatus() error {
+	rel, ok := releases[runtime.GOARCH]
+	if runtime.GOOS != "linux" || !ok {
+		return fmt.Errorf("Backhaul Premium %s requires Linux amd64 or arm64", Version)
+	}
+	if err := checkBinary(binaryPath(), rel); err != nil {
+		return fmt.Errorf("verified Backhaul Premium %s is unavailable: %w", Version, err)
+	}
+	return nil
+}
 
 func checkBinary(path string, rel release) error {
 	st, err := os.Lstat(path)
@@ -178,8 +191,8 @@ func Run(ctx context.Context, name string, c config.BackhaulConfig) error {
 	if err != nil {
 		return err
 	}
-	if err := checkBinary(binaryPath(), releases[runtime.GOARCH]); err != nil {
-		return fmt.Errorf("official Backhaul Premium is unavailable: %w", err)
+	if err := BinaryStatus(); err != nil {
+		return err
 	}
 	if c.Mode == "tun-ipx" && c.IPXProfile == "tcp" {
 		peer := c.KharejIP

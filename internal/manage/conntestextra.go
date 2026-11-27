@@ -298,7 +298,7 @@ func (w *ctExtraInstance) join(ctx context.Context, link ConnTestLink, job ctExt
 	if matrix.IsDirectionalMode(job.Mode) {
 		return w.joinMatrix(ctx, link, job)
 	}
-	if strings.HasPrefix(job.Mode, ctBackhaulPrefix) {
+	if ctBackhaulTransport(job.Mode) {
 		return w.joinBackhaul(ctx, link, job)
 	}
 	if _, ok := strings.CutPrefix(job.Mode, ctDaggerPrefix); ok {
@@ -453,7 +453,7 @@ func (s *ConnTestIran) setupExtra(ctx context.Context, c *connTestCase, mode str
 	if matrix.IsDirectionalMode(mode) {
 		return s.setupMatrix(ctx, c, ctrl)
 	}
-	if strings.HasPrefix(mode, ctBackhaulPrefix) {
+	if ctBackhaulTransport(mode) {
 		return s.setupBackhaul(ctx, c, mode)
 	}
 	if _, ok := strings.CutPrefix(mode, ctDaggerPrefix); ok {

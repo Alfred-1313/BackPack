@@ -5,6 +5,7 @@ const sources = new Map([
   ['native-xtcpmux', 'Backhaul'],
   ['native-xwsmux', 'Backhaul'],
   ['native-tun-tcp', 'Backhaul'],
+  ['backhaul-tun-ipx', 'Backhaul'],
   ['gretap', 'Gretap'],
   ['l2tpv3', 'VortexL2'],
 ]);
