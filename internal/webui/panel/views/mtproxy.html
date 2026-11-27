@@ -36,22 +36,12 @@
           <div class="f">
             <label for="mtpDestination">Port on Kharej</label>
             <div class="withbtn">
-              <input type="text" id="mtpDestination" name="destination" inputmode="numeric" pattern="[0-9]{1,5}" maxlength="5" autocomplete="off" required aria-describedby="mtpDestinationError">
+              <input type="text" id="mtpDestination" name="destination" inputmode="numeric" pattern="[0-9]{1,5}" maxlength="5" autocomplete="off" required aria-describedby="mtpDestinationError mtpDestinationHint">
               <button id="mtpRandomDestination" type="button" aria-label="Choose a random port on Kharej">Random</button>
             </div>
             <div id="mtpDestinationError" class="mtp-field-error" aria-live="polite" hidden></div>
-            <div class="hint">The proxy process listens on this port on Kharej.</div>
+            <div id="mtpDestinationHint" class="hint">The proxy listens on this port on Kharej.</div>
           </div>
-        </div>
-        <div class="f" id="mtpManual" hidden>
-          <label for="mtpPortCommand">Check the port on Kharej</label>
-          <div class="withbtn">
-            <input type="text" id="mtpPortCommand" readonly>
-            <button type="button" data-copy="mtpPortCommand" data-copy-own="1">Copy</button>
-          </div>
-          <label class="mtp-second-label" for="mtpPortResult">Check result</label>
-          <input type="text" id="mtpPortResult" autocomplete="off" spellcheck="false" placeholder="Paste the MTPORT line from Kharej">
-          <div class="hint">Run the command on Kharej, then paste its result here.</div>
         </div>
         <div class="f" id="mtpNative">
           <label for="mtpDomain">Fake TLS hostname</label>

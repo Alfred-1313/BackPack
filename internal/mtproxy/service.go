@@ -24,6 +24,8 @@ import (
 
 const serviceDir = app.ConfigDir + "/mtproxy"
 
+var errDestinationBusy = errors.New("MTProxy destination port is in use")
+
 func Command(ctx context.Context, args []string, in io.Reader, out io.Writer) error {
 	if os.Geteuid() != 0 {
 		return errors.New("run MTProxy setup with sudo")
@@ -46,11 +48,7 @@ func Command(ctx context.Context, args []string, in io.Reader, out io.Writer) er
 		if err := setup.Validate(); err != nil {
 			return err
 		}
-		if err := withServiceLock(func() error { return setup.enable(ctx) }); err != nil {
-			return err
-		}
-		fmt.Fprintf(out, "MTProxy is listening on %s\n", setup.Addr())
-		return nil
+		return setup.join(ctx, out)
 	case len(args) >= 2 && len(args) <= 3 && args[0] == "port":
 		check := PortCheck{Bind: args[1]}
 		if len(args) == 3 {
@@ -75,6 +73,26 @@ func Command(ctx context.Context, args []string, in io.Reader, out io.Writer) er
 	default:
 		return errors.New("use backpack mtproxy join, backpack mtproxy port <bind> [port], or backpack mtproxy remove <id>")
 	}
+}
+
+func (s Setup) join(ctx context.Context, out io.Writer) error {
+	rule := strings.Repeat("\u2500", 44)
+	mode := "MTProto Fake TLS"
+	if s.Mode == ModeWeb {
+		mode = "MTProto WEB"
+	}
+	fmt.Fprintf(out, "\n BackPack \u00b7 MTProxy setup\n %s\n", rule)
+	fmt.Fprintf(out, "   Mode          %s\n   Destination   %s\n", mode, s.Addr())
+	fmt.Fprintln(out, " \u25cc Checking the destination port and starting the proxy\u2026")
+	err := withServiceLock(func() error { return s.enable(ctx) })
+	if errors.Is(err, errDestinationBusy) {
+		return fmt.Errorf(" \u2717 Port %d (TCP) is already in use on Kharej.\n     Choose another Kharej port in the panel and copy its new setup command.\n %s", s.Port, rule)
+	}
+	if err != nil {
+		return fmt.Errorf(" \u2717 MTProxy could not start: %w\n %s", err, rule)
+	}
+	fmt.Fprintf(out, " \u2713 MTProxy authenticated and is listening on %s.\n %s\n", s.Addr(), rule)
+	return nil
 }
 
 func withServiceLock(work func() error) error {
@@ -132,7 +150,7 @@ func (s Setup) enable(ctx context.Context) error {
 	}
 	active := core.IsActive(unit)
 	if active && exists && bytes.Equal(body, previous) {
-		return nil
+		return s.waitReady(ctx)
 	}
 	if exists && !strings.Contains(string(previous), fmt.Sprintf("bind-to = %q", s.Addr())) &&
 		!strings.Contains(string(previous), fmt.Sprintf("ip = %q\nport = %d\n", s.BindIP(), s.Port)) {
@@ -144,6 +162,9 @@ func (s Setup) enable(ctx context.Context) error {
 	addr := s.Addr()
 	if !active {
 		listener, err := net.Listen("tcp", addr)
+		if errors.Is(err, unix.EADDRINUSE) {
+			return errDestinationBusy
+		}
 		if err != nil {
 			return fmt.Errorf("destination %s is unavailable: %w", addr, err)
 		}
@@ -162,6 +183,7 @@ func (s Setup) enable(ctx context.Context) error {
 	if err := app.WriteFileAtomic(conf, body, 0600); err != nil {
 		return err
 	}
+	wasEnabled := exists && !active && core.IsEnabled(unit)
 	success := false
 	defer func() {
 		if success {
@@ -170,6 +192,13 @@ func (s Setup) enable(ctx context.Context) error {
 		if !exists {
 			_ = remove(s.ID())
 			return
+		}
+		if !active {
+			if wasEnabled {
+				_ = core.StopService(unit)
+			} else {
+				_ = core.DisableService(unit)
+			}
 		}
 		_ = app.WriteFileAtomic(conf, previous, 0600)
 		_ = app.WriteFileAtomic(unitPath, oldUnit, 0644)
@@ -196,20 +225,33 @@ func (s Setup) enable(ctx context.Context) error {
 	if err := start(unit); err != nil {
 		return fmt.Errorf("start %s: %w", unit, err)
 	}
-	deadline, cancel := context.WithTimeout(ctx, 25*time.Second)
+	if err := s.waitReady(ctx); err != nil {
+		return err
+	}
+	success = true
+	return nil
+}
+
+func (s Setup) waitReady(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, 25*time.Second)
 	defer cancel()
-	tick := time.NewTicker(150 * time.Millisecond)
+	tick := time.NewTicker(250 * time.Millisecond)
 	defer tick.Stop()
 	for {
-		connection, err := (&net.Dialer{Timeout: 150 * time.Millisecond}).DialContext(deadline, "tcp", addr)
+		probeCtx, stop := context.WithTimeout(ctx, 3*time.Second)
+		var err error
+		if s.Mode == ModeWeb {
+			err = s.checkWebListener(probeCtx, s.Addr())
+		} else {
+			_, err = s.CheckPath(probeCtx, s.Addr())
+		}
+		stop()
 		if err == nil {
-			connection.Close()
-			success = true
 			return nil
 		}
 		select {
-		case <-deadline.Done():
-			return fmt.Errorf("%s did not open %s", unit, addr)
+		case <-ctx.Done():
+			return fmt.Errorf("MTProxy on %s did not authenticate: %w", s.Addr(), err)
 		case <-tick.C:
 		}
 	}

@@ -19,7 +19,6 @@ export function mtProxyView(ctx) {
       const removal = field('mtpRemoval');
       const publicPort = field('mtpPort');
       const destination = field('mtpDestination');
-      const portResult = field('mtpPortResult');
       const mode = field('mtpMode');
       const subtitle = field('mtpSubtitle');
       const setStatus = (text, error = false, target = status) => {
@@ -31,7 +30,7 @@ export function mtProxyView(ctx) {
       const isWeb = () => mode.value === 'web';
       const action = (body, signal) => api.mtProxyAction(name, body, mode.value, signal);
       let settings, proxy, replacement, checkTimer, checkRequest, sponsor = '';
-      let loading = 0, busy = false, randomOnKharej = false;
+      let loading = 0, busy = false;
       ctx.setTeardown(() => {
         clearTimeout(checkTimer);
         checkRequest?.abort();
@@ -58,47 +57,30 @@ export function mtProxyView(ctx) {
         return !error;
       };
       const address = (bind, port) => (bind.includes(':') ? '[' + bind + ']' : bind) + ':' + port;
-      function updatePortCommand() {
-        if (!settings || settings.managed) return;
-        const port = randomOnKharej ? 0 : portValue(destination);
-        field('mtpPortCommand').value = 'sudo backpack mtproxy port ' + settings.bind + (port ? ' ' + port : '');
-      }
-      function manualResult() {
-        const line = /^MTPORT (\S+) (FREE|BUSY)$/.exec(portResult.value.trim());
-        if (!line) return false;
-        const port = Number(line[1].split(':').at(-1));
-        if (!validPort(port) || line[1] !== address(settings.bind, port)) return false;
-        if (randomOnKharej && line[2] === 'FREE') {
-          destination.value = port;
-          randomOnKharej = false;
-          updatePortCommand();
-        }
-        if (portValue(destination) !== port) return false;
-        if (line[2] === 'BUSY') {
-          portError(destination, 'mtpDestinationError', 'Port ' + port + ' (TCP) is already in use on Kharej.');
-          return false;
-        }
-        return true;
-      }
-      const checkPorts = async () => {
+      const destinationHint = message => {
+        field('mtpDestinationHint').textContent = message || (settings.managed
+          ? 'The proxy listens on this port on Kharej.'
+          : 'The setup command checks this port on Kharej.');
+      };
+      const checkPorts = async (skipDestinationCheck = false) => {
         clearTimeout(checkTimer);
         checkRequest?.abort();
         if (!settings || !root.isConnected || form.hidden) return false;
         const validPublic = validatePortField(publicPort, 'mtpPublicError');
         const validDestination = validatePortField(destination, 'mtpDestinationError');
         if (!validPublic || !validDestination) return false;
-        const confirmed = settings.managed || manualResult();
-        if (proxy) return true;
+        destinationHint();
         const thisCheck = new AbortController();
         checkRequest = thisCheck;
         const ports = { port: portValue(publicPort), destination: portValue(destination) };
         let errors;
-        try { errors = await action({ action: 'check-ports', ...ports }, thisCheck.signal); }
+        try { errors = await action({ action: 'check-ports', ...ports, skipDestinationCheck }, thisCheck.signal); }
         catch (e) { if (!thisCheck.signal.aborted) throw e; return false; }
         if (thisCheck.signal.aborted) return false;
         portError(publicPort, 'mtpPublicError', errors.public);
-        if (settings.managed) portError(destination, 'mtpDestinationError', errors.destination);
-        return !!(confirmed && ports.port && ports.destination && !errors.public && !errors.destination);
+        portError(destination, 'mtpDestinationError', errors.destination);
+        destinationHint(errors.destinationHint);
+        return !!(ports.port && ports.destination && !errors.public && !errors.destination);
       };
       const scheduleCheck = () => {
         clearTimeout(checkTimer);
@@ -106,7 +88,7 @@ export function mtProxyView(ctx) {
         checkTimer = setTimeout(() => checkPorts().catch(e => setStatus(e.message, true)), 350);
       };
 
-      const show = (info, values = { ...info, host: info.address, port: info.public }) => {
+      const show = (info, values = { host: info.address, domain: info.domain, webIp: info.webIp, sponsor: info.sponsor }) => {
         proxy = info;
         replacement = null;
         field('mtpCommand').value = info.command;
@@ -127,7 +109,6 @@ export function mtProxyView(ctx) {
         host: field('mtpHost').value.trim(),
         port: portValue(publicPort),
         destination: portValue(destination),
-        portResult: portResult.value.trim(),
         domain: isWeb() ? '' : field('mtpDomain').value.trim(),
         webIp: isWeb() ? field('mtpWebIP').value.trim() : '',
         sponsor,
@@ -147,13 +128,10 @@ export function mtProxyView(ctx) {
         publicPort.value = values.port || '';
         destination.value = values.destination || '';
         sponsor = values.sponsor || '';
-        portResult.value = values.portResult || '';
-        randomOnKharej = false;
         validatePortField(publicPort, 'mtpPublicError');
         validatePortField(destination, 'mtpDestinationError');
-        field('mtpManual').hidden = settings.managed || (proxy && !values.portResult);
+        destinationHint();
         field('mtpReplaceNotice').hidden = !proxy || !!settings.note;
-        updatePortCommand();
         form.hidden = false;
         submit.hidden = newSetup.hidden = !!settings.note;
         submit.textContent = proxy ? 'Replace proxy' : 'Create proxy';
@@ -174,8 +152,6 @@ export function mtProxyView(ctx) {
         settings = info;
         proxy = null;
         replacement = null;
-        randomOnKharej = false;
-        portResult.value = '';
         portError(publicPort, 'mtpPublicError', '');
         portError(destination, 'mtpDestinationError', '');
         subtitle.textContent = name + ' \u00b7 Telemt ' + info.version;
@@ -227,63 +203,49 @@ export function mtProxyView(ctx) {
       mode.addEventListener('change', () => load().catch(e => setStatus(e.message, true)));
       publicPort.addEventListener('input', () => {
         validatePortField(publicPort, 'mtpPublicError');
-        const current = settings?.ports?.find(p => p.public === portValue(publicPort));
-        if (current && !destination.value) {
-          destination.value = current.destination;
-          updatePortCommand();
-        }
         scheduleCheck();
       });
       destination.addEventListener('input', () => {
         validatePortField(destination, 'mtpDestinationError');
-        randomOnKharej = false;
-        portResult.value = '';
-        updatePortCommand();
         scheduleCheck();
       });
-      portResult.addEventListener('input', scheduleCheck);
       field('mtpRandomPublic').addEventListener('click', event => work(event.currentTarget, async () => {
         const { port } = await action({ action: 'random-public', destination: portValue(destination) });
         publicPort.value = port;
         await checkPorts();
       }));
       field('mtpRandomDestination').addEventListener('click', event => work(event.currentTarget, async () => {
-        if (settings.managed) {
-          const { port } = await action({ action: 'random-destination' });
-          destination.value = port;
-          await checkPorts();
-          return;
+        const { port, checked } = await action({ action: 'random-destination' });
+        destination.value = port;
+        await checkPorts(true);
+        if (!checked && portValue(destination) === port) {
+          destinationHint('The setup command will check this port on Kharej.');
         }
-        randomOnKharej = true;
-        field('mtpManual').hidden = false;
-        destination.value = '';
-        portResult.value = '';
-        validatePortField(destination, 'mtpDestinationError');
-        updatePortCommand();
-        field('mtpPortCommand').focus();
-        field('mtpPortCommand').select();
-        setStatus('Run this command on Kharej to choose a free port, then paste its result.');
       }));
       form.addEventListener('submit', event => {
         event.preventDefault();
-        if (proxy) {
-          openRemoval(formValues());
-          return;
-        }
         work(submit, async () => {
           setStatus('Checking ports\u2026');
           if (!await checkPorts()) {
             if (publicPort.getAttribute('aria-invalid')) publicPort.focus();
             else if (destination.getAttribute('aria-invalid')) destination.focus();
-            else if (!settings.managed) portResult.focus();
-            setStatus(settings.managed ? 'Check the forwarding ports.' : 'Check the destination on Kharej and paste the FREE result.', true);
+            setStatus('Check the forwarding ports.', true);
+            return;
+          }
+          if (proxy) {
+            openRemoval(formValues());
             return;
           }
           setStatus('Creating setup\u2026');
-          show(await action({
-            action: 'create',
-            ...formValues(),
-          }));
+          try {
+            show(await action({ action: 'create', ...formValues() }));
+          } catch (err) {
+            if (err.message.includes('is already in use on Kharej')) {
+              portError(destination, 'mtpDestinationError', err.message);
+              destination.focus();
+            }
+            throw err;
+          }
           field('mtpCommand').focus();
         });
       });
@@ -291,7 +253,7 @@ export function mtProxyView(ctx) {
         setStatus('Authenticating the proxy through the tunnel\u2026', false, testStatus);
         const { ms } = await action({ action: 'check' });
         if (isWeb()) {
-          setStatus('The WEB bridge authenticated over HTTPS in ' + ms + ' ms. Open the link in compatible Telegram Desktop.', false, testStatus);
+          setStatus('The WEB session and WebSocket authenticated over HTTPS in ' + ms + ' ms. Open the link in compatible Telegram Desktop.', false, testStatus);
           return;
         }
         setStatus('MTProxy authenticated through the tunnel in ', false, testStatus);

@@ -3,6 +3,7 @@ package webui
 import (
 	"encoding/json"
 	"fmt"
+	"math/rand/v2"
 	"net"
 	"net/http"
 	"net/netip"
@@ -216,16 +217,17 @@ func (s *server) handleMTProxy(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, out)
 	case http.MethodPost:
 		var req struct {
-			Action      string `json:"action"`
-			Host        string `json:"host"`
-			Domain      string `json:"domain"`
-			Port        int    `json:"port"`
-			WebIP       string `json:"webIp"`
-			Sponsor     string `json:"sponsor"`
-			Destination int    `json:"destination"`
-			PortResult  string `json:"portResult"`
-			ID          string `json:"id"`
-			Confirmed   bool   `json:"confirmed"`
+			Action               string `json:"action"`
+			Host                 string `json:"host"`
+			Domain               string `json:"domain"`
+			Port                 int    `json:"port"`
+			WebIP                string `json:"webIp"`
+			Sponsor              string `json:"sponsor"`
+			Destination          int    `json:"destination"`
+			SkipDestinationCheck bool   `json:"skipDestinationCheck"`
+			PortResult           string `json:"portResult"` // Accepted from older panels. Join checks the port directly.
+			ID                   string `json:"id"`
+			Confirmed            bool   `json:"confirmed"`
 		}
 		if err := decodeJSON(w, r, &req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -236,16 +238,21 @@ func (s *server) handleMTProxy(w http.ResponseWriter, r *http.Request) {
 			locked = false
 			mtProxyMu.Unlock()
 			errors := map[string]string{}
-			if _, _, err := plan(req.Port, req.Destination); req.Port != 0 && err != nil {
+			reusesForward := saved && draft.Forward != "" && draft.matches(current) && req.Port == draft.Public
+			if _, _, err := plan(req.Port, req.Destination); req.Port != 0 && err != nil && !reusesForward {
 				errors["public"] = err.Error()
 			}
-			if managed && req.Destination != 0 {
-				check := mtproxy.PortCheck{Bind: exit, Port: req.Destination}
-				var status mtproxy.PortStatus
-				if err := run.Call(pair.Node, node.OpMTProxyPort, check, &status); err != nil {
-					errors["destination"] = err.Error()
-				} else if status.Busy {
-					errors["destination"] = mtProxyBusy(status.Port)
+			if managed && req.Destination != 0 && !req.SkipDestinationCheck {
+				if saved && req.Destination == draft.Setup.Port && exit == draft.Setup.BindIP() {
+					errors["destinationHint"] = "This port will be checked after the current proxy is removed."
+				} else {
+					check := mtproxy.PortCheck{Bind: exit, Port: req.Destination}
+					var status mtproxy.PortStatus
+					if err := run.Call(pair.Node, node.OpMTProxyPort, check, &status); err != nil {
+						errors["destinationHint"] = "The setup command will check this port on Kharej."
+					} else if status.Busy {
+						errors["destination"] = mtProxyBusy(status.Port)
+					}
 				}
 			}
 			writeJSON(w, errors)
@@ -264,16 +271,17 @@ func (s *server) handleMTProxy(w http.ResponseWriter, r *http.Request) {
 		case "random-destination":
 			locked = false
 			mtProxyMu.Unlock()
-			if !managed {
-				http.Error(w, "run the random port command on Kharej", http.StatusConflict)
-				return
+			if managed {
+				var status mtproxy.PortStatus
+				if err := run.Call(pair.Node, node.OpMTProxyPort, mtproxy.PortCheck{Bind: exit}, &status); err == nil {
+					writeJSON(w, map[string]any{"port": status.Port, "checked": true})
+					return
+				}
 			}
-			var status mtproxy.PortStatus
-			if err := run.Call(pair.Node, node.OpMTProxyPort, mtproxy.PortCheck{Bind: exit}, &status); err != nil {
-				http.Error(w, err.Error(), http.StatusBadGateway)
-				return
-			}
-			writeJSON(w, status)
+			// This is only a suggestion. Join binds the exact destination on
+			// Kharej before attempting installation.
+			port := 49152 + rand.IntN(16384)
+			writeJSON(w, map[string]any{"port": port, "checked": false})
 		case "create":
 			if saved {
 				http.Error(w, "remove the current MTProxy setup before creating another one on this tunnel", http.StatusConflict)
@@ -292,17 +300,10 @@ func (s *server) handleMTProxy(w http.ResponseWriter, r *http.Request) {
 			check := mtproxy.PortCheck{Bind: port.Bind, Port: port.Destination}
 			if managed {
 				var status mtproxy.PortStatus
-				if err := run.Call(pair.Node, node.OpMTProxyPort, check, &status); err != nil {
-					http.Error(w, err.Error(), http.StatusBadGateway)
-					return
-				}
-				if status.Busy {
+				if err := run.Call(pair.Node, node.OpMTProxyPort, check, &status); err == nil && status.Busy {
 					http.Error(w, mtProxyBusy(status.Port), http.StatusConflict)
 					return
 				}
-			} else if !check.ManualResult(req.PortResult) {
-				http.Error(w, "check the destination port on Kharej and paste its FREE result", http.StatusBadRequest)
-				return
 			}
 			domain := req.Domain
 			if mode == mtproxy.ModeWeb {

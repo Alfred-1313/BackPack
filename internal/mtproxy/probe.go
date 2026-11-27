@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"time"
@@ -22,6 +23,9 @@ const randomStart, randomEnd = 11, 43
 func (s Setup) CheckPath(ctx context.Context, addr string) (time.Duration, error) {
 	if err := s.Validate(); err != nil {
 		return 0, err
+	}
+	if s.Mode == ModeWeb {
+		return 0, errors.New("this setup requires the WEB probe")
 	}
 	ctx, cancel := context.WithTimeout(ctx, 7*time.Second)
 	defer cancel()
@@ -56,17 +60,17 @@ func (s Setup) CheckPath(ctx context.Context, addr string) (time.Duration, error
 	start := time.Now()
 	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", addr)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("could not connect to the TCP forward: %w", err)
 	}
 	defer conn.Close()
 	defer context.AfterFunc(ctx, func() { conn.Close() })()
 	conn.SetDeadline(deadline)
 	if _, err := conn.Write(hello); err != nil {
-		return 0, err
+		return 0, fmt.Errorf("could not send the Fake TLS handshake: %w", err)
 	}
 	reply, err := readTLSRecord(conn, 0x16)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("the forward did not return a Fake TLS ServerHello: %w", err)
 	}
 	if len(reply) < randomEnd || reply[5] != 0x02 {
 		return 0, errors.New("invalid Fake TLS ServerHello")
@@ -79,7 +83,7 @@ func (s Setup) CheckPath(ctx context.Context, addr string) (time.Duration, error
 	for _, kind := range []byte{0x14, 0x17} {
 		record, err := readTLSRecord(conn, kind)
 		if err != nil {
-			return 0, err
+			return 0, fmt.Errorf("the Fake TLS reply was incomplete: %w", err)
 		}
 		mac.Write(record)
 	}
