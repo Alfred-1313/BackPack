@@ -66,17 +66,22 @@ func checkBinary(path string, rel release) error {
 	return nil
 }
 
-func Ensure(ctx context.Context) error {
+// CheckInstalled verifies the standalone release without executing or installing it.
+func CheckInstalled() error {
 	rel, ok := releases[runtime.GOARCH]
 	if runtime.GOOS != "linux" || !ok {
 		return fmt.Errorf("Backhaul Premium %s requires Linux amd64 or arm64", Version)
 	}
+	return checkBinary(binaryPath(), rel)
+}
+
+func Ensure(ctx context.Context) error {
 	installMu.Lock()
 	defer installMu.Unlock()
-	path := binaryPath()
-	if err := checkBinary(path, rel); err == nil || !os.IsNotExist(err) {
+	if err := CheckInstalled(); err == nil || !os.IsNotExist(err) {
 		return err
 	}
+	path, rel := binaryPath(), releases[runtime.GOARCH]
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
