@@ -11,7 +11,7 @@ func TestSetupTokenChoosesOnlyItsOwnGOSTVersion(t *testing.T) {
 		want            int
 	}{
 		{"bpgost1.", `{"name":"peer","target":8080}`, 3},
-		{"bpgost2.", `{"name":"peer","target":8080,"version":1}`, 1},
+		{"bpgost2.", `{"name":"peer","target":8080,"version":1}`, 0},
 		{"bpgost2.", `{"name":"peer","target":8080,"version":2}`, 2},
 		{"bpgost1.", `{"name":"peer","target":8080,"version":2}`, 0},
 		{"bpgost2.", `{"name":"peer","target":8080}`, 0},

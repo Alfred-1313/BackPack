@@ -54,11 +54,9 @@ export function addView(ctx) {
       const managedDirect = new Map([
         ...omniEntries('direct'),
         ...daggerEntries('direct'),
-        ['gost-direct', { value: 'gost-direct', mode: 'gost-direct', label: 'GOST v3.3.3 Direct (Relay + TLS)',
+        ['gost-direct', { value: 'gost-direct', mode: 'gost-direct', label: 'GOST v3.2.6 Direct (Relay + TLS)',
           port: true, secret: true, forward: true }],
         ['gost-direct-v2', { value: 'gost-direct-v2', mode: 'gost-direct-v2', label: 'GOST v2.12.0 Direct (Relay + TLS)',
-          port: true, secret: true, forward: true }],
-        ['gost-direct-v1', { value: 'gost-direct-v1', mode: 'gost-direct-v1', label: 'GOST v1.8 Direct (SOCKS5 + TLS)',
           port: true, secret: true, forward: true }],
       ]);
       /* families */

@@ -47,7 +47,7 @@ func ctExtraCases() []*connTestCase {
 	for _, mode := range omni.Options() {
 		cases = append(cases, &connTestCase{kind: mode["direction"], tr: ctOmniPrefix + mode["value"], extra: true})
 	}
-	for _, mode := range []string{gostdirect.ModeV3, gostdirect.ModeV2, gostdirect.ModeV1} {
+	for _, mode := range []string{gostdirect.ModeV3, gostdirect.ModeV2} {
 		cases = append(cases, &connTestCase{kind: "direct", tr: mode, extra: true})
 	}
 	return append(cases, ctBackhaulCases()...)

@@ -17,7 +17,6 @@ var script string
 
 const ModeV3 = "gost-direct"
 const ModeV2 = "gost-direct-v2"
-const ModeV1 = "gost-direct-v1"
 
 func ModeVersion(mode string) int {
 	switch mode {
@@ -25,8 +24,6 @@ func ModeVersion(mode string) int {
 		return 3
 	case ModeV2:
 		return 2
-	case ModeV1:
-		return 1
 	default:
 		return 0
 	}
@@ -51,7 +48,7 @@ func ReadTokenInfo(raw string) (TokenInfo, error) {
 	if err != nil || json.Unmarshal(body, &info) != nil ||
 		info.Name == "" || info.Target < 1 || info.Target > 65535 ||
 		(prefix == "bpgost1" && info.Version != 3) ||
-		(prefix == "bpgost2" && info.Version != 1 && info.Version != 2) {
+		(prefix == "bpgost2" && info.Version != 2) {
 		return TokenInfo{}, errors.New("invalid GOST Direct setup token")
 	}
 	return info, nil

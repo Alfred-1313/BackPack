@@ -8,8 +8,10 @@ import platform
 import re
 import secrets
 import shutil
+import socket
 import subprocess
 import sys
+import time
 from urllib.parse import quote, urlencode
 
 def run(*args):
@@ -21,6 +23,18 @@ def port(value):
     if not 1 <= n <= 65535:
         raise ValueError("port must be 1-65535")
     return n
+
+def wait_ready(unit, listen_port):
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        try:
+            with socket.create_connection(("127.0.0.1", listen_port), timeout=0.2):
+                pass
+            run("systemctl", "is-active", "--quiet", unit)
+            return
+        except OSError:
+            time.sleep(0.15)
+    raise ValueError(f"GOST did not start listening on TCP port {listen_port}")
 
 def test_paths(name):
     if not re.fullmatch(r"bpct[a-f0-9]{12}", name):
@@ -40,16 +54,6 @@ def v2_config(join, host, endpoint, target, ingress, password, cert, key, tempor
     return {"ServeNodes": [f"tcp://{bind}:{ingress}/{destination}"],
             "ChainNodes": [f"relay+tls://{credentials}@{host}:{endpoint}?{options}"]}
 
-def v1_config(join, host, endpoint, target, ingress, password, cert, key, temporary):
-    bind = "127.0.0.1" if temporary else "0.0.0.0"
-    config = {"listen": f"0.0.0.0:{endpoint}" if join else f"{bind}:{ingress}",
-              "target": f"127.0.0.1:{target}", "password": password, "certificate": str(cert)}
-    if join:
-        config["key"] = str(key)
-    else:
-        config["server"] = f"{host}:{endpoint}"
-    return config
-
 def install(form):
     temporary = form.get("_test", False)
     join = form["action"] == "join"
@@ -60,26 +64,35 @@ def install(form):
             raise ValueError("invalid GOST Direct setup token")
         form = json.loads(base64.b64decode(payload, validate=True))
         version = form.get("version", 3)
-        if (prefix == "bpgost1" and version != 3) or (prefix == "bpgost2" and version not in (1, 2)):
+        if (prefix == "bpgost1" and version != 3) or (prefix == "bpgost2" and version != 2):
             raise ValueError("GOST setup token version does not match its selected core")
     name = form["name"]
     if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_-]{0,31}", name):
         raise ValueError("use 1-32 letters, digits, underscores or hyphens for the name")
     host = str(ipaddress.IPv4Address(form["peer"]))
     endpoint, target = port(form["port"]), port(form["target"])
+    ingress = 0 if join else port(form["ingress"])
     weight = int(form.get("cpuWeight", 0))
     restart = int(form.get("restartSeconds", 0))
     if not 0 <= weight <= 10000 or not 0 <= restart <= 60:
         raise ValueError("invalid GOST CPU weight or restart delay")
     arch = {"x86_64":"amd64","aarch64":"arm64"}[platform.machine()]
     version = form.get("version", 3)
-    helpers = {1: ("gost-v1", "v1.8"), 2: ("gost-v2", "v2.12.0"), 3: ("gost", "v3.3.3")}
+    helpers = {2: ("gost-v2", "v2.12.0"), 3: ("gost", "v3.2.6")}
     if type(version) is not int or version not in helpers:
         raise ValueError("unsupported GOST version")
     helper, release = helpers[version]
     binary = Path("/usr/local/lib/backpack/helpers") / helper / (release+"-"+arch) / "gost"
     if not os.access(binary, os.X_OK):
         raise ValueError(f"install the pinned GOST {release} helper with BP_HELPERS={helper}")
+    listen_port = endpoint if join else ingress
+    listen_host = "127.0.0.1" if temporary and not join else "0.0.0.0"
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as candidate:
+        candidate.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            candidate.bind((listen_host, listen_port))
+        except OSError as err:
+            raise ValueError(f"GOST TCP port {listen_port} is unavailable: {err.strerror}") from err
     directory = Path("/etc/backpack/gost-direct") / name
     unit = Path("/etc/systemd/system") / ("bp-gost-direct-"+name+".service")
     if temporary:
@@ -90,7 +103,6 @@ def install(form):
     try:
         cert, key = directory/"cert.pem", directory/"key.pem"
         token = ""
-        ingress = 0
         if join:
             password = form["password"]
             cert.write_text(form["certificate"])
@@ -106,7 +118,6 @@ def install(form):
                 "forwarder":{"nodes":[{"name":"target","addr":"127.0.0.1:"+str(target)}]}}
             config = {"services":[service]}
         else:
-            ingress = port(form["ingress"])
             password = form.get("secret") or secrets.token_urlsafe(36)
             if not re.fullmatch(r"[A-Za-z0-9_-]{32,96}", password):
                 raise ValueError("invalid relay credential")
@@ -126,9 +137,7 @@ def install(form):
                 "handler":{"type":"tcp","chain":"kharej"},
                 "forwarder":{"nodes":[{"name":"target","addr":"127.0.0.1:"+str(target)}]}}
             config = {"services":[service],"chains":[{"name":"kharej","hops":[{"name":"relay","nodes":[node]}]}]}
-        if version == 1:
-            config = v1_config(join, host, endpoint, target, ingress, password, cert, key, temporary)
-        elif version == 2:
+        if version == 2:
             config = v2_config(join, host, endpoint, target, ingress, password, cert, key, temporary)
         cfg = directory/"gost.json"
         cfg.write_text(json.dumps(config))
@@ -151,9 +160,7 @@ def install(form):
             run("systemctl","start",unit.name)
         else:
             run("systemctl","enable","--now",unit.name)
-        import time
-        time.sleep(0.6)
-        run("systemctl","is-active","--quiet",unit.name)
+        wait_ready(unit.name, listen_port)
         return {"token":token, "unit":unit.name}
     except BaseException:
         if unit_created:

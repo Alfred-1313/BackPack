@@ -37,7 +37,7 @@ with the optional helper enabled.
 sudo env BP_BUILD_FROM_SOURCE=1 BP_HELPERS=gost bash install.sh
 ```
 
-The installer checks the official GOST v3.3.3 archive against a pinned SHA-256
+The installer checks the official GOST v3.2.6 archive against a pinned SHA-256
 digest and installs the executable in a versioned directory. See the
 [GOST setup steps](transports.md#gost-v3-relay-over-tls).
 
