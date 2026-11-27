@@ -38,22 +38,51 @@ var releases = map[string]release{
 	"arm64": {3898136, "7cfa1ab04b090c9a2ff3d90aa5cd537511b4fc5801452bc8915e0ed9c3f8fd51"},
 }
 
-func binaryPath() string {
-	return "/usr/local/lib/backpack/helpers/backhaul/" + Version + "-" + runtime.GOARCH + "/backhaul_premium"
+const binaryDir = "/usr/local/lib/backpack/helpers/backhaul"
+
+var localAMD64 = release{
+	size:   11083120,
+	digest: "6931b4cefad948af639ad97984356ce04d4e61c4d2efdd9877eea455ef6514b1",
 }
 
 var installMu sync.Mutex
 
-// BinaryStatus checks the pinned official binary without downloading it.
+// BinaryStatus checks the selected core without downloading it.
 func BinaryStatus() error {
-	rel, ok := releases[runtime.GOARCH]
-	if runtime.GOOS != "linux" || !ok {
-		return fmt.Errorf("Backhaul Premium %s requires Linux amd64 or arm64", Version)
+	_, err := verifiedBinary()
+	return err
+}
+
+func verifiedBinary() (string, error) {
+	if runtime.GOOS != "linux" {
+		return "", fmt.Errorf("Backhaul Premium %s requires Linux amd64 or arm64", Version)
 	}
-	if err := checkBinary(binaryPath(), rel); err != nil {
-		return fmt.Errorf("verified Backhaul Premium %s is unavailable: %w", Version, err)
+	path, err := installedBinary(binaryDir, runtime.GOARCH)
+	if err != nil {
+		return "", fmt.Errorf("verified Backhaul Premium %s is unavailable: %w", Version, err)
 	}
-	return nil
+	return path, nil
+}
+
+func installedBinary(dir, arch string) (string, error) {
+	rel, ok := releases[arch]
+	if !ok {
+		return "", fmt.Errorf("Backhaul Premium %s requires Linux amd64 or arm64", Version)
+	}
+	if arch == "amd64" {
+		// A server administrator can install the pinned local build alongside
+		// the standard core in BackPack's helper directory.
+		local := filepath.Join(dir, Version+"-amd64-local", "backhaul_premium")
+		err := checkBinary(local, localAMD64)
+		if err == nil {
+			return local, nil
+		}
+		if !os.IsNotExist(err) {
+			return "", fmt.Errorf("local Backhaul core %s: %w", local, err)
+		}
+	}
+	path := filepath.Join(dir, Version+"-"+arch, "backhaul_premium")
+	return path, checkBinary(path, rel)
 }
 
 func checkBinary(path string, rel release) error {
@@ -86,8 +115,8 @@ func Ensure(ctx context.Context) error {
 	}
 	installMu.Lock()
 	defer installMu.Unlock()
-	path := binaryPath()
-	if err := checkBinary(path, rel); err == nil || !os.IsNotExist(err) {
+	path, err := installedBinary(binaryDir, runtime.GOARCH)
+	if err == nil || !os.IsNotExist(err) {
 		return err
 	}
 	dir := filepath.Dir(path)
@@ -191,7 +220,8 @@ func Run(ctx context.Context, name string, c config.BackhaulConfig) error {
 	if err != nil {
 		return err
 	}
-	if err := BinaryStatus(); err != nil {
+	binary, err := verifiedBinary()
+	if err != nil {
 		return err
 	}
 	if c.Mode == "tun-ipx" && c.IPXProfile == "tcp" {
@@ -216,7 +246,7 @@ func Run(ctx context.Context, name string, c config.BackhaulConfig) error {
 	}
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	cmd := exec.CommandContext(runCtx, binaryPath(), "-c", file.Name())
+	cmd := exec.CommandContext(runCtx, binary, "-c", file.Name())
 	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGTERM) }
 	cmd.WaitDelay = 5 * time.Second
 	stream := &tokenRedactor{secret: c.Token, reject: cancel}
