@@ -17,6 +17,7 @@ import (
 	"github.com/backpack/backpack/internal/matrix"
 	"github.com/backpack/backpack/internal/node"
 	"github.com/backpack/backpack/internal/omni"
+	"github.com/backpack/backpack/internal/pengutunnel"
 	"github.com/backpack/backpack/internal/tunhist"
 )
 
@@ -61,6 +62,14 @@ func relayEngineChecks(parent context.Context) []healthRow {
 		dagger.VersionLabel = "v4.3.1"
 	}
 	checks = append(checks, dagger)
+	pengu := healthRow{Group: group, Name: pengutunnel.Label, Level: "ok", Version: pengutunnel.Version, Detail: "Installed"}
+	if err := pengutunnel.BinaryStatus(); err != nil {
+		pengu.Level, pengu.Version, pengu.Detail = "fail", "", "Official core is installed when the first PenguTunnel is created"
+		if !os.IsNotExist(err) {
+			pengu.Detail = err.Error()
+		}
+	}
+	checks = append(checks, pengu)
 	omniRow := healthRow{Group: group, Name: "OmniTunnel", Level: "fail", Detail: "Not installed"}
 	if rev := omni.InstalledRevision(); rev != "" {
 		omniRow.Level, omniRow.Version, omniRow.Detail = "ok", "Revision "+rev[:7], "Installed"

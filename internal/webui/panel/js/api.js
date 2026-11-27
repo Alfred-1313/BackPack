@@ -87,6 +87,8 @@ export const daggerOptions = () => get('/api/dagger');
 export const daggerCreate = body => post('/api/dagger', body);
 export const backhaulOptions = () => get('/api/backhaul');
 export const backhaulCreate = body => post('/api/backhaul', body);
+export const penguOptions = () => get('/api/pengu');
+export const penguCreate = form => post('/api/pengu', form);
 export const omniRun = (args, token = '') => post('/api/omni', { args, token });
 export const tunnelOptions = () => get('/api/tunnel/options');
 

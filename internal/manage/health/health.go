@@ -88,7 +88,7 @@ func tunnelHealthWith(t core.Tunnel, pairs [][2]string) Health {
 	case !h.Active:
 		h.State, h.Detail = "stopped", "service is not running"
 	case t.UsesExternalHelper():
-		h.State, h.Detail = "unknown", "DaggerConnect service is active; see its log for peer status"
+		h.State, h.Detail = "unknown", "Tunnel engine is active; see its log for peer status"
 	default:
 		if !tunnelspec.IsDirectKind(t) {
 			if strings.HasPrefix(t.Transport, "native/") {

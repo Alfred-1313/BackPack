@@ -186,6 +186,14 @@ type ShareLink struct {
 	HelperShortID   string `json:"hsid,omitempty"`
 	HelperCA        string `json:"hca,omitempty"`
 
+	PenguFamily   string `json:"pgf,omitempty"`
+	PenguCipher   string `json:"pgc,omitempty"`
+	PenguHeader   string `json:"pgh,omitempty"`
+	PenguWorkers  int    `json:"pgw,omitempty"`
+	PenguWindow   int    `json:"pgs,omitempty"`
+	PenguICMPType int    `json:"pgt,omitempty"`
+	PenguICMPCode int    `json:"pgi,omitempty"`
+
 	// The PCK engine's tuning, direct pck only. The preset above is what sets
 	// them; these are what an operator set over it. Two of them are paired —
 	// the cipher, which the two ends must agree on to read each other at all,
@@ -708,6 +716,11 @@ func shareLinkOf(name, host string, cfg config.Config) (string, error) {
 	l := ShareLink{Name: name, Host: strings.TrimSpace(host)}
 
 	switch {
+	case cfg.Pengu.Present():
+		if cfg.Pengu.Side != "iran" {
+			return "", fmt.Errorf("generate the PenguTunnel setup link on Iran")
+		}
+		return penguShare(name, cfg.Pengu).Encode()
 	case cfg.Backhaul.Present():
 		if cfg.Backhaul.Role != "server" {
 			return "", fmt.Errorf("generate the Backhaul setup link on Iran")

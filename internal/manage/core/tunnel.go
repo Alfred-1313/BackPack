@@ -24,6 +24,7 @@ type Tunnel struct {
 	Transport       string
 	MatrixDirection string
 	EasyTierReverse bool
+	PenguDirection  string
 	Addr            string   // listener or dial target visible to the peer
 	Ports           []string // server only
 	Service         string
@@ -42,7 +43,7 @@ func (t Tunnel) IsDagger() bool { return strings.HasPrefix(t.Transport, "dagger/
 
 // UsesExternalHelper is true when the data plane has its own health and counters.
 func (t Tunnel) UsesExternalHelper() bool {
-	return t.IsDagger() || strings.HasPrefix(t.Transport, "backhaul/")
+	return t.IsDagger() || strings.HasPrefix(t.Transport, "backhaul/") || strings.HasPrefix(t.Transport, "pengu/")
 }
 
 // List scans the config directory and returns all tunnels, sorted by name.
@@ -79,6 +80,16 @@ func tunnelOf(name string, cfg config.Config) (Tunnel, bool) {
 			t.Role = "main"
 		}
 		t.Addr = net.JoinHostPort(c.Local.IP, strconv.Itoa(int(c.Local.Port)))
+	case cfg.Pengu.Present():
+		c := cfg.Pengu
+		t.Role, t.Transport, t.Ports = "server", "pengu/"+c.Mode, c.Ports
+		t.PenguDirection, t.Addr = c.Direction, c.KharejHost
+		if c.Side == "kharej" {
+			t.Role, t.Addr = "client", c.IranHost
+		}
+		if c.Port != 0 {
+			t.Addr = net.JoinHostPort(t.Addr, strconv.Itoa(int(c.Port)))
+		}
 	case cfg.Backhaul.Present():
 		c := cfg.Backhaul
 		t.Role, t.Transport, t.Ports = c.Role, "backhaul/"+c.Mode, c.Ports

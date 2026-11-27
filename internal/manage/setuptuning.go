@@ -9,6 +9,7 @@ import (
 	"github.com/backpack/backpack/internal/matrix"
 	"github.com/backpack/backpack/internal/nativebackhaul"
 	"github.com/backpack/backpack/internal/omni"
+	"github.com/backpack/backpack/internal/pengutunnel"
 )
 
 // SetupTuning is shared by the imported transports' setup forms. The preset
@@ -39,6 +40,17 @@ var setupPerformance = buildSetupPerformance()
 
 func buildSetupPerformance() map[string]SetupPerformance {
 	m := map[string]SetupPerformance{}
+	for _, mode := range pengutunnel.Options() {
+		p := performance("Parallel connections", 1, 2, 4, 1, 32)
+		if mode.TUN {
+			p = performance("Parallel connections", 2, 8, 16, 1, 32)
+			p.MTU = true
+		}
+		if mode.IPX {
+			p = performance("TUN MTU (bytes)", 1280, 1380, 1400, 576, 1500)
+		}
+		m[pengutunnel.Prefix+mode.ID] = p
+	}
 	for _, mode := range nativebackhaul.Options() {
 		p := performance("Parallel connections", 2, 4, 8, 1, 16)
 		if mode.Value == "tun-tcp" {

@@ -710,6 +710,10 @@ func StartConnTestIran(o ConnTestOptions) (*ConnTestIran, string, error) {
 				}
 			} else if _, ok := strings.CutPrefix(c.tr, ctDaggerPrefix); ok {
 				c.skip = s.daggerSkip(c.tr)
+			} else if mode, _, ok := ctPenguMode(c.tr); ok {
+				if mode.IPX && ctFamily(host) != "IPv4" {
+					c.skip = "PenguTunnel IPX requires an IPv4 path"
+				}
 			} else if c.tr == ctBackhaulIPX {
 				if ip := net.ParseIP(host); ip.To4() == nil {
 					c.skip = "Backhaul IPX requires an IPv4 path"

@@ -41,6 +41,9 @@ var ctTransportNames = map[string]string{
 }
 
 func ctName(tr string) string {
+	if mode, _, ok := ctPenguMode(tr); ok {
+		return mode.Label
+	}
 	if _, scheme, ok := ctEasyTierMode(tr); ok {
 		return "EasyTier / " + strings.ToUpper(scheme)
 	}

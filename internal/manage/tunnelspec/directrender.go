@@ -496,7 +496,7 @@ func DialsOut(t Tunnel) bool {
 // The management screens use it to route to the right editor: the reverse
 // editor reads [server] and [client], which these files do not have.
 func IsDirectKind(t Tunnel) bool {
-	return strings.HasPrefix(t.Transport, "direct/") || strings.HasPrefix(t.Transport, "l3/")
+	return t.PenguDirection == "direct" || strings.HasPrefix(t.Transport, "direct/") || strings.HasPrefix(t.Transport, "l3/")
 }
 
 // How a tunnel describes itself on a card.
@@ -509,6 +509,9 @@ func IsDirectKind(t Tunnel) bool {
 // TunnelDirection reports whether a tunnel is dialled from Iran or waits for
 // kharej to dial in — "direct" or "reverse".
 func TunnelDirection(t Tunnel) string {
+	if t.PenguDirection != "" {
+		return t.PenguDirection
+	}
 	if t.Transport == "matrix" {
 		return t.MatrixDirection
 	}

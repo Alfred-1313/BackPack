@@ -58,6 +58,7 @@ them both ends have to agree on. This says what exists.
 | `direct` | `LegacyDirectConfig` | Direct is the [direct] stream tunnel, removed in v2.0.0. It is read only so that such a file is recognised and refused by name rather than read as empty; see config/legacydirect.go. |
 | `l3` | `L3Config` | L3 is a direct layer-3 tunnel, and is present only in a configuration that asks for one. It shares nothing with Server and Client: a file without an [l3] table leaves this zero, L3.Enabled() reads false, and the reverse tunnel runs exactly as it always has. See config/l3.go. |
 | `matrix` | `MatrixConfig` | Matrix configures this host as Main or as a node in a private Tinc network. |
+| `pengu` | `PenguConfig` | Pengu selects the separately installed PenguTunnel engine. |
 | `server` | `ServerConfig` | Server is the reverse tunnel's Iran end: it listens for the client and exposes the forwarded ports. Present only in a configuration that asks for one; the three engines are mutually exclusive. |
 
 ## DaggerConfig
@@ -133,6 +134,33 @@ them both ends have to agree on. This says what exists.
 | `pck_flags` | `[]string` | PckFlags is the cycle of TCP flag combinations stamped on outgoing segments, one per packet, spelled as in tcpdump: ["PA"] is push+ack, the flags bulk data carries and the default. A longer cycle varies the pattern for a path that matches on it. Both ends may differ — each side only decides what it sends. |
 | `pck_gateway_mac` | `string` | PckGatewayMAC is the next hop's hardware address, used when frames are injected at the link layer. Empty means read it from the kernel's neighbour table, which is where it already is. Set it only where that lookup is wrong — some virtualised networks answer ARP with an address the hypervisor then rewrites. |
 | `pck_interface` | `string` | PckInterface pins the carrier to a named egress device. Empty — the normal case — lets the route to the peer choose, which is right on every host with one uplink and on most with several. |
+
+## PenguConfig
+
+| Key | Type | Description |
+|---|---|---|
+| `cipher` | `string` | Cipher selects AES-GCM or ChaCha20-Poly1305. |
+| `direction` | `string` | Direction selects which server dials a stream transport. |
+| `family` | `string` | Family defaults to IPv4 and selects the listener address family. |
+| `header` | `string` | Header selects an optional PenguTunnel header for tcpfwd. |
+| `health_port` | `uint16` | HealthPort is the health port shared by both ends. |
+| `icmp_code` | `int` | ICMPCode selects the code used for the ICMP profile. |
+| `icmp_type` | `*int` | ICMPType selects the type used for the ICMP profile. |
+| `iran_host` | `string` | IranHost is the address of the Iran endpoint. |
+| `iran_tunnel` | `string` | IranTunnel assigns the Iran IPv4 interface for TUN. |
+| `key` | `string` | Key is the shared 32-byte base64 tunnel secret. |
+| `kharej_host` | `string` | KharejHost is the address of the Kharej endpoint when required. |
+| `kharej_tunnel` | `string` | KharejTunnel assigns the Kharej IPv4 interface for TUN. |
+| `mode` | `string` | Mode selects a port forward, PGprotocol, or IPX profile. |
+| `mtu` | `int` | MTU limits the TUN interface packet size. |
+| `pool` | `int` | Pool sets the number of parallel stream carriers. |
+| `port` | `uint16` | Port is the carrier listener port for stream transports. |
+| `ports` | `[]string` | Ports are the edge's forwarding rules, with UDP rules prefixed by udp/. |
+| `preset` | `string` | Preset sets the core's tuning profile. |
+| `side` | `string` | Side selects the Iran edge or Kharej exit. |
+| `tls_name` | `string` | TLSName is the server name used when dialing a TLS transport. |
+| `window` | `int` | Window sets the stream receive window for No-TUN. Zero uses the core default. |
+| `workers` | `int` | Workers caps worker CPU cores. Zero enables automatic tuning. |
 
 ## RoutedLinkSettings
 

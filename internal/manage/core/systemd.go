@@ -136,7 +136,7 @@ func WriteUnit(name string) error {
 // of it that will drift.
 func UnitFor(name string) string {
 	var restartPolicy string
-	if cfg, err := LoadTunnelConfig(name); err == nil && (cfg.Dagger.Present() || cfg.Backhaul.Present()) {
+	if cfg, err := LoadTunnelConfig(name); err == nil && (cfg.Dagger.Present() || cfg.Backhaul.Present() || cfg.Pengu.Present()) {
 		restartPolicy = "RestartPreventExitStatus=78\n"
 	}
 	return fmt.Sprintf(`[Unit]

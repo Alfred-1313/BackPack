@@ -56,7 +56,8 @@ func ctExtraCases() []*connTestCase {
 	for _, mode := range []string{gostdirect.ModeV3, gostdirect.ModeV2} {
 		cases = append(cases, &connTestCase{kind: "direct", tr: mode, extra: true})
 	}
-	return append(cases, ctBackhaulCases()...)
+	cases = append(cases, ctBackhaulCases()...)
+	return append(cases, ctPenguCases()...)
 }
 
 func ctExtraName() string {
@@ -243,6 +244,9 @@ func (w *ctExtraWorker) perform(ctx context.Context, link ConnTestLink, job ctEx
 	}
 	switch job.Action {
 	case "port":
+		if _, _, ok := ctPenguMode(job.Mode); ok {
+			return w.ports.take(job.Mode)
+		}
 		if _, _, ok := ctEasyTierMode(job.Mode); ok {
 			if _, err := easytier.Binary(); err != nil {
 				return 0, err
@@ -297,6 +301,9 @@ func (w *ctExtraInstance) join(ctx context.Context, link ConnTestLink, job ctExt
 	}
 	if matrix.IsDirectionalMode(job.Mode) {
 		return w.joinMatrix(ctx, link, job)
+	}
+	if mode, direction, ok := ctPenguMode(job.Mode); ok {
+		return w.joinPengu(ctx, link, job, mode, direction)
 	}
 	if ctBackhaulTransport(job.Mode) {
 		return w.joinBackhaul(ctx, link, job)
@@ -452,6 +459,9 @@ func (s *ConnTestIran) setupExtra(ctx context.Context, c *connTestCase, mode str
 	}
 	if matrix.IsDirectionalMode(mode) {
 		return s.setupMatrix(ctx, c, ctrl)
+	}
+	if spec, direction, ok := ctPenguMode(mode); ok {
+		return s.setupPengu(ctx, c, spec, direction)
 	}
 	if ctBackhaulTransport(mode) {
 		return s.setupBackhaul(ctx, c, mode)

@@ -15,6 +15,7 @@ import (
 	"github.com/backpack/backpack/internal/client"
 	"github.com/backpack/backpack/internal/daggerconnect"
 	"github.com/backpack/backpack/internal/nativebackhaul"
+	"github.com/backpack/backpack/internal/pengutunnel"
 
 	"github.com/backpack/backpack/internal/server"
 	"github.com/backpack/backpack/internal/utils"
@@ -113,6 +114,17 @@ func Run(configPath string, ctx context.Context) {
 		}
 		return
 	}
+	if cfg.Pengu.Present() {
+		if err := pengutunnel.Run(ctx, tunnelNameFromPath(configPath), cfg.Pengu); err != nil {
+			logger.Errorf("PenguTunnel stopped: %v", err)
+			if errors.Is(err, pengutunnel.ErrLicenseRejected) {
+				os.Exit(pengutunnel.LicenseExitCode)
+			}
+			os.Exit(1)
+		}
+		return
+	}
+
 	if cfg.Backhaul.Present() {
 		if cfg.Backhaul.Native {
 			ctx, cancel := context.WithCancel(ctx)

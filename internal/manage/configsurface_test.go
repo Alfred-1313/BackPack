@@ -42,6 +42,7 @@ var engineDirs = []string{
 	"../backhaulpremium",
 	"../nativebackhaul",
 	"../matrix",
+	"../pengutunnel",
 	"../utils",
 	"../web",
 	"../socks",
@@ -55,6 +56,7 @@ var engineDirs = []string{
 // each with the reason. An entry here is a decision, not a silence — which is
 // the point of an allow-list over a skip.
 var configSurfaceExceptions = map[string]string{
+	"easytier_reverse": "setup direction metadata; the engine acts on the rendered L3 mode",
 	// A label, by design: the engine reads the values a preset expanded into,
 	// never the name it came from. config/l3.go says so on the field.
 	"preset": "a label recording which profile the values came from; the engine reads the values",

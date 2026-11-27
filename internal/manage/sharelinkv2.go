@@ -52,6 +52,7 @@ var shareFieldIDs = []string{
 	"bl", "bq",
 	"bhi", "bto",
 	"dci", "dum", "ep", "er",
+	"pgf", "pgc", "pgh", "pgw", "pgs", "pgt", "pgi",
 }
 
 // shareWords are the values a link repeats, each written as its index. Never
@@ -64,6 +65,7 @@ var shareWords = []string{
 	"native-xtcpmux", "native-xwsmux", "native-tun-tcp",
 	"native-dagger-http", "native-dagger-https", "native-dagger-xhttp",
 	"backhaul-xtcpmux", "backhaul-xwsmux", "backhaul-tun-tcp", "backhaul-tun-ipx",
+	"pengu-tcpfwd", "pengu-tls", "pengu-num1", "pengu-num2", "pengu-num3", "pengu-icmp", "pengu-ipip", "pengu-ospf", "pengu-gre", "pengu-ah", "pengu-esp",
 }
 
 // How a string value is written.

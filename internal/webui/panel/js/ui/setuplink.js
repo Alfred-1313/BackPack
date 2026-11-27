@@ -68,6 +68,7 @@ export function setupLinkHTML(info) {
          refuses to guess it — the command above carries --host for it. */
       ? `<div class="tl-note wr">This server's own address could not be found, so the link does not name it. Put the address the kharej reaches this server at in place of IRAN_SERVER_IP above.</div>`
       : `<div class="tl-note wr">This server's public address could not be found, so the other side will ask for it.</div>`) : ''}
+    ${info.pengu ? '<div class="tl-note">PenguCloud must activate the Iran origin IP. To use a separately issued key, save it on Kharej as <code>/etc/backpack/pengutunnel.license</code> with mode 0600 before running Setup.</div>' : ''}
     ${info.pending ? `<div class="tl-note">Run the command on ${terminal} within 15 minutes.</div>` : ''}
     <div class="tl-note">${info.gre
       ? 'Holds the GRE key and both addresses — send it only to the server it is for.'

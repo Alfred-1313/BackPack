@@ -650,6 +650,8 @@ type Config struct {
 	Matrix MatrixConfig `toml:"matrix"`
 	// Backhaul selects the official Backhaul Premium engine.
 	Backhaul BackhaulConfig `toml:"backhaul"`
+	// Pengu selects the separately installed PenguTunnel engine.
+	Pengu PenguConfig `toml:"pengu"`
 	// Direct is the [direct] stream tunnel, removed in v2.0.0. It is read only
 	// so that such a file is recognised and refused by name rather than read
 	// as empty; see config/legacydirect.go.

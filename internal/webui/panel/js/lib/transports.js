@@ -17,6 +17,13 @@ const gostNames = new Map([
 ]);
 
 export function transportDisplay(id, label) {
+  const pengu = id?.match(/^pengu(?:[-/])(?:(?:direct|reverse)-)?(tcpfwd|tls|num[123]|icmp|ipip|ospf|gre|ah|esp)$/);
+  if (pengu) {
+    const mode = pengu[1];
+    const name = mode === 'tcpfwd' ? 'tcpfwd' : mode === 'tls' ? 'TLS' :
+      mode.startsWith('num') ? 'PGprotocol-' + mode.toUpperCase() : 'TUN / IPX ' + mode.toUpperCase();
+    return { name, source: 'PenguTunnel' };
+  }
   if (id === 'easytier' || id === 'easytier-reverse') return { name: label || 'EasyTier', source: 'Easy-Mesh' };
   const easyTier = id?.match(/^easytier-(?:direct|reverse)-(tcp|udp|ws|wss)$/);
   if (easyTier) return { name: 'EasyTier / ' + easyTier[1].toUpperCase(), source: 'Easy-Mesh' };

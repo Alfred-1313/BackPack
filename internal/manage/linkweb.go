@@ -39,6 +39,7 @@ type SetupLinkInfo struct {
 	// token, so the screen's warning names what it does hold.
 	GRE     bool `json:"gre,omitempty"`
 	Pending bool `json:"pending,omitempty"`
+	Pengu   bool `json:"pengu,omitempty"`
 	Matrix  bool `json:"matrix,omitempty"`
 	// GRETAP is configured from the other server's Add tunnel form.
 	GRETAPPeer      *PeerForm `json:"gretapPeer,omitempty"`
@@ -49,6 +50,12 @@ type SetupLinkInfo struct {
 // link names; empty uses this server's public address, as the menu does.
 func SetupLinkFor(name, host string) (SetupLinkInfo, error) {
 	cfg, cfgErr := LoadTunnelConfig(name)
+	if cfgErr == nil && cfg.Pengu.Present() {
+		if cfg.Pengu.Side != "iran" {
+			return SetupLinkInfo{}, fmt.Errorf("open Setup link on Iran for PenguTunnel")
+		}
+		return importedSetupLink(penguShare(name, cfg.Pengu))
+	}
 	if cfgErr == nil && cfg.Backhaul.Present() {
 		if cfg.Backhaul.Role != "server" {
 			return SetupLinkInfo{}, fmt.Errorf("open Setup link on Iran to get the Backhaul join command")
@@ -124,5 +131,6 @@ func importedSetupLink(l ShareLink) (SetupLinkInfo, error) {
 		return SetupLinkInfo{}, err
 	}
 	return SetupLinkInfo{Name: l.Name, Link: raw, For: "kharej", Kind: l.Kind, Host: l.Host,
+		Pengu: strings.HasPrefix(l.Tr, "pengu-"),
 		Apply: "sudo backpack link apply '" + raw + "'", Install: InstallCommand(raw), Where: "sudo backpack link apply"}, nil
 }

@@ -30,10 +30,11 @@ export function addView(ctx) {
       let opts = { families: [], presets: [] };
       try { opts = await api.tunnelOptions(); } catch (e) { oops(e); }
 
-      const [omniChoices, backhaulChoices, daggerChoices] = await Promise.all([
+      const [omniChoices, backhaulChoices, daggerChoices, penguChoices] = await Promise.all([
         api.omniOptions().catch(e => { oops(e); return []; }),
         api.backhaulOptions().catch(e => { oops(e); return []; }),
         api.daggerOptions().catch(e => { oops(e); return []; }),
+        api.penguOptions().catch(e => { oops(e); return []; }),
       ]);
       const omniEntries = direction => omniChoices.filter(item => item.direction === direction).map(item => {
         const value = 'omni-' + item.value;
@@ -44,6 +45,13 @@ export function addView(ctx) {
         .map(item => ['dagger-' + item.value, {
           ...item, dagger: true, mode: item.value, value: 'dagger-' + item.value, port: item.value !== 'tun',
         }]);
+      const penguEntries = direction => penguChoices
+        .filter(item => !item.ipx || direction === 'direct')
+        .map(item => {
+          const value = 'pengu-' + item.id;
+          return [value, { ...item, value, mode: item.id, pengu: true, port: !item.ipx,
+            forward: true, needsRoot: item.tun, setupFamilies: item.ipx ? ['ipv4'] : ['ipv4', 'ipv6'] }];
+        });
       const matrixEntry = direction => {
         const value = 'matrix-' + direction;
         return [value, { value, mode: 'matrix', label: 'Matrix', port: true,
@@ -55,6 +63,7 @@ export function addView(ctx) {
         }]),
         ...omniEntries('reverse'),
         ...daggerEntries('reverse'),
+        ...penguEntries('reverse'),
         matrixEntry('reverse'),
         ['easytier-reverse', { value: 'easytier-reverse', mode: 'easytier', label: 'EasyTier',
           port: true, forward: true, udp: true, setupFamilies: ['ipv4', 'ipv6'],
@@ -63,6 +72,7 @@ export function addView(ctx) {
       const managedDirect = new Map([
         ...omniEntries('direct'),
         ...daggerEntries('direct'),
+        ...penguEntries('direct'),
         ...backhaulChoices.filter(item => item.value === 'tun-ipx').map(item => ['backhaul-tun-ipx', {
           ...item, value: 'backhaul-tun-ipx', mode: item.value, port: false, secret: false,
           forward: true, needsRoot: true, setupFamilies: ['ipv4'],
@@ -89,6 +99,10 @@ export function addView(ctx) {
       const daggerUpgrade = () => ['dagger-http', 'dagger-https'].includes(reverseSetup()?.mode);
       const daggerRoute = () => daggerUpgrade() || reverseSetup()?.mode === 'dagger-xhttp';
       const directSetup = () => chosen.direction === 'direct' && managedDirect.get(chosen.carrier);
+      const penguSetup = () => {
+        const selected = reverseSetup() || directSetup();
+        return selected?.pengu ? selected : null;
+      };
       const backhaulTUN = () => {
         if (directSetup()?.mode === 'tun-ipx') return 'tun-ipx';
         if (reverseSetup()?.mode === 'tun-tcp') return 'tun-tcp';
@@ -127,7 +141,7 @@ export function addView(ctx) {
         ['gretap', 'l2tpv3', 'easytier'].includes(chosen.carrier);
       const setupProfile = () => opts.setupPerformance?.[chosen.direction === 'direct' ? chosen.carrier : chosen.transport];
       const setupChoices = new Map();
-      let setupGroups, lastSetupProfile, daggerFields;
+      let setupGroups, lastSetupProfile, daggerFields, penguFields;
       const addressChoice = el('select', { id: 'setupAddressFamily' }, [
         el('option', { value: 'ipv4', text: 'IPv4', selected: true }),
         el('option', { value: 'ipv6', text: 'IPv6' }),
@@ -624,6 +638,7 @@ export function addView(ctx) {
                   ? 'Direct: DaggerConnect pairs both IPv4 endpoints using the Setup command.'
                   : 'Direct: Iran connects to Kharej. Peer-to-peer carriers exchange packets in both directions.'
           : 'Reverse — the kharej dials in to Iran. Try this first.';
+        if (note && penguSetup()?.ipx) note.textContent = 'PenguTunnel IPX exchanges packets between fixed IPv4 endpoints.';
         const gretap = chosen.carrier === 'gretap';
         root.querySelector('#greEncryptionNote').textContent = gretap
           ? 'GRETAP traffic is unencrypted. Use WireGuard, TLS or SSH inside it when encryption is needed.'
@@ -725,6 +740,7 @@ export function addView(ctx) {
         });
         paintSetupTuning();
         paintDaggerFields();
+        paintPenguFields();
         paintAddressFamily();
         if (automaticDirect()) {
           directPeer.closest('.f3').hidden = true;
@@ -737,7 +753,15 @@ export function addView(ctx) {
           ? 'Tinc listens on Iran over TCP and UDP. Blank uses 2097.'
           : reverseEasyTier ? 'Iran listens on this port. Blank uses 2090.' : standardReversePortHint;
         reverseForward.closest('.f3').querySelector('label').textContent =
-          setup && !setup.dagger && !reverseMatrix && !reverseEasyTier ? 'Forwarded TCP ports' : 'Forwarded ports';
+          setup && !setup.dagger && !setup.pengu && !reverseMatrix && !reverseEasyTier ? 'Forwarded TCP ports' : 'Forwarded ports';
+        reverseForward.placeholder = setup?.pengu ? '443, 8443=443, udp:51820' : 'e.g. 443, 8443';
+        reverseForward.closest('.f3').querySelector('.hint').textContent =
+          setup?.pengu ? 'Enter TCP ports or use udp: for UDP. Example: 8443=443, udp:51820.' : forwardPortsHint;
+        if (routed?.pengu) {
+          directForward.placeholder = '443, 8443=443, udp:51820';
+          directForward.closest('.f3').querySelector('.hint').textContent =
+            'Enter TCP ports or use udp: for UDP. Example: 8443=443, udp:51820.';
+        }
         if (routed?.dagger) directFields.hidden = true;
         // The token and the far end's address are the panel's business now.
         root.querySelectorAll('.tokgone, .addrgone').forEach(n => { n.hidden = true; });
@@ -1415,7 +1439,7 @@ export function addView(ctx) {
           lastSetupProfile = null;
           return;
         }
-        if (pairedDirect() || officialDagger() === 'tun' || directSetup()?.mode === 'matrix') {
+        if (pairedDirect() || officialDagger() === 'tun' || directSetup()?.mode === 'matrix' || directSetup()?.pengu) {
           const standard = group.parentElement.querySelector('[data-mode="dir"]');
           if (standard) standard.hidden = true;
         }
@@ -1543,6 +1567,72 @@ export function addView(ctx) {
         rows.get('tunPort').row.hidden = mode !== 'tun' || !['tcp', 'udp'].includes(profile);
       }
 
+      function addPenguFields(details, opt) {
+        const settings = el('div', { class: 'grp3', hidden: true }, [
+          el('div', { class: 'gl3', text: 'PenguTunnel settings' }),
+        ]);
+        const optional = el('div', { class: 'grp3', hidden: true }, [
+          el('div', { class: 'gl3', text: 'PenguTunnel options' }),
+        ]);
+        const grid = el('div', { class: 'fgrid' });
+        const fine = el('div', { class: 'fgrid' });
+        settings.append(grid);
+        optional.append(fine);
+        details.append(settings);
+        opt.append(optional);
+        const rows = new Map();
+        const add = (parent, key, title, attrs, when, hint) => {
+          const { choices, ...inputAttrs } = attrs;
+          const id = 'pengu-' + key;
+          const input = choices
+            ? el('select', { id }, choices.map(([value, text]) => el('option', { value, text })))
+            : el('input', { id, type: 'text', ...inputAttrs });
+          const row = el('div', { class: 'f3 full' }, el('label', { for: id, text: title }), input);
+          if (hint) row.append(el('div', { class: 'hint', text: hint }));
+          rows.set(key, { row, input, when });
+          parent.append(row);
+          return input;
+        };
+        const num = (min, max, placeholder = 'Automatic') => ({ type: 'number', min, max, placeholder });
+        const only = id => mode => mode.id === id;
+        const peer = add(grid, 'kharejHost', 'Kharej server address', { placeholder: 'IP or hostname', required: true },
+          () => chosen.direction === 'direct', 'Used by Direct and IPX to reach the other endpoint.');
+        const key = add(grid, 'secret', 'Security token', { placeholder: 'Automatically generated', autocomplete: 'off', maxlength: 44 });
+        const random = el('button', { type: 'button', class: 'mini3', text: 'Random' });
+        const withButton = el('div', { class: 'withb' });
+        key.before(withButton);
+        withButton.append(key, random);
+        random.addEventListener('click', () => {
+          key.value = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32))));
+        });
+        add(grid, 'iranTunnel', 'Iran tunnel IPv4/CIDR', { placeholder: 'Automatically assigned' }, mode => mode.tun);
+        add(grid, 'kharejTunnel', 'Kharej tunnel IPv4/CIDR', { placeholder: 'Automatically assigned' }, mode => mode.tun,
+          'Leave both blank to have BackPack allocate a private subnet.');
+        add(grid, 'tlsName', 'TLS server name', { placeholder: 'Use the core default' }, only('tls'));
+        add(fine, 'iranHost', 'Iran IP or hostname', { placeholder: 'Automatically detected' });
+        add(fine, 'healthPort', 'Health check port', num(1, 65535));
+        add(fine, 'workers', 'Worker CPU limit', num(0, 64, '0 = automatic'));
+        add(fine, 'window', 'Stream window (MB)', num(0, 256, '0 = automatic'), mode => !mode.tun);
+        add(fine, 'cipher', 'Encryption', { choices: [['aes-256-gcm', 'AES-256-GCM'], ['chacha20-poly1305', 'ChaCha20-Poly1305']] });
+        add(fine, 'header', 'TCP carrier header',
+          { choices: [['', 'Plain TCP'], ...[1, 2, 3].map(n => ['PGprotocol-NUM' + n, 'PGprotocol-NUM' + n])] },
+          only('tcpfwd'));
+        add(fine, 'icmpType', 'ICMP type', num(0, 255, 'Core default'), only('icmp'));
+        add(fine, 'icmpCode', 'ICMP code', num(0, 255, '0'), only('icmp'));
+        return { settings, optional, rows, peer };
+      }
+
+      function paintPenguFields() {
+        if (!penguFields) return;
+        const mode = penguSetup();
+        const { settings, optional, rows, peer } = penguFields;
+        settings.hidden = optional.hidden = !mode;
+        if (!mode) return;
+        settings.style.display = optional.style.display = '';
+        peer.placeholder = mode.ipx ? 'Kharej public IPv4' : 'IP or hostname';
+        for (const { row, when } of rows.values()) row.hidden = !!when && !when(mode);
+      }
+
       function paintAddressFamily() {
         if (!setupGroups) return;
         const direct = chosen.direction === 'direct';
@@ -1632,6 +1722,7 @@ export function addView(ctx) {
         ]));
         setupGroups = addSetupTuning(details.querySelector('#atok').closest('.fgrid'), perf, opt);
         daggerFields = addDaggerFields(details);
+        penguFields = addPenguFields(details, opt);
         /* PCK's fine-tuning goes with the presets it overrides, on the same
            step, rather than among the fields that name the tunnel. */
         const pckDrawer = root.querySelector('#dw-pck');
@@ -1764,6 +1855,27 @@ export function addView(ctx) {
         const tuning = setupTuningPayload();
         const dagger = officialDagger();
         const setupFamily = addressChoice.value;
+        const pengu = penguSetup();
+        if (pengu) {
+          const form = { name: payload.name, transport: pengu.mode, direction: chosen.direction,
+            family: setupFamily, ports: payload.ports || '', preset: tuning?.preset };
+          if (!pengu.ipx) {
+            const port = String(payload.tunnelPort || '');
+            if (!/^\d+$/.test(port) || Number(port) < 1 || Number(port) > 65535) {
+              throw new Error('Enter a PenguTunnel port from 1 to 65535.');
+            }
+            form.port = Number(port);
+            form.pool = tuning?.value;
+          }
+          if (pengu.tun) form.mtu = pengu.ipx ? tuning?.value : tuning?.mtu;
+          for (const [name, { row, input }] of penguFields.rows) {
+            if (row.hidden) continue;
+            if (!input.checkValidity()) throw new Error('Check ' + row.querySelector('label').textContent + '.');
+            if (input.value.trim() !== '') form[name] = input.type === 'number' ? input.valueAsNumber : input.value.trim();
+          }
+          const r = await api.penguCreate(form);
+          return { r: r.setup, name: form.name };
+        }
         if (easyTierSelected()) {
           const port = String(payload.tunnelPort || '2090').trim();
           if (!/^\d+$/.test(port) || Number(port) < 1 || Number(port) > 65535) {
