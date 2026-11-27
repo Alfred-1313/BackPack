@@ -2,7 +2,7 @@
 # Loaded by install.sh after source-build dependencies are ready.
 install_omnitunnel() (
     set -euo pipefail
-    local revision=acf4e6e5bacc4aa841320e39cff4b51e3f2a9eec
+    local revision="$OMNI_REVISION"
     local digest=e6c0385b6edb5199bb4331d48d14a7ee3afb181b0fdccfc25672f322d2ed0747
     local root=/usr/local/lib/backpack/helpers/omnitunnel
     local final="$root/$revision-$ARCH"

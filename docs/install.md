@@ -9,7 +9,17 @@ git clone --depth 1 --branch main https://github.com/Alfred-1313/BackPack.git &&
   (cd BackPack && sudo env BP_BUILD_FROM_SOURCE=1 bash install.sh)
 ```
 
-The installer builds the checked-out source with Go and opens the menu.
+The installer builds the checked-out source with Go and opens the menu on an
+interactive terminal after a successful installation. The final report shows
+which components are ready, already present, failed, or will be installed when
+first used. It records the latest run in `/var/log/backpack/install.log`, which
+is readable by root.
+
+On a supported online install, BackPack installs the official DaggerConnect
+launcher. DaggerConnect obtains its licensed core when first used. Use
+`BP_HELPERS` to select optional helpers. Matrix (Tinc) and EasyTier install
+when first used if their cores are missing. If a requested helper fails, the
+installer checks the remaining helpers and exits with a failure status.
 Install the libpcap development headers and a C compiler first if you need PCK.
 If you are already root, use `BP_BUILD_FROM_SOURCE=1 bash install.sh` inside the checkout.
 

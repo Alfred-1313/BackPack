@@ -24,6 +24,7 @@
 set -euo pipefail
 
 RED='\033[0;31m'; WHITE='\033[1;37m'; GRAY='\033[0;90m'; NC='\033[0m'
+if [[ ! -t 1 || -n "${NO_COLOR:-}" ]]; then RED= WHITE= GRAY= NC=; fi
 info() { echo -e "${WHITE}[*]${NC} $*"; }
 warn() { echo -e "${GRAY}[!]${NC} $*"; }
 err()  { echo -e "${RED}[x]${NC} $*" >&2; }
@@ -63,6 +64,57 @@ fi
 
 if [[ $EUID -ne 0 ]]; then err "Please run as root (sudo)."; exit 1; fi
 
+report_order=(backpack backhaul daggerconnect omni gost gost-v2 xray sing-box naive matrix easytier)
+declare -A report_names=(
+  [backpack]=BackPack [backhaul]=Backhaul [daggerconnect]=DaggerConnect
+  [omni]=OmniTunnel [gost]='GOST 3' [gost-v2]='GOST 2' [xray]=Xray
+  [sing-box]=sing-box [naive]=NaiveProxy [matrix]='Matrix (Tinc)' [easytier]=EasyTier
+)
+declare -A report_status=() report_detail=()
+install_log=/var/log/backpack/install.log
+log_temp=
+release_is_local=0
+
+start_install_log() {
+  local dir="${install_log%/*}"
+  if command -v tee >/dev/null && [[ ! -L "$dir" ]] && install -d -m 0700 -- "$dir" &&
+    log_temp="$(mktemp "$dir/.install.XXXXXX")"; then
+    exec {install_stdout}>&1 {install_stderr}>&2
+    exec > >(tee --output-error=warn -- "$log_temp" >&"$install_stdout") 2>&1
+    log_pid=$!
+    printf 'BackPack installation (%s)\n' "$(date -u +'%Y-%m-%d %H:%M:%S UTC')"
+  else
+    warn "Could not open the installation log. The report will appear in this terminal."
+  fi
+}
+
+finish_install() {
+  local status="$1" tool
+  trap - EXIT
+  printf '\nBackPack installation report\n'
+  printf '%-19s %-16s %s\n' 'COMPONENT' 'RESULT' 'DETAIL'
+  for tool in "${report_order[@]}"; do
+    printf '%-19s %-16s %s\n' "${report_names[$tool]}" \
+      "${report_status[$tool]:-Not run}" "${report_detail[$tool]:-}"
+  done
+  if (( status != 0 )); then
+    printf '\nInstallation finished with errors (exit %s).\n' "$status"
+  fi
+  if [[ -n "$log_temp" ]]; then
+    printf '\nInstallation log: %s\n' "$install_log"
+    exec >&"$install_stdout" 2>&"$install_stderr"
+    exec {install_stdout}>&- {install_stderr}>&-
+    if ! wait "$log_pid" || ! mv -fT -- "$log_temp" "$install_log"; then
+      warn "Could not save the installation log to $install_log"
+      rm -f -- "$log_temp"
+    fi
+  fi
+}
+
+start_install_log
+trap 'finish_install "$?"' EXIT
+
+
 case "${BP_BUILD_FROM_SOURCE:-0}" in
   0|1) ;;
   *) err 'BP_BUILD_FROM_SOURCE must be 0 or 1'; exit 2 ;;
@@ -91,7 +143,7 @@ if [[ ${#BP_ARGS[@]} -gt 0 && "${BP_ARGS[0]}" == "backpack" ]]; then
 fi
 if [[ ${#BP_ARGS[@]} -gt 0 ]]; then
   if [[ "${BP_ARGS[0]}" != "link" || "${BP_ARGS[1]:-}" != "apply" || ${#BP_ARGS[@]} -lt 3 ]]; then
-    err "Unknown argument: ${BP_ARGS[0]}"
+    err "Unrecognized installer arguments."
     err "This script takes no arguments, or a setup link to apply after installing:"
     err "  BP_BUILD_FROM_SOURCE=1 bash ./install.sh link apply 'backpack://…'"
     exit 2
@@ -129,32 +181,19 @@ case "$(uname -m)" in
 esac
 
 # Optional protocol helpers: pinned, isolated and installed only on request.
+OMNI_REVISION=acf4e6e5bacc4aa841320e39cff4b51e3f2a9eec
+
 helpers_validate() {
   [[ -z "${BP_HELPERS:-}" ]] && return 0
   if ! [[ "$BP_HELPERS" =~ ^((naive|xray|gost|gost-v2|omni|anytls),)*(naive|xray|gost|gost-v2|omni|anytls)$ ]]; then
     err 'BP_HELPERS accepts a comma-separated list of naive, xray, gost, gost-v2, omni and anytls'
     return 2
   fi
-  [[ "$(uname -s)" == Linux ]] || { err 'Optional helpers require Linux'; return 1; }
-  case "$ARCH" in amd64|arm64) ;; *) err "Optional helpers do not support $ARCH"; return 1 ;; esac
-  if [[ "$BP_HELPERS" == *naive* ]]; then
-    getconf GNU_LIBC_VERSION >/dev/null 2>&1 || { err 'Pinned Naive helpers require glibc; install suitable binaries manually on musl'; return 1; }
-    command -v xz >/dev/null || { err 'xz is required for the Naive archive'; return 1; }
-  fi
-  if [[ "$BP_HELPERS" == *xray* ]]; then
-    command -v unzip >/dev/null || { err 'unzip is required for the Xray archive'; return 1; }
-  fi
-  if [[ "$BP_HELPERS" == *omni* ]]; then
-    [[ "${BP_BUILD_FROM_SOURCE:-0}" == 1 && -f "$SCRIPT_DIR/scripts/install-omnitunnel.sh" && -f "$SCRIPT_DIR/scripts/adapt-omnitunnel.py" ]] || {
-      err 'BP_HELPERS=omni requires BP_BUILD_FROM_SOURCE=1 in the fork checkout'
-      return 1
-    }
-    command -v cc >/dev/null && command -v python3 >/dev/null || {
-      err 'The OmniTunnel helper source build requires cc and python3'
-      return 1
-    }
-  fi
-  command -v sha256sum >/dev/null || command -v shasum >/dev/null || { err 'A SHA256 utility is required'; return 1; }
+}
+
+helper_platform_supported() {
+  [[ "$(uname -s)" == Linux ]] || return 1
+  [[ "$1" == matrix || "$ARCH" == amd64 || "$ARCH" == arm64 ]]
 }
 
 # Exact immutable archive pins, obtained from each official release API digest.
@@ -200,38 +239,68 @@ helper_spec() {
   esac
 }
 
-# Subshell owns its staging cleanup and never overwrites an existing directory.
-install_helper() (
-  set -euo pipefail
-  helper_spec "$1" "$ARCH" || exit 1
+# Resolve the pinned entry used by both the installer and the report.
+helper_location() {
+  helper_spec "$1" "$ARCH" || return 1
   root="/usr/local/lib/backpack/helpers/$helper_tool"
   final="$root/$helper_version-$ARCH"
   helper_exec="$helper_tool"
-  if [[ "$helper_tool" == gost-v2 ]]; then helper_exec=gost; fi
-  if [[ "$helper_tool" == daggerconnect ]]; then
-    final="$root/$helper_version"
-    helper_exec=DaggerLauncher
-    if [[ -L "$final" || -L "$final/$helper_exec" ]]; then
-      err "Invalid DaggerConnect helper path: $final"
-      return 1
-    fi
-    if [[ -d "$final" ]]; then
-      existing="$final/$helper_exec"
-      if [[ -f "$existing" && -x "$existing" ]]; then
-        actual="$(helper_sha256 "$existing")"
-        if [[ "$actual" == "$helper_sha" ]]; then
-          info "Verified helper already installed: $existing"
-          return 0
-        fi
-      fi
-      err "DaggerConnect exists but failed validation: $existing"
-      return 1
-    fi
-  fi
+  case "$helper_tool" in
+    gost-v2) helper_exec=gost ;;
+    daggerconnect) final="$root/$helper_version"; helper_exec=DaggerLauncher ;;
+  esac
+}
+
+executable_file() { [[ -f "$1" && ! -L "$1" && -x "$1" && -s "$1" ]]; }
+
+helper_present() (
+  case "$1" in
+    matrix)
+      command -v tincd >/dev/null || [[ -x /usr/sbin/tincd || -x /usr/local/sbin/tincd ]]
+      ;;
+    easytier)
+      executable_file "/usr/local/lib/backpack/helpers/easytier/v2.6.4-$ARCH/easytier-core"
+      ;;
+    omni)
+      local dir="/usr/local/lib/backpack/helpers/omnitunnel/$OMNI_REVISION-$ARCH" binary
+      executable_file "$dir/manager" || return 1
+      for binary in omnitun omnistripe omniackless hysteria chisel; do
+        executable_file "$dir/bin/$binary" || return 1
+      done
+      ;;
+    *)
+      helper_location "$1" || return 1
+      [[ ! -L "$final" ]] && executable_file "$final/$helper_exec" || return 1
+      case "$1" in
+        daggerconnect) [[ "$(helper_sha256 "$final/$helper_exec")" == "$helper_sha" ]] ;;
+        sing-box) [[ -f "$final/libcronet.so" && ! -L "$final/libcronet.so" ]] ;;
+        *) return 0 ;;
+      esac
+      ;;
+  esac
+)
+
+# Subshell owns its staging cleanup and never overwrites an existing directory.
+install_helper() (
+  set -euo pipefail
+  helper_location "$1" || exit 1
   if [[ -e "$final" || -L "$final" ]]; then
-    info "Keeping existing helper directory: $final (configure its binary explicitly)"
+    if ! helper_present "$1"; then
+      err "The existing helper failed validation: $final/$helper_exec"
+      exit 1
+    fi
+    info "Helper already installed: $final/$helper_exec"
     exit 0
   fi
+  case "$helper_tool" in
+    naive)
+      getconf GNU_LIBC_VERSION >/dev/null 2>&1 || { err 'NaiveProxy requires glibc'; exit 1; }
+      command -v xz >/dev/null || { err 'xz is required for the NaiveProxy archive'; exit 1; }
+      ;;
+    xray)
+      command -v unzip >/dev/null || { err 'unzip is required for the Xray archive'; exit 1; }
+      ;;
+  esac
   mkdir -p "$root" || exit 1
   stage="$(mktemp -d "$root/.stage.XXXXXX")" || exit 1
   trap 'rm -rf -- "$stage"' EXIT
@@ -253,7 +322,10 @@ install_helper() (
   # GNU mv's no-clobber protects simultaneous installers too. Confirm that the
   # directory really moved: mv -n itself reports success when it skipped it.
   mv -Tn -- "$stage/payload" "$final" || exit 1
-  [[ ! -d "$stage/payload" ]] || { err "Helper directory appeared concurrently: $final"; exit 1; }
+  [[ ! -d "$stage/payload" ]] || helper_present "$1" || {
+    err "An unusable helper directory appeared concurrently: $final"
+    exit 1
+  }
   info "Verified helper installed: $final/$helper_exec"
 )
 
@@ -265,28 +337,76 @@ helper_sha256() {
   fi
 }
 
-install_helpers() {
-  if [[ "${BP_HELPERS_ONLY:-0}" != 1 ]]; then
-    case "$(uname -s)/$ARCH" in
-      Linux/amd64|Linux/arm64) install_helper daggerconnect || return 1 ;;
-    esac
-  fi
-  [[ -n "${BP_HELPERS:-}" ]] || return 0
-  if [[ "$BP_HELPERS" == *naive* ]]; then
-    install_helper naive || return 1
-  fi
-  if [[ "$BP_HELPERS" == *naive* || "$BP_HELPERS" == *anytls* ]]; then
-    install_helper sing-box || return 1
-  fi
-  [[ "$BP_HELPERS" != *xray* ]] || install_helper xray || return 1
-  [[ ",$BP_HELPERS," != *,gost,* ]] || install_helper gost || return 1
-  [[ ",$BP_HELPERS," != *,gost-v2,* ]] || install_helper gost-v2 || return 1
-  if [[ "$BP_HELPERS" == *omni* ]]; then
-    source "$SCRIPT_DIR/scripts/install-omnitunnel.sh"
-    install_omnitunnel
-  fi
+helper_requested() {
+  local list=",${BP_HELPERS:-},"
+  case "$1" in
+    daggerconnect)
+      [[ "${BP_HELPERS_ONLY:-0}" != 1 && "$release_is_local" == 0 ]] &&
+        helper_platform_supported "$1" ;;
+    sing-box) [[ "$list" == *,naive,* || "$list" == *,anytls,* ]] ;;
+    matrix|easytier) return 1 ;;
+    *) [[ "$list" == *,"$1",* ]] ;;
+  esac
 }
 
+install_requested_helper() {
+  local tool="$1"
+  helper_platform_supported "$tool" || { err "${report_names[$tool]} is unsupported on $(uname -s)/$ARCH"; return 1; }
+  command -v sha256sum >/dev/null || command -v shasum >/dev/null || {
+    err 'A SHA256 utility is required'
+    return 1
+  }
+  if [[ "$tool" != omni ]]; then
+    install_helper "$tool"
+    return
+  fi
+  [[ "${BP_BUILD_FROM_SOURCE:-0}" == 1 && -f "$SCRIPT_DIR/scripts/install-omnitunnel.sh" &&
+     -f "$SCRIPT_DIR/scripts/adapt-omnitunnel.py" ]] || {
+    err 'OmniTunnel needs BP_BUILD_FROM_SOURCE=1 in a fork checkout'
+    return 1
+  }
+  command -v cc >/dev/null && command -v python3 >/dev/null && command -v flock >/dev/null || {
+    err 'OmniTunnel requires cc, python3, and flock'
+    return 1
+  }
+  ensure_go
+  source "$SCRIPT_DIR/scripts/install-omnitunnel.sh"
+  install_omnitunnel
+}
+
+install_helpers() {
+  local tool pid failed=0
+  for tool in "${report_order[@]:2}"; do
+    if helper_requested "$tool"; then
+      info "Checking ${report_names[$tool]}..."
+      # A separate job preserves errexit in the helper installer while wait
+      # lets this report record failures and continue with independent helpers.
+      install_requested_helper "$tool" &
+      pid=$!
+      if wait "$pid"; then
+        report_status[$tool]=Ready
+      else
+        report_status[$tool]=Failed
+        report_detail[$tool]='See the installation output above'
+        err "${report_names[$tool]} installation failed."
+        failed=1
+      fi
+    elif ! helper_platform_supported "$tool"; then
+      report_status[$tool]=Unsupported
+    elif helper_present "$tool"; then
+      report_status[$tool]=Present
+    else
+      case "$tool" in
+        matrix|easytier|daggerconnect) report_status[$tool]='On demand' ;;
+        *) report_status[$tool]='Not selected' ;;
+      esac
+    fi
+  done
+  if [[ "${report_status[daggerconnect]}" == Ready || "${report_status[daggerconnect]}" == Present ]]; then
+    report_detail[daggerconnect]='Official launcher ready. Licensed core loads on first use.'
+  fi
+  return "$failed"
+}
 
 # End optional protocol helpers.
 helpers_validate || exit $?
@@ -298,7 +418,7 @@ mkdir -p /etc/backpack "$INSTALL_DIR/backups"
 fetch() {
   local url="$1" out="$2"
   info "Downloading: ${url}"
-  curl -fSL --connect-timeout 15 "$url" -o "$out" 2>/dev/null
+  curl -fsSL --connect-timeout 15 --max-time 300 "$url" -o "$out"
 }
 
 # verify_asset <file> <sumsfile>
@@ -384,7 +504,7 @@ install_release() {
         continue
       fi
       info "Using local release asset: ${cand}"
-      cp "$cand" "$INSTALL_DIR/$ASSET"
+      cp "$cand" "$INSTALL_DIR/$ASSET" || return 1
       # An offline install can carry SHA256SUMS beside the archive; verify it
       # when it is there, and say plainly when it is not.
       if [[ -f "$localsums" ]]; then
@@ -394,13 +514,14 @@ install_release() {
         # failed verification kill the script instead of reaching the warning.
         local rc=0
         verify_asset "$INSTALL_DIR/$ASSET" "$localsums" || rc=$?
-        if [[ $rc -eq 2 ]]; then
+        if (( rc != 0 )); then
           rm -f "$INSTALL_DIR/$ASSET"
           exit 1
         fi
       else
         warn "No SHA256SUMS beside the local asset — installing it unverified."
       fi
+      release_is_local=1
       return 0
     fi
   done
@@ -428,6 +549,11 @@ install_release() {
 
 install_binary_from_tar() {
   tar -xzf "$INSTALL_DIR/$ASSET" -C "$INSTALL_DIR" backpack
+  if ! "$INSTALL_DIR/backpack" -v >/dev/null; then
+    err 'The extracted BackPack binary could not start.'
+    rm -f -- "$INSTALL_DIR/backpack"
+    return 1
+  fi
   install -m 0755 "$INSTALL_DIR/backpack" "$BIN_PATH"
   rm -f "$INSTALL_DIR/backpack"
   echo "$INSTALL_DIR" > /etc/backpack/install_path
@@ -580,7 +706,7 @@ build_from_source() {
   # Preserve an explicitly configured proxy, including its fallback policy.
   export GOPROXY="${GOPROXY:-https://proxy.golang.org|https://mirror-go.runflare.com|https://goproxy.cn|direct}"
   export GOSUMDB=off GOTOOLCHAIN=local
-  info "Building from source (module proxy order: ${GOPROXY})."
+  info "Building from source."
   # The PCK carrier captures with libpcap through cgo (see CONTRIBUTING.md). A
   # source build links it when the headers are here — a libpcap built into
   # LIBPCAP_PREFIX with scripts/build-libpcap.sh, or the distribution's
@@ -602,16 +728,31 @@ build_from_source() {
   echo "$INSTALL_DIR" > /etc/backpack/install_path
 }
 
+record_backpack() {
+  local output
+  output="$("$BIN_PATH" -v)" || return 1
+  report_status[backpack]="$1"
+  report_detail[backpack]="${output%%$'\n'*}"
+  report_status[backhaul]='Built in'
+  report_detail[backhaul]='Native BackPack transports'
+}
+
 # Select the engine build independently of optional helper installation.
 if [[ "${BP_HELPERS_ONLY:-0}" == 1 ]]; then
   [[ -n "${BP_HELPERS:-}" ]] || { err 'BP_HELPERS_ONLY=1 requires BP_HELPERS'; exit 2; }
-  if [[ ",$BP_HELPERS," == *,omni,* ]]; then
-    ensure_go
+  if [[ ! -x "$BIN_PATH" ]]; then
+    report_status[backpack]='Not installed'
+    report_status[backhaul]='Not installed'
+  elif ! record_backpack Present; then
+    report_status[backpack]=Unusable
+    report_status[backhaul]=Unverified
   fi
   install_helpers
-  exit $?
+  exit 0
 fi
 
+report_status[backpack]=Failed
+report_detail[backpack]='See the installation output above'
 if [[ "${BP_BUILD_FROM_SOURCE:-0}" == 1 ]]; then
   trusted_dir "$SCRIPT_DIR" || { err 'The requested source directory is not trusted'; exit 1; }
   build_from_source
@@ -634,12 +775,10 @@ else
 fi
 # End engine build selection.
 
-# Keep this as a standalone call so errexit stays active in the staged builds.
-install_helpers
-
 chmod +x "$BIN_PATH"
-echo
-echo -e "${WHITE}Done!${NC}"
+record_backpack Installed
+install_helpers
+finish_install 0
 
 # Open the menu straight away — people miss the "now run sudo backpack" step.
 # Only when there is an interactive terminal to read from: a piped install
