@@ -124,6 +124,10 @@ func (s *server) handleTunnelSettings(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing name", http.StatusBadRequest)
 		return
 	}
+	if settings, helper, err := manage.HelperSettingsOf(name); err == nil && helper {
+		writeJSON(w, map[string]any{"kind": "helper", "helper": settings})
+		return
+	}
 	// A direct tunnel keeps its settings in its own table, and TunnelSettingsOf
 	// reads [server] and [client] — so sending one there came back as "not a
 	// client tunnel" and the Edit button did nothing at all.
@@ -154,7 +158,8 @@ type tunnelEditRequest struct {
 	// reverse edit rather than merged into it, because the two share almost no
 	// keys and a merged struct would let a reverse form silently set a
 	// layer-3-only value.
-	Direct manage.DirectEdit `json:"direct"`
+	Helper *manage.HelperEdit `json:"helper,omitempty"`
+	Direct manage.DirectEdit  `json:"direct"`
 }
 
 // handleTunnelEdit applies the Edit form. Every change lands in one write and
@@ -172,6 +177,29 @@ func (s *server) handleTunnelEdit(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.TrimSpace(req.Name) == "" {
 		http.Error(w, "missing name", http.StatusBadRequest)
+		return
+	}
+	if req.Helper != nil {
+		edit, err := manage.EditHelperTunnel(req.Name, *req.Helper)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		out := map[string]any{"status": "ok"}
+		if edit.Setup != nil {
+			out["setup"] = edit.Setup
+			nodeName, paired := manage.NodeFor(req.Name)
+			if run := s.nodes.Runner(); paired && run != nil {
+				if err := run.Call(nodeName, node.OpHelperEdit, edit.PeerToken, nil); err == nil {
+					delete(out, "setup")
+					out["node"] = nodeName
+				} else {
+					out["status"] = "partial"
+					out["peerError"] = err.Error()
+				}
+			}
+		}
+		writeJSON(w, out)
 		return
 	}
 	if t, ok := manage.Find(req.Name); ok && manage.IsDirectKind(t) {

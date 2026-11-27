@@ -59,6 +59,126 @@ function handOver(root, info, close) {
    of them, which is how "turbo" quietly displayed as "Balanced". The server
    speaks in values ("turbo", "wss"); the preview's options were written with
    labels. Match either, and say so when neither fits. */
+function bindHelperEditor(root, settings, name, close) {
+  const panes = root.querySelector('.panes');
+  const save = root.querySelector('.primary');
+  const note = root.querySelector('.note');
+  const fields = new Map();
+  const tabs = [...root.querySelectorAll('.tabs > button[data-fn="tab"]')];
+  const visible = new Set(['Connection', ...settings.fields.map(field => field.tab)]);
+  const controlRow = (label, id, input) =>
+    el('div', { class: 'f' }, el('label', { for: id, text: label }), input);
+  const controls = new Map();
+
+  root.querySelector('.lede').textContent =
+    'Saving restarts a running tunnel. The previous settings are restored if it fails to start.';
+  panes.replaceChildren();
+  for (const tab of tabs) {
+    const section = tab.dataset.args.split(',').at(-1).trim().replace(/^['"]|['"]$/g, '');
+    tab.hidden = !visible.has(section);
+    if (tab.hidden) continue;
+    tab.textContent = section;
+    const pane = el('div', { class: 'pane', 'data-tab': section, hidden: section !== 'Connection' });
+    controls.set(section, pane);
+    panes.append(pane);
+  }
+  const hasTransportChoice = settings.fields.some(f => f.key === 'mode');
+  const typeRow = el('div', { class: 'two' },
+    controlRow('Transport family', 'helper-family', el('input', { id: 'helper-family', readonly: true, value: settings.family })),
+    hasTransportChoice ? null : controlRow('Transport', 'helper-transport',
+      el('input', { id: 'helper-transport', readonly: true, value: settings.transport })));
+  controls.get('Connection').append(typeRow);
+  const transportLabels = { xtcpmux: 'XTcpMux', xwsmux: 'XWsMux', 'dagger-http': 'DAGGER-HTTP',
+    'dagger-https': 'DAGGER-HTTPS', num1: 'PGprotocol-NUM1', num2: 'PGprotocol-NUM2', num3: 'PGprotocol-NUM3' };
+
+  for (const f of settings.fields) {
+    const id = 'helper-' + f.key.replace('.', '-');
+    let input;
+    if (f.type === 'select') {
+      const choices = [...new Set([f.value, ...f.choices])];
+      input = el('select', { id, class: 'sel' }, choices.map(value =>
+        el('option', { value, text: (f.key === 'mode' && transportLabels[value]) ||
+          (value ? value.charAt(0).toUpperCase() + value.slice(1) : 'Default') })));
+      input.value = f.value;
+    } else if (f.type === 'ports') {
+      input = el('textarea', { id, rows: 4, spellcheck: 'false' });
+      input.value = f.value;
+    } else if (f.type === 'number') {
+      input = el('input', { id, type: 'number', min: f.min, max: f.max, value: f.value, required: true });
+    } else {
+      input = el('input', { id, type: f.type, value: f.type === 'checkbox' ? '1' : f.value, autocomplete: 'off' });
+      if (f.type === 'checkbox') input.checked = f.value;
+    }
+    fields.set(f.key, { schema: f, input });
+    const row = controlRow(f.label, id, input);
+    if (f.key === 'port' || f.key === 'health_port') {
+      const random = el('button', { class: 'mini', type: 'button', text: 'Random' });
+      const pair = el('div', { class: 'withbtn' });
+      input.before(pair);
+      pair.append(input, random);
+      random.addEventListener('click', async () => {
+        random.disabled = true;
+        try {
+          const { port } = await api.tunnelSuggest();
+          if (port) {
+            input.value = port;
+            changed();
+          }
+        } catch (e) { oops(e); }
+        finally { random.disabled = false; }
+      });
+    }
+    (f.key === 'mode' ? typeRow : controls.get(f.tab)).append(row);
+  }
+
+  function changes() {
+    const out = {};
+    for (const [key, { schema, input }] of fields) {
+      const value = schema.type === 'checkbox' ? input.checked
+        : schema.type === 'number' ? input.valueAsNumber : input.value.trim();
+      if (value !== schema.value) out[key] = value;
+    }
+    return out;
+  }
+  let busy = false;
+  function changed() {
+    const dirty = Object.keys(changes()).length > 0;
+    save.disabled = busy || !dirty;
+    note.textContent = busy ? 'Saving changes…' : dirty ? 'Changes ready to save.' : 'Nothing changed yet.';
+  }
+  for (const { input } of fields.values()) input.addEventListener('input', changed);
+  for (const { input } of fields.values()) input.addEventListener('change', changed);
+  root.querySelector('.hist')?.addEventListener('click', () => {
+    close();
+    go('/t/' + encodeURIComponent(name) + '/undo');
+  });
+  save.addEventListener('click', async () => {
+    if (busy) return;
+    for (const { input, schema } of fields.values()) {
+      if (input.checkValidity()) continue;
+      tabs.find(tab => tab.textContent === schema.tab)?.click();
+      input.reportValidity();
+      return;
+    }
+    busy = true;
+    changed();
+    try {
+      const response = await api.tunnelEdit({ name, helper: { revision: settings.revision, changes: changes() } });
+      store.refresh();
+      if (response.setup) {
+        handOver(root, { ...response.setup, update: true }, close);
+        return;
+      }
+      toast(response.node ? 'Saved on this server and on ' + response.node + '.' : 'Tunnel settings saved.');
+      close();
+    } catch (e) { oops(e); }
+    finally {
+      busy = false;
+      if (save.isConnected) changed();
+    }
+  });
+}
+
 function setControl(node, v) {
   if (node.type === 'checkbox') { node.checked = !!v; return; }
   const val = Array.isArray(v) ? v.join(', ') : String(v ?? '');
@@ -553,6 +673,11 @@ export async function editView(ctx) {
       let direct = false;
       try {
         settings = await api.tunnelSettings(name);
+        if (settings.kind === 'helper') {
+          bindHelperEditor(root, settings.helper, name, close);
+          ctx.setTeardown(close);
+          return;
+        }
         if (settings.kind === 'direct') { settings = settings.direct || {}; direct = true; }
       } catch (e) { oops(e); }
 

@@ -81,6 +81,9 @@ const (
 	// the fingerprint supplied by Iran.
 	OpDeleteLinkedPeer = "delete-linked-peer"
 
+	// OpHelperEdit applies the Iran panel's edit to a matching helper tunnel.
+	OpHelperEdit = "edit-helper-peer"
+
 	// OpStart, OpStop and OpRestart drive one tunnel's service. Nothing is
 	// written by any of them.
 	//

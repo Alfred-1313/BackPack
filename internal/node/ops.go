@@ -144,6 +144,17 @@ func Execute(req Request) Response {
 		}
 		return okBody(nil)
 
+	case OpHelperEdit:
+		var token string
+		if err := json.Unmarshal(req.Body, &token); err != nil {
+			return fail("malformed helper tunnel edit")
+		}
+		name, err := manage.ApplyHelperPeerEdit(token, "")
+		if err != nil {
+			return fail(err.Error())
+		}
+		return okBody(NameRequest{Name: name})
+
 	case OpDeleteLinkedPeer:
 		var removal LinkedPeerRemoval
 		if err := json.Unmarshal(req.Body, &removal); err != nil {

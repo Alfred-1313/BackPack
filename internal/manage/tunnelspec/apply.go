@@ -72,7 +72,16 @@ func Apply(s Spec) error {
 // itself: written verbatim, restarted, put back if it does not come up.
 func ApplyBody(name, body, note string) error { return applyRaw(name, []byte(body), note) }
 
+// ApplyBodyChecked verifies the restarted service before committing the edit.
+func ApplyBodyChecked(name, body, note string, check func() error) error {
+	return applyRawChecked(name, []byte(body), note, check)
+}
+
 func applyRaw(name string, cfg []byte, note string) error {
+	return applyRawChecked(name, cfg, note, nil)
+}
+
+func applyRawChecked(name string, cfg []byte, note string, check func() error) error {
 	path := app.ConfigPath(name)
 	service := app.ServiceName(name)
 
@@ -97,6 +106,12 @@ func applyRaw(name string, cfg []byte, note string) error {
 			return fmt.Errorf("the tunnel did not come up on that configuration — reverted. Reason: %s", detail)
 		}
 		return fmt.Errorf("the tunnel did not come up on that configuration — reverted")
+	}
+	if check != nil {
+		if err := check(); err != nil {
+			Revert(path, prev, service, wasActive)
+			return fmt.Errorf("the tunnel failed its startup check - reverted: %w", err)
+		}
 	}
 	RecordChange(name, prev, note)
 	return nil

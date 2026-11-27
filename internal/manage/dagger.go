@@ -177,22 +177,29 @@ func installDagger(ctx context.Context, name string, c config.DaggerConfig) (str
 	if err := core.CheckName(name); err != nil {
 		return "", false, err
 	}
-	if _, err := daggerconnect.Build(name, c); err != nil {
+	if err := validateDaggerTunnel(name, c); err != nil {
 		return "", false, err
-	}
-	if daggerconnect.UsesTLSFiles(c.Flavor) && c.Role == "server" {
-		for _, path := range []string{c.CertFile, c.KeyFile} {
-			if st, err := os.Stat(path); err != nil || !st.Mode().IsRegular() {
-				return "", false, fmt.Errorf("the TLS certificate and private key must be regular files on Iran")
-			}
-		}
-		if _, err := tls.LoadX509KeyPair(c.CertFile, c.KeyFile); err != nil {
-			return "", false, fmt.Errorf("the TLS certificate and private key must be a matching PEM pair")
-		}
 	}
 	return installHelperTunnel(ctx, name, struct {
 		Dagger config.DaggerConfig `toml:"dagger"`
 	}{Dagger: c}, daggerconnect.Ensure)
+}
+
+func validateDaggerTunnel(name string, c config.DaggerConfig) error {
+	if _, err := daggerconnect.Build(name, c); err != nil {
+		return err
+	}
+	if daggerconnect.UsesTLSFiles(c.Flavor) && c.Role == "server" {
+		for _, path := range []string{c.CertFile, c.KeyFile} {
+			if st, err := os.Stat(path); err != nil || !st.Mode().IsRegular() {
+				return fmt.Errorf("the TLS certificate and private key must be regular files on Iran")
+			}
+		}
+		if _, err := tls.LoadX509KeyPair(c.CertFile, c.KeyFile); err != nil {
+			return fmt.Errorf("the TLS certificate and private key must be a matching PEM pair")
+		}
+	}
+	return nil
 }
 
 func installHelperTunnel(ctx context.Context, name string, cfg any, ensure func(context.Context) error) (string, bool, error) {

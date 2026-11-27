@@ -94,6 +94,10 @@ func RemoveLinkedPeer(raw, name string) (string, error) {
 }
 
 func findRemovalPeer(link removalLink, name string, tunnels []Tunnel, load func(string) (config.Config, error)) (Tunnel, error) {
+	return findLinkedPeer(link, "", name, tunnels, load)
+}
+
+func findLinkedPeer(link removalLink, nextID, name string, tunnels []Tunnel, load func(string) (config.Config, error)) (Tunnel, error) {
 	var match Tunnel
 	for _, t := range tunnels {
 		if core.CheckName(t.Name) != nil || name != "" && t.Name != name {
@@ -104,7 +108,7 @@ func findRemovalPeer(link removalLink, name string, tunnels []Tunnel, load func(
 			continue
 		}
 		id, side := peerRemovalIdentity(t, cfg)
-		if side != "kharej" || id != link.ID {
+		if side != "kharej" || id == "" || id != link.ID && id != nextID {
 			continue
 		}
 		if match.Name != "" {

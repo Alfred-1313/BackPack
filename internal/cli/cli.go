@@ -80,6 +80,7 @@ const usage = `backpack — non-interactive commands
   backpack check -c <file>              validate a config without starting it
   backpack link apply [--name N] [--host IP] '<setup link>'
   backpack link remove [--name N] '<removal link>'
+  backpack link update [--name N] '<edit link>'
                                         build and start the tunnel a setup link describes
   backpack proxy enable <socks5|http> <port> [--user U --pass P]
   backpack proxy disable | status [--json]
@@ -542,8 +543,11 @@ func runLink(args []string) Result {
 	if len(args) > 0 && args[0] == "remove" {
 		return runLinkRemove(args[1:])
 	}
+	if len(args) > 0 && args[0] == "update" {
+		return runLinkUpdate(args[1:])
+	}
 	if len(args) == 0 || args[0] != "apply" {
-		return fail(CodeUsage, "link needs a subcommand: apply or remove\n\n%s", usage)
+		return fail(CodeUsage, "link needs a subcommand: apply, remove or update\n\n%s", usage)
 	}
 	var o manage.LinkApplyOptions
 	var link string
@@ -610,6 +614,24 @@ func runLinkRemove(args []string) Result {
 		return fail(CodeFailed, "could not remove the Kharej tunnel: %v\n", err)
 	}
 	return ok(fmt.Sprintf("Removed Kharej tunnel %q.\n", removed))
+}
+
+func runLinkUpdate(args []string) Result {
+	var name string
+	if len(args) == 3 && args[0] == "--name" {
+		name, args = args[1], args[2:]
+	}
+	if len(args) != 1 {
+		return fail(CodeUsage, "use backpack link update [--name N] '<edit link>'\n")
+	}
+	if !isRoot() {
+		return fail(CodeFailed, "run the update command as root (sudo) on Kharej\n")
+	}
+	updated, err := manage.ApplyHelperPeerEdit(args[0], name)
+	if err != nil {
+		return fail(CodeFailed, "could not update the Kharej tunnel: %v\n", err)
+	}
+	return ok(fmt.Sprintf("Updated Kharej tunnel %q.\n", updated))
 }
 
 // Progress, when set, receives the lines of a long command as they happen —

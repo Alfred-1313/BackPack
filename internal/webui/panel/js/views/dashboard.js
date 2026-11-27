@@ -289,7 +289,7 @@ ${field(t, idx)}
 <div class="foot">
   <span class="tot"><i>↓</i>${esc(bytes(t.inBytes || 0))}<i>↑</i>${esc(bytes(t.outBytes || 0))}</span>
   <span class="sp2"></span>
-  ${/^(dagger|backhaul|native)\//.test(t.transport) ? '' : `<button class="btn" data-act="edit" title="Edit">${BTN.edit}</button>`}
+  <button class="btn" data-act="edit" title="Edit" aria-label="Edit tunnel">${BTN.edit}</button>
   <button class="btn" data-act="logs"   title="Logs">${BTN.logs}</button>
   <button class="btn" data-act="detail" title="Metrics">${BTN.chart}</button>
   <button class="btn" data-act="more"   title="Start, stop, restart, delete">${BTN.more}</button>
@@ -542,7 +542,7 @@ export function dashboard(ctx) {
         sheet.classList.toggle('on', !was);
         break;
       }
-      case 'edit':   go(`/t/${encodeURIComponent(name)}/${store.tunnel(name)?.transport === 'matrix' ? 'share' : 'edit'}`); break;
+      case 'edit':   go('/t/' + encodeURIComponent(name) + '/edit'); break;
       case 'quota':  go(`/t/${encodeURIComponent(name)}/quota`); break;
       case 'logs':   go(`/t/${encodeURIComponent(name)}/logs`); break;
       case 'detail': go(`/t/${encodeURIComponent(name)}/metrics`); break;
