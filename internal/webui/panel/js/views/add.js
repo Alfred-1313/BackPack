@@ -234,6 +234,14 @@ export function addView(ctx) {
       const reversePortHint = reversePort.closest('.f3').querySelector('.hint');
       const standardReversePortHint = reversePortHint?.textContent;
       const reverseForward = root.querySelector('#aports');
+      const forwardErrors = new Map([reverseForward, directForward, mtEntry].map((input, i) => {
+        const id = 'forward-port-error-' + i;
+        const note = el('div', { id, class: 'forward-port-error', hidden: true, 'aria-live': 'polite' });
+        input.closest('.f3').append(note);
+        input.setAttribute('aria-describedby', [input.getAttribute('aria-describedby'), id].filter(Boolean).join(' '));
+        return [input, note];
+      }));
+      let forwardCheckTimer, forwardCheckRequest;
       const matrixSubnet = el('input', { id: 'matrixSubnet', type: 'text', placeholder: 'Automatic or 10.203.42.0/24', spellcheck: 'false' });
       const randomMatrixSubnet = el('button', { type: 'button', class: 'mini3 rnd', text: 'Random', 'aria-label': 'Choose a random private network', 'aria-controls': matrixSubnet.id });
       randomMatrixSubnet.addEventListener('click', async () => {
@@ -521,6 +529,7 @@ export function addView(ctx) {
             input.checked = sw.classList.contains('on');
             delete input.dataset.drawn;
             sw.setAttribute('aria-checked', String(input.checked));
+            if (name === 'tune.acceptUDP' || name === 'routedAcceptUdp') scheduleForwardCheck();
           };
           sw.addEventListener('click', flip);
           sw.addEventListener('keydown', ev => {
@@ -812,6 +821,7 @@ export function addView(ctx) {
         // The token and the far end's address are the panel's business now.
         root.querySelectorAll('.tokgone, .addrgone').forEach(n => { n.hidden = true; });
         paintMTProxyOptional();
+        scheduleForwardCheck();
         if (!direct) transportRows();
         paintRail();
         if (root.dataset.staged) paintNav(Number(root.querySelector('.step[data-s]:not([hidden])')?.dataset.s));
@@ -921,6 +931,20 @@ export function addView(ctx) {
         start(0);
         let out;
         try {
+          const conflict = await checkForwardFields();
+          if (!root.isConnected || conn.closest('.step').hidden) {
+            building = false;
+            return;
+          }
+          if (conflict) {
+            building = false;
+            const pane = conflict.closest('.step');
+            const panes = paneList();
+            panes.forEach(p => { p.hidden = p !== pane; });
+            root.dispatchEvent(new CustomEvent('step', { detail: { at: panes.indexOf(pane), of: panes.length } }));
+            conflict.focus();
+            return;
+          }
           out = await submitTunnel();
         } catch (e) {
           settle(0, false);
@@ -1162,7 +1186,10 @@ export function addView(ctx) {
             try {
               const r = await api.tunnelSuggest();
               const field = wrap.querySelector('input[name="tunnelPort"]');
-              if (field && r.port) field.value = r.port;
+              if (field && r.port) {
+                field.value = r.port;
+                scheduleForwardCheck();
+              }
             } catch (e) { oops(e); }
           });
         }));
@@ -1854,6 +1881,70 @@ export function addView(ctx) {
         .then(r => tokenFields.forEach(i => { if (!i.value || i.defaultValue === i.value) i.value = r.token || ''; }))
         .catch(() => tokenFields.forEach(i => { i.value = ''; i.placeholder = 'type a long random token'; }));
 
+      function mtProxyMapping() {
+        if (!mtMode.value) return '';
+        const entry = mtEntry.value.trim();
+        const valid = port => /^\d+$/.test(port) && Number(port) >= 1 && Number(port) <= 65535;
+        if (!valid(entry)) return '';
+        return (mtMode.value === 'web' ? '127.0.0.1:' : '') + entry + '=' + mtExit.value.trim();
+      }
+
+      function scheduleForwardCheck() {
+        clearTimeout(forwardCheckTimer);
+        forwardCheckRequest?.abort();
+        for (const [input, note] of forwardErrors) {
+          input.removeAttribute('aria-invalid');
+          note.hidden = true;
+          note.textContent = '';
+        }
+        forwardCheckTimer = setTimeout(checkForwardFields, 300);
+      }
+
+      async function checkForwardFields() {
+        clearTimeout(forwardCheckTimer);
+        forwardCheckRequest?.abort();
+        if (!root.isConnected || chosen.side !== 'server') return;
+        const direct = chosen.direction === 'direct';
+        const input = direct ? directForward : reverseForward;
+        const relevant = node => !node.closest('[hidden]:not(.step)');
+        const checked = name => {
+          const node = root.querySelector('input[name="' + name + '"]');
+          return !!node?.checked && !node.dataset.drawn && relevant(node.parentElement);
+        };
+        const udpOnly = !direct && chosen.transport === 'udp';
+        const request = {
+          ports: relevant(input) ? input.value.trim() : '',
+          proxy: mtProxyMapping(),
+          tcp: !udpOnly,
+          udp: udpOnly || checked('tune.acceptUDP') || checked('routedAcceptUdp'),
+          tunnelPort: !direct && relevant(reversePort) ? reversePort.value.trim() : '',
+          tunnelTransport: !direct ? chosen.transport || '' : '',
+        };
+        if (!request.ports && !request.proxy) return;
+        const controller = new AbortController();
+        forwardCheckRequest = controller;
+        let errors;
+        try {
+          errors = await api.forwardPortCheck(request, controller.signal);
+        } catch {
+          return; // The create handler still validates the form.
+        }
+        if (controller.signal.aborted) return;
+        for (const [field, message] of [[input, errors.ports], [mtEntry, errors.proxy]]) {
+          const note = forwardErrors.get(field);
+          note.textContent = message;
+          note.hidden = !message;
+          if (message) field.setAttribute('aria-invalid', 'true');
+          else field.removeAttribute('aria-invalid');
+        }
+        return errors.ports ? input : errors.proxy ? mtEntry : null;
+      }
+
+      for (const field of [reverseForward, directForward, reversePort, mtEntry]) {
+        field.addEventListener('input', scheduleForwardCheck);
+      }
+      mtMode.addEventListener('change', scheduleForwardCheck);
+
       /* Building the tunnel.
        *
        * It used to hang off a button that is not in this markup, so the form
@@ -1901,14 +1992,7 @@ export function addView(ctx) {
           if (![entry, exit].every(port => range.test(port) && Number(port) >= 1 && Number(port) <= 65535)) {
             throw new Error('In Optional → Telegram MTProxy, enter both TCP ports between 1 and 65535.');
           }
-          const occupied = (payload.ports || '').split(',').some(rule => {
-            const listen = rule.split('=')[0].trim().split(':').at(-1);
-            const [lo, hi = lo] = listen.split('-').map(Number);
-            return Number(entry) >= lo && Number(entry) <= hi;
-          });
-          if (occupied) throw new Error('Choose an MTProxy port that is separate from the other forwarded ports.');
-          const mapping = (mtMode.value === 'web' ? '127.0.0.1:' : '') + entry + '=' + exit;
-          payload.ports = [payload.ports, mapping].filter(Boolean).join(', ');
+          payload.ports = [payload.ports, mtProxyMapping()].filter(Boolean).join(', ');
         }
         if (chosen.direction === 'direct') {
           payload.side = chosen.side === 'server' ? 'iran' : 'kharej';

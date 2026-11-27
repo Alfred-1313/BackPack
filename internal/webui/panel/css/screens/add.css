@@ -189,6 +189,9 @@ body[data-t="light"] .dlg.add select{
 .dlg.add input:hover,.dlg.add .sel4:hover{border-color:var(--ln2)}
 .dlg.add input:focus{border-color:var(--ln3)}
 .dlg.add input.bad{border-color:color-mix(in srgb,var(--er) 55%,transparent)}
+.dlg.add input[aria-invalid="true"]{border-color:var(--er)}
+.dlg.add .forward-port-error{margin-top:6px;color:var(--er);font-size:11px;line-height:1.45}
+.dlg.add .forward-port-error[hidden]{display:none}
 .dlg.add .sel4{display:flex;align-items:center;gap:8px;cursor:pointer}
 .dlg.add .sel4 .sp{flex:1}
 .dlg.add .sel4 svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;color:var(--dim)}

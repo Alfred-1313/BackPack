@@ -415,6 +415,7 @@ func (s *server) routes() *http.ServeMux {
 	// actions, reachable from the browser.
 	mux.HandleFunc("/api/tunnel/options", s.requireAuth(s.handleTunnelOptions))
 	mux.HandleFunc("/api/tunnel/suggest", s.requireAuth(s.handleTunnelSuggest))
+	mux.HandleFunc("/api/tunnel/forward-ports/check", s.requireAuth(s.handleForwardPortCheck))
 	mux.HandleFunc("/api/tunnel/defaults", s.requireAuth(s.handleTunnelDefaults))
 	mux.HandleFunc("/api/tunnel/create", s.requireAuth(s.handleTunnelCreate))
 	// The direct half, on its own endpoints so the reverse ones are untouched.

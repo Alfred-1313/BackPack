@@ -43,8 +43,8 @@ async function get(path) {
   return r.json();
 }
 
-async function post(path, body) {
-  const opts = { method: 'POST' };
+async function post(path, body, signal) {
+  const opts = { method: 'POST', signal };
   if (body instanceof FormData || body instanceof URLSearchParams) opts.body = body;
   else if (body !== undefined) {
     opts.headers = { 'Content-Type': 'application/json' };
@@ -150,6 +150,7 @@ export const tunnelDefaults = ({ preset = '', role = '', transport = '' } = {}) 
    it to the other end. */
 export const tunnelToken = () => get('/api/tunnel/suggest?what=token');
 export const tunnelSuggest = () => get('/api/tunnel/suggest?what=port');
+export const forwardPortCheck = (body, signal) => post('/api/tunnel/forward-ports/check', body, signal);
 
 /* ---- CLI: 1 Setup Iran / 2 Setup Kharej ---------------------------------- */
 export const tunnelCreate = payload => post('/api/tunnel/create', payload);

@@ -79,6 +79,19 @@ func (s *server) handleTunnelSuggest(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *server) handleForwardPortCheck(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var check manage.ForwardPortCheck
+	if err := decodeJSON(w, r, &check); err != nil {
+		http.Error(w, "invalid forwarded ports", http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, manage.CheckForwardPorts(check))
+}
+
 // handleTunnelDefaults returns the advanced settings a preset produces for a
 // given role and transport — what the Fine Tune drawer shows before anything is
 // edited, and what it snaps back to when the preset changes.
