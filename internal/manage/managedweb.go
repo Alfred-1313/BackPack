@@ -7,8 +7,11 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
+	"regexp"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/backpack/backpack/internal/app"
 )
@@ -215,10 +218,41 @@ func realityCoverFor(cover, binary string, probe realitySetupProbe) (string, str
 		strings.Join(reasons, "; "))
 }
 
-// EngineHelperInstalled reports whether the panel's pinned helper is executable.
-func EngineHelperInstalled(tool string) bool {
-	_, err := managedHelper(tool)
-	return err == nil
+var engineVersionToken = regexp.MustCompile(`^[0-9]+(?:\.[0-9]+){2,3}(?:[-+][0-9A-Za-z.-]+)*$`)
+
+// EngineHelperStatus reads the version reported by the installed executable.
+// An unsuccessful version probe leaves the installation status intact.
+func EngineHelperStatus(ctx context.Context, tool string) (version string, installed bool) {
+	probe, ok := map[string]struct{ flag, prefix string }{
+		"gost":     {"-V", "gost "},
+		"gost-v2":  {"-V", "gost "},
+		"xray":     {"version", "Xray "},
+		"sing-box": {"version", "sing-box version "},
+		"naive":    {"--version", "naive "},
+	}[tool]
+	if !ok {
+		return "", false
+	}
+	path, err := managedHelper(tool)
+	if err != nil {
+		return "", false
+	}
+	cmd := exec.CommandContext(ctx, path, probe.flag)
+	cmd.WaitDelay = 500 * time.Millisecond
+	output, err := cmd.CombinedOutput()
+	if err == nil {
+		for _, line := range strings.Split(string(output), "\n") {
+			rest, matched := strings.CutPrefix(strings.TrimSpace(line), probe.prefix)
+			fields := strings.Fields(rest)
+			if matched && len(fields) != 0 {
+				number := strings.TrimPrefix(fields[0], "v")
+				if engineVersionToken.MatchString(number) {
+					return "v" + number, true
+				}
+			}
+		}
+	}
+	return "", true
 }
 
 // managedHelper is the installed helper's path, or why it cannot be used.

@@ -217,19 +217,20 @@ func validPortMappings(value string) bool {
 	return true
 }
 
-// Installed reports whether the pinned manager and its transport executables exist.
-func Installed() bool {
+// InstalledRevision reports the pinned source revision when the manager and
+// all its transport executables are present.
+func InstalledRevision() string {
 	manager, err := helperPath()
 	if err != nil {
-		return false
+		return ""
 	}
 	for _, name := range []string{"omnitun", "omnistripe", "omniackless", "hysteria", "chisel"} {
 		info, err := os.Stat(filepath.Join(filepath.Dir(manager), "bin", name))
 		if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0111 == 0 {
-			return false
+			return ""
 		}
 	}
-	return true
+	return revision
 }
 
 func helperPath() (string, error) {

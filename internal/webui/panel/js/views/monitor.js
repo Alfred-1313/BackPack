@@ -123,6 +123,7 @@ export function healthView(ctx) {
                   <span class="hcdot"></span>
                   <div class="hctx">
                     <b>${esc(c.Name || c.name)}</b>
+                    ${(c.Version || c.version) ? `<small class="hcversion">${esc(c.Version || c.version)}</small>` : ''}
                     <span>${esc(c.Detail || c.detail || '')}</span>
                     ${(c.Fix || c.fix) ? `<i class="hcfix">${esc(c.Fix || c.fix)}</i>` : ''}
                   </div>

@@ -6,9 +6,11 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/backpack/backpack/internal/alerthist"
+	"github.com/backpack/backpack/internal/app"
 	"github.com/backpack/backpack/internal/control"
 	"github.com/backpack/backpack/internal/daggerconnect"
 	"github.com/backpack/backpack/internal/manage"
@@ -21,56 +23,74 @@ import (
 // link test. All three surface things the CLI already computes — the panel
 // adds no judgement of its own, so the two can never disagree.
 
-// handleHealth runs the full diagnostic pass and returns every check. It is
-// invoked when the Health modal opens, not on a timer — the pass makes real
-// TCP probes and takes a few seconds.
-func (s *server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	checks := append(manage.Diagnose(), relayEngineChecks()...)
-	out := make([]map[string]string, len(checks))
-	for i, c := range checks {
-		out[i] = map[string]string{
-			"group":  c.Group,
-			"name":   c.Name,
-			"level":  healthLevel(c.Level),
-			"detail": c.Detail,
-			"fix":    c.Fix,
-		}
-	}
-	writeJSON(w, out)
+type healthRow struct {
+	Group   string `json:"group"`
+	Name    string `json:"name"`
+	Level   string `json:"level"`
+	Detail  string `json:"detail"`
+	Fix     string `json:"fix"`
+	Version string `json:"version,omitempty"`
 }
 
-func relayEngineChecks() []manage.Check {
-	checks := []manage.Check{
-		{Group: "Tunnel engines", Name: "BackPack", Level: manage.CheckOK, Detail: "Running with native Backhaul transports"},
+// handleHealth runs the full diagnostic pass when the Health modal opens.
+func (s *server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	checks := manage.Diagnose()
+	out := make([]healthRow, 0, len(checks))
+	for _, c := range checks {
+		out = append(out, healthRow{Group: c.Group, Name: c.Name, Level: healthLevel(c.Level), Detail: c.Detail, Fix: c.Fix})
 	}
-	dagger := manage.Check{Group: "Tunnel engines", Name: "DaggerConnect", Level: manage.CheckOK,
-		Detail: "Official launcher " + daggerconnect.LauncherVersion + " installed. Core " +
-			daggerconnect.CoreVersion + " is fetched for the licensed tunnel"}
+	writeJSON(w, append(out, relayEngineChecks(r.Context())...))
+}
+
+func relayEngineChecks(parent context.Context) []healthRow {
+	const group = "Tunnel engines"
+	checks := []healthRow{
+		{Group: group, Name: "BackPack", Level: "ok", Version: app.Version, Detail: "Running with native Backhaul transports"},
+	}
+	dagger := healthRow{Group: group, Name: "DaggerConnect", Level: "ok",
+		Version: "Launcher " + daggerconnect.LauncherVersion,
+		Detail:  "Core " + daggerconnect.CoreVersion + " is fetched for the licensed tunnel"}
 	if err := daggerconnect.LauncherStatus(); err != nil {
-		dagger.Level, dagger.Detail = manage.CheckFail, "Official launcher missing or unusable"
+		dagger.Level, dagger.Version, dagger.Detail = "fail", "", "Official launcher missing or unusable"
 		if !os.IsNotExist(err) {
 			dagger.Detail += ". " + err.Error()
 		}
 	}
 	checks = append(checks, dagger)
-	for _, helper := range []struct {
-		name      string
-		installed bool
-	}{
-		{"OmniTunnel", omni.Installed()},
-		{"GOST 3", manage.EngineHelperInstalled("gost")},
-		{"GOST 2", manage.EngineHelperInstalled("gost-v2")},
-		{"Xray", manage.EngineHelperInstalled("xray")},
-		{"sing-box", manage.EngineHelperInstalled("sing-box")},
-		{"NaiveProxy", manage.EngineHelperInstalled("naive")},
-	} {
-		item := manage.Check{Group: "Tunnel engines", Name: helper.name, Level: manage.CheckOK, Detail: "Installed"}
-		if !helper.installed {
-			item.Level, item.Detail = manage.CheckFail, "Not installed"
-		}
-		checks = append(checks, item)
+	omniRow := healthRow{Group: group, Name: "OmniTunnel", Level: "fail", Detail: "Not installed"}
+	if rev := omni.InstalledRevision(); rev != "" {
+		omniRow.Level, omniRow.Version, omniRow.Detail = "ok", "Revision "+rev[:7], "Installed"
 	}
-	return checks
+	checks = append(checks, omniRow)
+
+	helpers := []struct {
+		name string
+		tool string
+	}{
+		{"GOST 3", "gost"},
+		{"GOST 2", "gost-v2"},
+		{"Xray", "xray"},
+		{"sing-box", "sing-box"},
+		{"NaiveProxy", "naive"},
+	}
+	ctx, cancel := context.WithTimeout(parent, 2*time.Second)
+	defer cancel()
+	items := make([]healthRow, len(helpers))
+	var pending sync.WaitGroup
+	for i, helper := range helpers {
+		pending.Go(func() {
+			item := healthRow{Group: group, Name: helper.name, Level: "fail", Detail: "Not installed"}
+			if version, installed := manage.EngineHelperStatus(ctx, helper.tool); installed {
+				item.Level, item.Version, item.Detail = "ok", version, "Installed"
+				if version == "" {
+					item.Detail = "Installed. Version unavailable"
+				}
+			}
+			items[i] = item
+		})
+	}
+	pending.Wait()
+	return append(checks, items...)
 }
 
 func healthLevel(l manage.CheckLevel) string {
