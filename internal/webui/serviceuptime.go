@@ -21,8 +21,7 @@ import (
 // start they mean, and it survives everything short of the service itself
 // stopping.
 
-// sinceTTL is how long one answer is reused. Uptime moves in minutes on the
-// card; the poll that asks is every six seconds.
+// sinceTTL is how long the cached service start times are reused.
 const sinceTTL = 15 * time.Second
 
 var unitSince = struct {

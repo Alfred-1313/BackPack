@@ -20,6 +20,7 @@ import (
 	"github.com/backpack/backpack/internal/app"
 	"github.com/backpack/backpack/internal/control"
 	"github.com/backpack/backpack/internal/manage"
+	"github.com/backpack/backpack/internal/manage/core"
 	"github.com/backpack/backpack/internal/node"
 	"github.com/backpack/backpack/internal/utils/network"
 )
@@ -197,6 +198,7 @@ func (s *sessionStore) clear() {
 
 type server struct {
 	mtProxyTraffic mtProxyTraffic
+	tunnelCache    *core.TTLCache[[]TunnelInfo]
 	authMu         sync.Mutex
 	sessions       *sessionStore
 
@@ -263,6 +265,7 @@ func Serve() error {
 		return err
 	}
 	srv := newServer()
+	srv.tunnelCache = core.NewTTLCache[[]TunnelInfo](850*time.Millisecond, time.Minute)
 
 	// The SOCKS5 relay, the watchdog, the Telegram bot and the alerts all
 	// deliberately run elsewhere — in the backpack-monitor service. See
@@ -762,9 +765,16 @@ func (s *server) handleStats(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleTunnels(w http.ResponseWriter, r *http.Request) {
-	rows := gatherTunnels(s.nodes.Runner())
-	s.mtProxyTraffic.fill(rows)
-	writeJSON(w, rows)
+	read := func() []TunnelInfo {
+		rows := gatherTunnels(s.nodes.Runner())
+		s.mtProxyTraffic.fill(rows)
+		return rows
+	}
+	if s.tunnelCache != nil {
+		writeJSON(w, s.tunnelCache.Get("", read))
+		return
+	}
+	writeJSON(w, read())
 }
 
 func (s *server) handleLogs(w http.ResponseWriter, r *http.Request) {

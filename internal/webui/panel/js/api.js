@@ -37,8 +37,8 @@ async function refusal(r) {
   return e;
 }
 
-async function get(path) {
-  const r = await fetch(at(path), { cache: 'no-store' });
+async function get(path, signal) {
+  const r = await fetch(at(path), { cache: 'no-store', signal });
   if (!r.ok) throw await refusal(r);
   return r.json();
 }
@@ -58,7 +58,7 @@ async function post(path, body, signal) {
 
 /* ---- CLI: Manage → Status ------------------------------------------------ */
 export const stats   = () => get('/api/stats');
-export const tunnels = () => get('/api/tunnels');
+export const tunnels = signal => get('/api/tunnels', signal);
 
 /* ---- CLI: Manage → Manage Tunnels ---------------------------------------- */
 export const tunnelAction = (name, action, extra = {}) =>

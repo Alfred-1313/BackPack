@@ -4,8 +4,8 @@
  * for itself, so opening a dialog would double the request rate and the card
  * behind it could show a different state from the dialog in front of it.
  *
- * The cadences are the ones the panel has always used: the host every 4s, the
- * tunnels every 6s, the alert badge every 30s.
+ * Tunnel cards refresh every second while visible. Host and alert readings
+ * keep their own cadence.
  */
 
 import * as api from './api.js';
@@ -13,6 +13,7 @@ import * as api from './api.js';
 const state = { stats: null, tunnels: [], alerts: null, error: null };
 const subs = new Set();
 let timers = [];
+let tunnelRequest;
 
 export function get() { return state; }
 
@@ -31,11 +32,19 @@ export async function loadStats() {
   return state.stats;
 }
 
-export async function loadTunnels() {
-  try { state.tunnels = await api.tunnels() || []; state.error = null; }
-  catch (e) { state.error = e; }
-  emit();
-  return state.tunnels;
+export function loadTunnels() {
+  if (tunnelRequest) return tunnelRequest;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 4000);
+  tunnelRequest = api.tunnels(controller.signal)
+    .then(rows => { state.tunnels = rows || []; state.error = null; })
+    .catch(error => { state.error = error; })
+    .then(() => { emit(); return state.tunnels; })
+    .finally(() => {
+      clearTimeout(timeout);
+      tunnelRequest = null;
+    });
+  return tunnelRequest;
 }
 
 export async function loadAlerts() {
@@ -46,13 +55,12 @@ export async function loadAlerts() {
 
 export function tunnel(name) { return state.tunnels.find(t => t.name === name) || null; }
 
-/* Polling pauses while the tab is hidden: a panel left open in a background
-   tab was making 15 requests a minute at nothing. */
+/* Background tabs resume polling as soon as they become visible. */
 export function startPolling() {
   stopPolling();
   timers = [
     setInterval(() => { if (!document.hidden) loadStats(); }, 4000),
-    setInterval(() => { if (!document.hidden) loadTunnels(); }, 6000),
+    setInterval(() => { if (!document.hidden) loadTunnels(); }, 1000),
     setInterval(() => { if (!document.hidden) loadAlerts(); }, 30000),
   ];
   document.addEventListener('visibilitychange', onVisible);

@@ -266,7 +266,7 @@ ${field(t, idx)}
        behaving right now. What it has carried is a total, and a total is a
        fact about the past — it goes under, at the size of one. -->
   <div class="headline${hasPing ? '' : ' none'}">${hasPing ? t.ping : '—'}<em>${hasPing ? 'ms' : 'no ping'}</em></div>
-  <div class="hcap">${esc(bytes(t.totalBytes || 0))}${t.uptime ? ` · up ${esc(t.uptime)}` : ''}</div>
+  <div class="hcap">${esc(trafficCaption(t))}</div>
 
   <div class="lines">
     <span class="ip">${esc(ip || '—')}</span><span class="sep"></span>
@@ -289,7 +289,7 @@ ${field(t, idx)}
 <div class="mtp-usages">${proxyMeters(t.mtproxyUsage)}</div>
 
 <div class="foot">
-  <span class="tot"><i>↓</i>${esc(bytes(t.inBytes || 0))}<i>↑</i>${esc(bytes(t.outBytes || 0))}</span>
+  <span class="tot">${trafficBreakdown(t)}</span>
   <span class="sp2"></span>
   <button class="btn" data-act="edit" title="Edit" aria-label="Edit tunnel">${BTN.edit}</button>
   <button class="btn" data-act="logs"   title="Logs">${BTN.logs}</button>
@@ -402,30 +402,46 @@ function proxyMeters(usage = []) {
 }
 
 function trafficMeter(used, lim, hit, mode) {
+  return trafficMeterReading(used, lim, hit) + `
+  <button class="qm-ed" type="button" data-act="quota"${mode ? ` data-mode="${esc(mode)}"` : ''} title="${lim ? 'Change the traffic limit' : 'Set a traffic limit'}">${PEN}</button>`;
+}
+
+function trafficMeterReading(used, lim, hit) {
   const pct = lim ? Math.min(100, (used / lim) * 100) : 0;
   const tone = !lim ? 'none' : hit || pct >= 90 ? 'er' : pct >= 70 ? 'wr' : 'ok';
   return `<span class="qm ${tone}" title="${lim ? `${pct.toFixed(1)}% of the traffic limit used` : 'No traffic limit'}">
     <span class="qm-tx"><b>${esc(bytes(used))}</b><i>/</i>${lim ? esc(bytes(lim)) : '<em>∞</em>'}</span>
     <span class="qm-bar"><i style="--w:${pct.toFixed(2)}%"></i></span>
     ${lim ? `<span class="qm-pc">${pct >= 99.95 && !hit ? '99.9' : pct.toFixed(pct < 10 ? 1 : 0)}%</span>` : ''}
-  </span>
-  <button class="qm-ed" type="button" data-act="quota"${mode ? ` data-mode="${esc(mode)}"` : ''} title="${lim ? 'Change the traffic limit' : 'Set a traffic limit'}">${PEN}</button>`;
+  </span>`;
 }
 
-/* What a card draws, minus the chart.
- *
- * The chart is left out on purpose. Its points change on every poll, so a
- * signature that included them would never match and the card would be rebuilt
- * every few seconds — which is the fault this exists to stop. The line is
- * updated in place instead; see paint.
- */
+function trafficCaption(t) {
+  return bytes(t.totalBytes || 0) + (t.uptime ? ` · up ${t.uptime}` : '');
+}
+
+function trafficBreakdown(t) {
+  return `<i>↓</i>${esc(bytes(t.inBytes || 0))}<i>↑</i>${esc(bytes(t.outBytes || 0))}`;
+}
+
+function paintReading(el, t) {
+  const hasPing = t.ping !== undefined && t.ping >= 0;
+  const ping = el.querySelector('.headline');
+  ping.classList.toggle('none', !hasPing);
+  ping.firstChild.nodeValue = hasPing ? String(t.ping) : '—';
+  ping.querySelector('em').textContent = hasPing ? 'ms' : 'no ping';
+  el.querySelector('.hcap').textContent = trafficCaption(t);
+  el.querySelector('.tot').innerHTML = trafficBreakdown(t);
+  const gauge = el.querySelector('.mfoot > .qm');
+  if (gauge) gauge.outerHTML = trafficMeterReading(t.totalBytes || 0, t.quotaLimit || 0, t.quotaHit);
+}
+
+/* Keep readings and chart changes out of the card's structural signature. */
 function cardSig(t) {
   return JSON.stringify([
     t.state, t.serviceDown, t.unrunnable, t.role, t.direction, t.transport, t.carrier, t.addr, t.ports,
-    t.ping, t.uptime, t.bytesIn, t.bytesOut, t.bytesTotal, t.country, t.peerCountry,
-    t.peerLocation, t.peerISP, t.botRelay, t.botRelayPort, t.tunnelPort,
-    t.kcpLossPercent, t.pool, t.preset, t.certType, t.certDomain, t.certExpiry,
-    t.maxConnections, t.bandwidthMbps, t.quotaLimit, t.quotaHit, t.quotaSettable,
+    t.country, t.peerCountry, t.peerLocation, t.peerISP, t.botRelay, t.tunnelPort,
+    t.preset, t.quotaLimit, t.quotaSettable, t.mtproxy, t.node, seriesOf(t).length >= 2,
   ]);
 }
 
@@ -443,7 +459,8 @@ export function dashboard(ctx) {
     <div class="grid3" id="tGrid"></div>`;
 
   const grid = $('#tGrid', view);
-  const held = new Map();   // name -> { el, sig }
+  const held = new Map();
+  let lastRows;
 
   /* Painting without rebuilding.
    *
@@ -459,7 +476,9 @@ export function dashboard(ctx) {
    * new points.
    */
   const paint = state => {
-    const tuns = state.tunnels || [];
+    const tuns = state.tunnels;
+    if (lastRows === tuns) return;
+    lastRows = tuns;
     $('#tCount', view).textContent = String(tuns.length);
 
     if (!tuns.length) {
@@ -477,19 +496,24 @@ export function dashboard(ctx) {
     let at = null;
     tuns.forEach((t, i) => {
       const sig = cardSig(t);
+      const reading = JSON.stringify([t.ping, t.uptime, t.totalBytes, t.inBytes, t.outBytes, t.quotaHit]);
       let h = held.get(t.name);
       if (!h || h.sig !== sig) {
         const box = document.createElement('div');
         box.innerHTML = card(t, i);
         const fresh = box.firstElementChild;
         if (h) h.el.replaceWith(fresh); else if (at) at.after(fresh); else grid.prepend(fresh);
-        h = { el: fresh, sig };
+        h = { el: fresh, sig, reading, proxyUsage: proxyMeters(t.mtproxyUsage) };
         held.set(t.name, h);
       } else {
         if (at ? h.el.previousElementSibling !== at : grid.firstElementChild !== h.el) {
           if (at) at.after(h.el); else grid.prepend(h.el);
         }
         updateSpark(h.el, t, i);
+        if (h.reading !== reading) {
+          paintReading(h.el, t);
+          h.reading = reading;
+        }
       }
       const proxyUsage = proxyMeters(t.mtproxyUsage);
       if (h.proxyUsage !== proxyUsage) {

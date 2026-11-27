@@ -310,8 +310,14 @@ func since(now, start uint64) uint64 {
 // every earlier run — the figure a traffic limit is held against. Cheaper than
 // Snapshot, which a limit checked several times a second does not need.
 func (c *Collector) Total() uint64 {
+	in, out := c.Totals()
+	return in + out
+}
+
+// Totals reads the two lifetime counters without sampling diagnostics or writing to disk.
+func (c *Collector) Totals() (uint64, uint64) {
 	in, out := c.live()
-	return c.baseIn + since(in, c.startIn) + c.baseOut + since(out, c.startOut)
+	return c.baseIn + since(in, c.startIn), c.baseOut + since(out, c.startOut)
 }
 
 // Snapshot reads the current counters without writing anything.
@@ -327,9 +333,7 @@ func (c *Collector) Snapshot() Snapshot {
 	}
 	// The persisted baseline plus what has been carried since this collector
 	// took over from it.
-	liveIn, liveOut := c.live()
-	s.BytesIn = c.baseIn + since(liveIn, c.startIn)
-	s.BytesOut = c.baseOut + since(liveOut, c.startOut)
+	s.BytesIn, s.BytesOut = c.Totals()
 	if live, target, configured, mbps := PoolState(); configured > 0 {
 		s.Pool = &PoolStats{Live: live, Target: target, Configured: configured, Mbps: mbps}
 	}

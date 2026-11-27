@@ -106,6 +106,8 @@ type Status struct {
 	Peer      string `json:"peer,omitempty"`
 	BytesIn   uint64 `json:"bytesIn"`
 	BytesOut  uint64 `json:"bytesOut"`
+	// Traffic is the lifetime total. Older engines report only process counters above.
+	Traffic *TrafficTotals `json:"traffic,omitempty"`
 	// Generation counts how many times the transport has been started in this
 	// process, so a caller can tell a restart that happened from one that was
 	// asked for and did not.
@@ -113,6 +115,11 @@ type Status struct {
 	// HelperReady is absent for ordinary transports and older engines. A
 	// running process is not sufficient evidence that its HTTPS helper started.
 	HelperReady *bool `json:"helperReady,omitempty"`
+}
+
+type TrafficTotals struct {
+	In  uint64 `json:"in"`
+	Out uint64 `json:"out"`
 }
 
 // Handler is what the engine supplies: the two questions it can answer and the

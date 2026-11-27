@@ -50,6 +50,11 @@ type engineControl struct {
 // and half a minute is long enough for the stall this exists to shorten.
 func (e *engineControl) Status() enginectl.Status {
 	in, out := metrics.Traffic()
+	var traffic *enginectl.TrafficTotals
+	if collector := liveCollector.Load(); collector != nil {
+		totalIn, totalOut := collector.Totals()
+		traffic = &enginectl.TrafficTotals{In: totalIn, Out: totalOut}
+	}
 	connected := false
 	if c := metrics.SnapshotConnected(); c != nil {
 		connected = *c
@@ -70,6 +75,7 @@ func (e *engineControl) Status() enginectl.Status {
 		Peer:        metrics.SnapshotPeer(),
 		BytesIn:     in,
 		BytesOut:    out,
+		Traffic:     traffic,
 		Generation:  int(e.generation.Load()),
 		HelperReady: helperReady,
 	}

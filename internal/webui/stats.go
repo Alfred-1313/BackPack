@@ -1,6 +1,7 @@
 package webui
 
 import (
+	"context"
 	"net"
 	"strings"
 	"sync"
@@ -8,8 +9,10 @@ import (
 
 	"github.com/backpack/backpack/config"
 	"github.com/backpack/backpack/internal/app"
+	"github.com/backpack/backpack/internal/enginectl"
 	"github.com/backpack/backpack/internal/geo"
 	"github.com/backpack/backpack/internal/manage"
+	"github.com/backpack/backpack/internal/manage/core"
 	"github.com/backpack/backpack/internal/metrics"
 	"github.com/backpack/backpack/internal/node"
 	"github.com/backpack/backpack/internal/quota"
@@ -160,6 +163,9 @@ func splitBotRelay(ports []string, token string) (string, int, bool) {
 
 // --- network speed sampling -------------------------------------------------
 
+// Socket-table scans are shared across fast counter polls.
+var tunnelHealthCache = core.NewTTLCache[map[string]manage.Health](3*time.Second, time.Minute)
+
 // gatherTunnels collects per-tunnel info concurrently, including ping and peer
 // geo. State reflects *real* connectivity, not just the local systemd unit:
 //
@@ -179,7 +185,14 @@ func gatherTunnels(run node.Runner) []TunnelInfo {
 	// health check use. Working it out here separately is what made KCP tunnels
 	// show as offline: the panel looked for peers in the TCP socket table, and a
 	// datagram listener has none.
-	health := manage.AllHealth()
+	var names strings.Builder
+	for _, tunnel := range tunnels {
+		names.WriteString(tunnel.Name)
+		names.WriteByte(0)
+		names.WriteString(tunnel.Transport)
+		names.WriteByte(0)
+	}
+	health := tunnelHealthCache.Get(names.String(), manage.AllHealth)
 
 	// The peers of every listening tunnel, read once for all of them. See
 	// listeningPeers.
@@ -256,7 +269,11 @@ func tunnelInfo(t manage.Tunnel, h manage.Health, peersByPort map[string][]peerC
 	} else {
 		observeOutbound(&info, t, h, pair, paired, run)
 	}
-	if snapErr == nil {
+	hasSnapshot := snapErr == nil
+	if h.Active {
+		hasSnapshot = readLiveTraffic(t.Name, &snap) || hasSnapshot
+	}
+	if hasSnapshot {
 		fillMetrics(&info, snap)
 	}
 	// The snapshot's uptime describes the last run; on a stopped tunnel
@@ -273,6 +290,20 @@ func tunnelInfo(t manage.Tunnel, h manage.Health, peersByPort map[string][]peerC
 	}
 	fillConfig(&info, t)
 	return info
+}
+
+// readLiveTraffic overrides just the traffic reading. Preserve the richer
+// diagnostics in the periodic snapshot and use it as a fallback for older engines.
+func readLiveTraffic(name string, snap *metrics.Snapshot) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	var status enginectl.Status
+	if err := enginectl.AskContext(ctx, name, enginectl.OpStatus, &status); err != nil || status.Traffic == nil {
+		return false
+	}
+	snap.BytesIn, snap.BytesOut = status.Traffic.In, status.Traffic.Out
+	snap.Taken = time.Now()
+	return true
 }
 
 // observeInbound fills in the far end of a tunnel this side listens on: the
@@ -410,7 +441,7 @@ func (r *rateTracker) sample(name string, snap metrics.Snapshot) []RatePoint {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	prev, ok := r.last[name]
-	if !ok || !snap.Taken.Equal(prev.Taken) {
+	if !ok || snap.Taken.After(prev.Taken) {
 		if ok {
 			secs := snap.Taken.Sub(prev.Taken).Seconds()
 			// A counter that went backwards means the totals file was reset

@@ -57,15 +57,30 @@ func (m *mtProxyTraffic) status(name string, draft mtProxyDraft, mode string) mt
 
 func (m *mtProxyTraffic) fill(rows []TunnelInfo) {
 	m.mu.RLock()
-	defer m.mu.RUnlock()
+	usage := m.usage
+	m.mu.RUnlock()
+	if len(usage) == 0 || len(rows) == 0 {
+		return
+	}
+
+	// The accounting worker owns reconciliation and disk persistence. Reading
+	// the kernel here gives every browser the same live counters without writes.
+	ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
+	defer cancel()
+	state, _ := readMTProxyNFT(ctx)
 	for i := range rows {
-		if usage := m.usage[rows[i].Name]; len(usage) != 0 {
-			var used uint64
-			for _, proxy := range usage {
-				used += proxy.Used
+		if proxies := usage[rows[i].Name]; len(proxies) != 0 {
+			var total uint64
+			for _, proxy := range proxies {
+				proxy.Used = max(proxy.Used, state.counters["p_"+proxy.ID].Bytes)
+				if quota := state.quotas["q_"+proxy.ID]; proxy.Limit != 0 {
+					proxy.Hit = proxy.Hit || proxy.Used >= proxy.Limit ||
+						quota.Bytes == proxy.Limit && quota.Used >= proxy.Limit
+				}
+				total += proxy.Used
+				rows[i].MTProxyUsage = append(rows[i].MTProxyUsage, proxy)
 			}
-			rows[i].MTProxyBytes = &used
-			rows[i].MTProxyUsage = usage
+			rows[i].MTProxyBytes = &total
 		}
 	}
 }
