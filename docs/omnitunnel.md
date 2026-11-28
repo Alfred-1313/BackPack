@@ -19,16 +19,17 @@ or IPv6. Existing helper GRE tunnels and their setup tokens are still supported.
 
 ## Install
 
-On both Linux amd64 or arm64 servers, update the fork checkout and enable the
-helper. The installer verifies the pinned source archive, builds the routed
-engines and installs the bundled Hysteria and Chisel engines.
+The BackPack Linux amd64 and arm64 builds include the pinned OmniTunnel
+manager and engines, including Hysteria and Chisel. BackPack prepares the
+embedded assets on first use. A source build verifies the pinned upstream
+archive before bundling it.
 
 ```bash
 git pull --ff-only &&
-  sudo env BP_BUILD_FROM_SOURCE=1 BP_HELPERS=omni bash install.sh
+  sudo env BP_BUILD_FROM_SOURCE=1 bash install.sh
 ```
 
-The helper build uses a C compiler and Python 3. Running tunnels uses systemd
+The source build uses a C compiler and Python 3. Running tunnels uses systemd
 and the Linux networking tools. FoU needs the FoU and IPv4 GRE modules and a
 kernel built with `CONFIG_NET_FOU_IP_TUNNELS`. VXLAN needs its kernel module
 and the routed userspace modes need TUN. Routed port forwards use iptables. Ackless needs nftables. Hysteria2 uses OpenSSL for setup
@@ -85,7 +86,7 @@ production application already owns the port.
 
 ## خلاصهٔ فارسی
 
-روی هر دو سرور فورک را با `BP_HELPERS=omni` نصب کن. از منوی اصلی گزینهٔ
+روی هر دو سرور نسخهٔ BackPack را که OmniTunnel داخل آن است نصب کن. از منوی اصلی گزینهٔ
 **۱۱. OmniTunnel** را باز کن. اول سمت ایران را بساز و توکن را در سمت خارج
 وارد کن. وضعیت و فورواردها در همان منوی OmniTunnel هستند.
 

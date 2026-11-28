@@ -173,12 +173,12 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: Build the verified OmniTunnel helpers
-        run: sudo env "PATH=$PATH" BP_BUILD_FROM_SOURCE=1 BP_HELPERS=omni bash ./install.sh
+      - name: Build BackPack with OmniTunnel
+        run: sudo env "PATH=$PATH" BP_BUILD_FROM_SOURCE=1 bash ./install.sh
       - name: Verify restart, token retry and instance config validation
-        run: sudo bash scripts/test-omnitunnel-lifecycle.sh /usr/local/lib/backpack/helpers/omnitunnel/acf4e6e5bacc4aa841320e39cff4b51e3f2a9eec-amd64/manager
+        run: sudo bash scripts/test-omnitunnel-lifecycle.sh "$(sudo backpack omni prepare)"
       - name: Verify FoU and VXLAN in two Linux network namespaces
-        run: sudo bash scripts/test-omnitunnel-kernel.sh /usr/local/lib/backpack/helpers/omnitunnel/acf4e6e5bacc4aa841320e39cff4b51e3f2a9eec-amd64/manager
+        run: sudo bash scripts/test-omnitunnel-kernel.sh "$(sudo backpack omni prepare)"
 
   conntest-ipv6:
     name: Connection Test over an IPv6-only path

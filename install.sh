@@ -262,6 +262,7 @@ helper_present() (
       executable_file "/usr/local/lib/backpack/helpers/easytier/v2.6.4-$ARCH/easytier-core"
       ;;
     omni)
+      if "$BIN_PATH" omni bundled >/dev/null 2>&1; then return 0; fi
       local dir="/usr/local/lib/backpack/helpers/omnitunnel/$OMNI_REVISION-$ARCH" binary
       executable_file "$dir/manager" || return 1
       for binary in omnitun omnistripe omniackless hysteria chisel; do
@@ -352,6 +353,9 @@ helper_requested() {
 install_requested_helper() {
   local tool="$1"
   helper_platform_supported "$tool" || { err "${report_names[$tool]} is unsupported on $(uname -s)/$ARCH"; return 1; }
+  if [[ "$tool" == omni ]] && "$BIN_PATH" omni bundled >/dev/null 2>&1; then
+    return 0
+  fi
   command -v sha256sum >/dev/null || command -v shasum >/dev/null || {
     err 'A SHA256 utility is required'
     return 1
@@ -404,6 +408,10 @@ install_helpers() {
   done
   if [[ "${report_status[daggerconnect]}" == Ready || "${report_status[daggerconnect]}" == Present ]]; then
     report_detail[daggerconnect]='Official launcher ready. Licensed core loads on first use.'
+  fi
+  if "$BIN_PATH" omni bundled >/dev/null 2>&1; then
+    report_status[omni]='Built in'
+    report_detail[omni]='Included in the BackPack binary'
   fi
   return "$failed"
 }
@@ -699,7 +707,7 @@ ensure_go() {
   fi
   info "Go: $(GOTOOLCHAIN=local "$GO_BIN" version) (${GO_BIN})"
 }
-build_from_source() {
+build_from_source() (
   cd "$SCRIPT_DIR"
   ensure_go
   # Pipes allow fallback on blocked proxies (403), outages and network errors.
@@ -707,6 +715,15 @@ build_from_source() {
   export GOPROXY="${GOPROXY:-https://proxy.golang.org|https://mirror-go.runflare.com|https://goproxy.cn|direct}"
   export GOSUMDB=off GOTOOLCHAIN=local
   info "Building from source."
+  if [[ "$ARCH" == amd64 || "$ARCH" == arm64 ]]; then
+    if command -v cc >/dev/null && command -v python3 >/dev/null; then
+      local bundle="$SCRIPT_DIR/internal/omni/payload/bundle-$ARCH.tar.gz"
+      trap 'rm -f -- "$bundle"' EXIT
+      GO_BIN="$GO_BIN" bash scripts/build-omnitunnel.sh "$ARCH"
+    else
+      warn "OmniTunnel source builds need a C compiler and Python 3. Release binaries include OmniTunnel."
+    fi
+  fi
   # The PCK carrier captures with libpcap through cgo (see CONTRIBUTING.md). A
   # source build links it when the headers are here — a libpcap built into
   # LIBPCAP_PREFIX with scripts/build-libpcap.sh, or the distribution's
@@ -726,7 +743,7 @@ build_from_source() {
     CGO_ENABLED=0 "$GO_BIN" build -trimpath -ldflags "-s -w" -o "$BIN_PATH" .
   fi
   echo "$INSTALL_DIR" > /etc/backpack/install_path
-}
+)
 
 record_backpack() {
   local output

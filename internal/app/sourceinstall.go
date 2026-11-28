@@ -22,10 +22,9 @@ func SourceInstallGostCommand(link string, version int) string {
 	return sourceInstall(" BP_HELPERS="+helper, []string{"link", "apply", link})
 }
 
-// SourceInstallTestCommand installs the optional transport helpers before
-// applying a paired Connection Test link.
+// SourceInstallTestCommand equips a fresh peer for a paired Connection Test.
 func SourceInstallTestCommand(link string) string {
-	return sourceInstall(" BP_HELPERS=omni,gost,anytls,gost-v2", []string{"link", "apply", link})
+	return sourceInstall(" BP_HELPERS=gost,anytls,gost-v2", []string{"link", "apply", link})
 }
 
 func sourceInstall(helpers string, args []string) string {

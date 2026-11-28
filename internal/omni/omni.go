@@ -217,32 +217,33 @@ func validPortMappings(value string) bool {
 	return true
 }
 
-// InstalledRevision reports the pinned source revision when the manager and
-// all its transport executables are present.
+// InstalledRevision reports the pinned revision available to this build.
 func InstalledRevision() string {
-	manager, err := helperPath()
-	if err != nil {
-		return ""
+	if Bundled() || legacyManager() != "" {
+		return revision
 	}
-	for _, name := range []string{"omnitun", "omnistripe", "omniackless", "hysteria", "chisel"} {
-		info, err := os.Stat(filepath.Join(filepath.Dir(manager), "bin", name))
-		if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0111 == 0 {
-			return ""
-		}
+	return ""
+}
+
+func legacyManager() string {
+	dir := filepath.Join(helperRoot, revision+"-"+runtime.GOARCH)
+	if verifiedBundleDir(dir) {
+		return filepath.Join(dir, "manager")
 	}
-	return revision
+	return ""
 }
 
 func helperPath() (string, error) {
 	if runtime.GOOS != "linux" || (runtime.GOARCH != "amd64" && runtime.GOARCH != "arm64") {
 		return "", fmt.Errorf("OmniTunnel requires Linux amd64 or arm64")
 	}
-	path := filepath.Join("/usr/local/lib/backpack/helpers/omnitunnel", revision+"-"+runtime.GOARCH, "manager")
-	info, err := os.Lstat(path)
-	if err != nil || !info.Mode().IsRegular() || info.Mode()&0111 == 0 {
-		return "", fmt.Errorf("install the OmniTunnel helper from the fork with BP_BUILD_FROM_SOURCE=1 BP_HELPERS=omni")
+	if Bundled() {
+		return bundleManager(helperRoot)
 	}
-	return path, nil
+	if path := legacyManager(); path != "" {
+		return path, nil
+	}
+	return "", fmt.Errorf("OmniTunnel assets are missing. Install a BackPack build that includes them")
 }
 
 // Run is shared by the interactive menu and the automation entry point.
@@ -272,6 +273,23 @@ func runContext(ctx context.Context, args []string, input io.Reader, stdout, std
 }
 
 func run(ctx context.Context, args []string, input io.Reader, stdout, stderr io.Writer, env []string, options SetupOptions) error {
+	if len(args) == 1 && args[0] == "bundled" {
+		if !Bundled() {
+			return fmt.Errorf("this BackPack build has no embedded OmniTunnel")
+		}
+		fmt.Fprintln(stdout, revision)
+		return nil
+	}
+	if len(args) == 1 && args[0] == "prepare" {
+		if os.Geteuid() != 0 {
+			return fmt.Errorf("run OmniTunnel preparation with sudo")
+		}
+		path, err := helperPath()
+		if err == nil {
+			fmt.Fprintln(stdout, path)
+		}
+		return err
+	}
 	if len(args) == 0 || args[0] == "help" || args[0] == "--help" {
 		fmt.Fprint(stdout, usage)
 		return nil

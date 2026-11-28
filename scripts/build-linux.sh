@@ -63,6 +63,11 @@ mkdir -p "$(dirname "$out")"
 export CGO_ENABLED=1 GOOS=linux GOARCH="$goarch" CC="$cc"
 export CGO_CFLAGS="-I$prefix/include $cflags" CGO_LDFLAGS="-L$prefix/lib -lpcap"
 [[ -n "$goarm" ]] && export GOARM="$goarm"
+if [[ "$arch" == amd64 || "$arch" == arm64 ]]; then
+  bundle="$root/internal/omni/payload/bundle-$arch.tar.gz"
+  trap 'rm -f -- "$bundle"' EXIT
+  OMNI_CC="$cc -static" bash "$root/scripts/build-omnitunnel.sh" "$arch"
+fi
 go build -trimpath -tags netgo,osusergo \
   -ldflags "-s -w -buildid= -linkmode external -extldflags '-static' ${VERSION_LDFLAGS:-}" \
   -o "$out" .

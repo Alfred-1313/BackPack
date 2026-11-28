@@ -106,6 +106,9 @@ func relayEngineChecks(parent context.Context) []healthRow {
 	omniRow := healthRow{Group: group, Name: "OmniTunnel", Level: "fail", Detail: "Not installed"}
 	if rev := omni.InstalledRevision(); rev != "" {
 		omniRow.Level, omniRow.Version, omniRow.Detail = "ok", "Revision "+rev[:7], "Installed"
+		if omni.Bundled() {
+			omniRow.Detail = "Included in BackPack"
+		}
 	}
 	checks = append(checks, omniRow)
 	easy := healthRow{Group: group, Name: "EasyTier", Level: "fail", Detail: "Not installed"}

@@ -355,7 +355,7 @@ func (w *ctExtraInstance) join(ctx context.Context, link ConnTestLink, job ctExt
 func ctCheckOmniTestHelper(ctx context.Context) error {
 	out, err := ctOmniRun(ctx, "", "test-ready")
 	if err != nil || strings.TrimSpace(out) != "backpack-omni-test-v1" {
-		return errors.New("install or refresh the fork's OmniTunnel helper (BP_HELPERS=omni)")
+		return errors.New("install a BackPack build that includes OmniTunnel")
 	}
 	return nil
 }

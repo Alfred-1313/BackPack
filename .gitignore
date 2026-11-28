@@ -5,6 +5,7 @@
 *.test
 /dist/
 /release/
+/internal/omni/payload/bundle-*.tar.gz
 
 # Go module cache accidentally copied into the project (must live outside it)
 /go/
