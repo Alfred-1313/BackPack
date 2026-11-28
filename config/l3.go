@@ -8,6 +8,10 @@ type RoutedLinkSettings struct {
 	WaterWallProtocol int `toml:"waterwall_protocol" json:"waterwallProtocol,omitempty"`
 	// WaterWallWorkers is the core worker count. Zero enables automatic sizing.
 	WaterWallWorkers int `toml:"waterwall_workers" json:"waterwallWorkers,omitempty"`
+	// WaterWallPeerWorkers is the optional worker count sent in the peer's setup link.
+	WaterWallPeerWorkers *int `toml:"waterwall_peer_workers" json:"waterwallPeerWorkers,omitempty"`
+	// WaterWallPeerMTU is the optional MTU sent in the peer's setup link.
+	WaterWallPeerMTU int `toml:"waterwall_peer_mtu" json:"waterwallPeerMtu,omitempty"`
 
 	// L2TPTunnelID identifies this endpoint's L2TPv3 tunnel.
 	L2TPTunnelID uint32 `toml:"l2tp_tunnel_id" json:"l2tpTunnelId,omitempty"`

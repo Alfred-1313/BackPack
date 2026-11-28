@@ -218,10 +218,11 @@ func (c RuntimeConfig) Write(dir string) error {
 }
 
 func Validate(protocol, workers int) error {
-	switch protocol {
-	case TestProtocol, 18, DefaultProtocol:
-	default:
-		return fmt.Errorf("WaterWall IP protocol must be 17, 18 or 136")
+	if protocol < 1 || protocol > 254 {
+		return fmt.Errorf("WaterWall IP protocol must be between 1 and 254")
+	}
+	if protocol == 6 {
+		return fmt.Errorf("WaterWall IP protocol 6 would capture the peer's native TCP traffic")
 	}
 	if workers < 0 || workers > 64 {
 		return fmt.Errorf("WaterWall workers must be between 0 (automatic) and 64")

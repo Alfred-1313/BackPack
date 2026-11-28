@@ -35,6 +35,12 @@ func (s L3Spec) renderRoutedLink() string {
 		}
 		writeKV(&b, "waterwall_protocol", fmt.Sprint(s.WaterWallProtocol))
 		writeKV(&b, "waterwall_workers", fmt.Sprint(s.WaterWallWorkers))
+		if s.WaterWallPeerWorkers != nil {
+			writeKV(&b, "waterwall_peer_workers", fmt.Sprint(*s.WaterWallPeerWorkers))
+		}
+		if s.WaterWallPeerMTU != 0 {
+			writeKV(&b, "waterwall_peer_mtu", fmt.Sprint(s.WaterWallPeerMTU))
+		}
 	} else {
 		writeKV(&b, "token", quote(s.Token))
 		writeKV(&b, "easytier_network", quote(s.EasyTierNetwork))

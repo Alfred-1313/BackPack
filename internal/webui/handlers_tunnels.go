@@ -448,7 +448,17 @@ func (s *server) handleDirectOptions(w http.ResponseWriter, r *http.Request) {
 // for the same reason; the panel has to be too, or the two disagree about the
 // one value that must match.
 func (s *server) handleDirectDefaults(w http.ResponseWriter, r *http.Request) {
-	side := r.URL.Query().Get("side")
+	query := r.URL.Query()
+	if query.Get("suggest") == "waterwall-subnet" {
+		local, peer, err := manage.SuggestWaterWallSubnet(query.Get("previous"))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusServiceUnavailable)
+			return
+		}
+		writeJSON(w, map[string]string{"localIp": local, "peerIp": peer})
+		return
+	}
+	side := query.Get("side")
 	out := manage.SuggestDirectDefaults(side)
 	out["tunnelPort"] = manage.SuggestDirectPort()
 	// The Iran side makes the token and hands it over in its code; a kharej

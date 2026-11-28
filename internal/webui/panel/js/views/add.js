@@ -193,17 +193,40 @@ export function addView(ctx, replaceName = '') {
         return setup?.dagger ? setup.mode : '';
       };
       const waterWallSelected = () => chosen.direction === 'direct' && chosen.carrier === 'waterwall-packet';
-      const waterWallProtocol = el('select', { id: 'waterWallProtocol' }, [
-        el('option', { value: 136, text: '136 ? UDP-Lite' }),
-        el('option', { value: 18, text: '18 ? MUX' }),
-      ]);
-      const waterWallWorkers = el('input', { id: 'waterWallWorkers', type: 'number', min: 0, max: 64, placeholder: '0 ? automatic' });
+      const waterWallProtocol = el('input', { id: 'waterWallProtocol', type: 'number', min: 1, max: 254, value: 136 });
       const waterWallOptions = el('div', { class: 'f3 full', hidden: true },
-        el('label', { for: waterWallProtocol.id, text: 'Outer IP protocol' }), waterWallProtocol);
-      const waterWallWorkersRow = el('div', { class: 'f3 full', hidden: true },
-        el('label', { for: waterWallWorkers.id, text: 'WaterWall workers per server' }), waterWallWorkers,
-        el('div', { class: 'hint', text: 'Leave blank to size the worker pool on each server.' }));
-      root.querySelector('[name="peerAddr"]').closest('.f3').after(waterWallOptions, waterWallWorkersRow);
+        el('label', { for: waterWallProtocol.id, text: 'Outer IP protocol number' }), waterWallProtocol,
+        el('div', { class: 'hint' }, [
+          el('a', { href: 'https://en.wikipedia.org/wiki/List_of_IP_protocol_numbers', target: '_blank',
+            rel: 'noopener noreferrer', text: 'List of IP protocol numbers' }),
+          ' ? Choose a number unused by another tunnel to the same peer. TCP (6) and UDP (17) are unavailable for creation with v1.6.0.',
+        ]));
+      const waterWallIranIP = el('input', { id: 'waterWallIranIP', type: 'text', placeholder: 'Automatic or 10.10.0.1/30', spellcheck: 'false' });
+      const waterWallPeerIP = el('input', { id: 'waterWallPeerIP', type: 'text', placeholder: 'Automatic or 10.10.0.2/30', spellcheck: 'false' });
+      const waterWallRandom = el('button', { type: 'button', class: 'mini3 rnd', text: 'Random',
+        'aria-label': 'Choose a random private IPv4 subnet for both sides', 'aria-controls': waterWallIranIP.id + ' ' + waterWallPeerIP.id });
+      const waterWallAddresses = el('div', { class: 'fgrid full', hidden: true }, [
+        el('div', { class: 'f3' }, el('label', { for: waterWallIranIP.id, text: 'Iran tunnel IPv4/CIDR' }),
+          el('div', { class: 'withb' }, waterWallIranIP, waterWallRandom)),
+        el('div', { class: 'f3' }, el('label', { for: waterWallPeerIP.id, text: 'Kharej tunnel IPv4/CIDR' }), waterWallPeerIP),
+        el('div', { class: 'hint full', text: 'Leave both blank for automatic allocation. Random picks both addresses from the same private subnet.' }),
+      ]);
+      waterWallRandom.addEventListener('click', async () => {
+        const before = [waterWallIranIP.value, waterWallPeerIP.value];
+        waterWallRandom.disabled = true;
+        try {
+          const { localIp, peerIp } = await api.waterWallSuggestSubnet(before[0]);
+          if (waterWallIranIP.value === before[0] && waterWallPeerIP.value === before[1]) {
+            waterWallIranIP.value = localIp;
+            waterWallPeerIP.value = peerIp + '/' + localIp.split('/')[1];
+          }
+        } catch (e) {
+          oops(e);
+        } finally {
+          waterWallRandom.disabled = false;
+        }
+      });
+      root.querySelector('[name="peerAddr"]').closest('.f3').after(waterWallOptions, waterWallAddresses);
       const pairedDirect = () => chosen.side === 'server' && chosen.direction === 'direct' &&
         ['gretap', 'l2tpv3', 'easytier', 'waterwall-packet'].includes(chosen.carrier);
       const setupProfile = () => opts.setupPerformance?.[chosen.direction === 'direct' ? chosen.carrier : chosen.transport];
@@ -697,7 +720,7 @@ export function addView(ctx, replaceName = '') {
         backhaulProfileRow.hidden = backhaulHealthRow.hidden = !ipx;
         const isEasyTier = easyTierSelected();
         const isWaterWall = waterWallSelected();
-        waterWallOptions.hidden = waterWallWorkersRow.hidden = !isWaterWall;
+        waterWallOptions.hidden = waterWallAddresses.hidden = !isWaterWall;
         const isMatrix = matrixSelected();
         show('.step3rev', !direct);
         show('.step3direct', direct);
@@ -802,7 +825,7 @@ export function addView(ctx, replaceName = '') {
         /* A group every one of whose rows that rule hid is a heading over
            nothing — GRE's "Carrier tuning", whose two switches are both
            "!gre". It goes with them, and comes back with them. */
-        root.querySelectorAll('.grp3').forEach(g => {
+        root.querySelectorAll('.grp3:not([data-setup-performance])').forEach(g => {
           const rows = [...g.querySelectorAll(':scope > .fgrid > *')];
           if (rows.length) g.style.display = rows.every(r => r.hidden) ? 'none' : '';
         });
@@ -1486,6 +1509,21 @@ export function addView(ctx, replaceName = '') {
           el('div', { class: 'gl3', text: 'Performance' }), cards, summary, performanceFields,
         ]);
         const value = tuningField('setupTuningValue', '');
+        const waterWallField = (id, label, min, max) => {
+          const field = tuningField(id, label);
+          field.input.min = min;
+          field.input.max = max;
+          return field;
+        };
+        const wwIranMTU = waterWallField('waterWallIranMTU', 'Iran MTU (bytes)', 576, 1500);
+        const wwPeerMTU = waterWallField('waterWallPeerMTU', 'Kharej MTU (bytes)', 576, 1500);
+        const wwIranWorkers = waterWallField('waterWallIranWorkers', 'Iran workers', 0, 64);
+        const wwPeerWorkers = waterWallField('waterWallPeerWorkers', 'Kharej workers', 0, 64);
+        wwIranWorkers.input.placeholder = wwPeerWorkers.input.placeholder = '0 (automatic)';
+        const waterWallFields = el('div', { class: 'fgrid full', hidden: true },
+          wwIranMTU.row, wwPeerMTU.row, wwIranWorkers.row, wwPeerWorkers.row,
+          el('div', { class: 'hint full', text: '0 workers lets WaterWall choose on that server. The setup link carries the Kharej settings.' }));
+        performanceFields.append(waterWallFields);
         const delay = tuningField('setupRestartSeconds', 'Restart delay after failure (seconds)');
         delay.input.min = 1;
         delay.input.max = 60;
@@ -1519,7 +1557,8 @@ export function addView(ctx, replaceName = '') {
         perf.append(group);
         opt.append(optional);
         return { group, cards, summary, tunnelFields, performanceFields, optional, optionalFields,
-          value, delay, mtu, httpPath, httpHost, mux: addMuxOptional(opt) };
+          value, delay, mtu, httpPath, httpHost, mux: addMuxOptional(opt),
+          waterWallFields, wwIranMTU, wwPeerMTU, wwIranWorkers, wwPeerWorkers };
       }
 
       function currentSetupID() {
@@ -1530,13 +1569,16 @@ export function addView(ctx, replaceName = '') {
         if (!setupGroups) return;
         const profile = setupProfile(), id = currentSetupID();
         const { group, optional, cards, summary, tunnelFields, performanceFields, optionalFields,
-          value, delay, mtu, httpPath, httpHost, mux } = setupGroups;
+          value, delay, mtu, httpPath, httpHost, mux, waterWallFields, wwIranMTU, wwPeerMTU } = setupGroups;
         const nativeMux = !!profile && nativeMuxOptional();
         const hasDaggerRoute = daggerRoute();
         const showAddress = !!reverseSetup()?.native && !nativeMux && !hasDaggerRoute;
         const sameKnob = !!profile && profile.label === profile.overrideLabel;
         group.hidden = !profile;
+        const waterWall = waterWallSelected();
         performanceFields.hidden = !sameKnob;
+        waterWallFields.hidden = !waterWall;
+        value.row.hidden = waterWall;
         optional.hidden = !profile || nativeMux ||
           (sameKnob && !profile.restart && !profile.mtu && !(showAddress && !hasDaggerRoute));
         optional.style.display = '';
@@ -1560,6 +1602,7 @@ export function addView(ctx, replaceName = '') {
         }
         const preset = setupChoices.get(id) || 'turbo';
         const applies = profile.values[preset];
+        if (waterWall) wwIranMTU.input.placeholder = wwPeerMTU.input.placeholder = String(applies);
         for (const card of cards.children) {
           const selected = card.dataset.pre === preset;
           card.classList.toggle('on', selected);
@@ -2240,9 +2283,25 @@ export function addView(ctx, replaceName = '') {
           }, api.routedPeerSetup);
         }
         if (waterWallSelected()) {
-          if (!waterWallWorkers.checkValidity()) throw new Error('Enter 0 to 64 WaterWall workers.');
-          payload.waterwallProtocol = Number(waterWallProtocol.value);
-          payload.waterwallWorkers = Number(waterWallWorkers.value || 0);
+          const protocol = waterWallProtocol.valueAsNumber;
+          if (!waterWallProtocol.checkValidity() || !Number.isInteger(protocol)) {
+            throw new Error('Enter an IP protocol number from 1 to 254.');
+          }
+          if (protocol === 6 || protocol === 17) {
+            throw new Error('WaterWall v1.6.0 cannot use IP protocol ' + protocol + ' for tunnel creation.');
+          }
+          const localIp = waterWallIranIP.value.trim(), peerIp = waterWallPeerIP.value.trim();
+          if (Boolean(localIp) !== Boolean(peerIp)) throw new Error('Enter both tunnel IPv4 addresses or leave both empty.');
+          const { wwIranMTU, wwPeerMTU, wwIranWorkers, wwPeerWorkers } = setupGroups;
+          const mtu = setupProfile().values[tuning.preset];
+          return createDestination('direct-peer', {
+            ...payload, setupFamily, preset: tuning.preset, localIp, peerIp,
+            waterwallProtocol: protocol,
+            mtu: readTuningField(wwIranMTU) ?? mtu,
+            waterwallPeerMtu: readTuningField(wwPeerMTU) ?? mtu,
+            waterwallWorkers: readTuningField(wwIranWorkers) ?? 0,
+            waterwallPeerWorkers: readTuningField(wwPeerWorkers) ?? 0,
+          }, api.directPeerSetup);
         }
         if (automaticDirect()) {
           if (pairedDirect()) {

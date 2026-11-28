@@ -165,6 +165,8 @@ export const directOptions  = () => get('/api/direct/options');
    create without them. */
 export const directDefaults = side =>
   get('/api/direct/defaults?side=' + encodeURIComponent(side || ''));
+export const waterWallSuggestSubnet = previous =>
+  get('/api/direct/defaults?suggest=waterwall-subnet&previous=' + encodeURIComponent(previous));
 export const directCreate   = payload => post('/api/direct/create', payload);
 export const directPeerSetup = payload => post('/api/direct/peer-setup', payload);
 export const routedPeerSetup = payload => post('/api/routed/peer-setup', payload);

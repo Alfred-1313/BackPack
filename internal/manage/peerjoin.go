@@ -368,6 +368,11 @@ func StartDirectPeerSetup(ctx context.Context, form NewDirectTunnel) (SetupLinkI
 	if err != nil {
 		return SetupLinkInfo{}, err
 	}
+	if form.Carrier == l3.CarrierWaterWall {
+		if err := validateWaterWallTunnelProtocol(spec.WaterWallProtocol); err != nil {
+			return SetupLinkInfo{}, err
+		}
+	}
 	form.Name = spec.Name
 	setup := func(_ context.Context, host, peer string) (peerJoinResult, error) {
 		if form.PeerAddr == "" && !form.EasyTierReverse {

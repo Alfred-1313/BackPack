@@ -174,6 +174,8 @@ them both ends have to agree on. This says what exists.
 | `l2tp_peer_tunnel_id` | `uint32` | L2TPPeerTunnelID matches the tunnel ID on the other endpoint. |
 | `l2tp_session_id` | `uint32` | L2TPSessionID identifies this endpoint's L2TPv3 Ethernet session. |
 | `l2tp_tunnel_id` | `uint32` | L2TPTunnelID identifies this endpoint's L2TPv3 tunnel. |
+| `waterwall_peer_mtu` | `int` | WaterWallPeerMTU is the optional MTU sent in the peer's setup link. |
+| `waterwall_peer_workers` | `*int` | WaterWallPeerWorkers is the optional worker count sent in the peer's setup link. |
 | `waterwall_protocol` | `int` | WaterWallProtocol is the outer IPv4 protocol for Packet Tunnel (default 136). |
 | `waterwall_workers` | `int` | WaterWallWorkers is the core worker count. Zero enables automatic sizing. |
 
@@ -441,4 +443,4 @@ them both ends have to agree on. This says what exists.
 
 ---
 
-*Generated from `config/` on 2026-11-28. Last verified against Backpack v2.0.6.*
+*Generated from `config/` on 2026-11-28. Last verified against Backpack v2.0.7.*
