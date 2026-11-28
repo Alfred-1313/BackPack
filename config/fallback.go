@@ -29,7 +29,7 @@ func Dwell(seconds int) time.Duration {
 var fallbackCapable = map[TransportType]bool{
 	TCP: true, TCPMUX: true, STEALTH: true,
 	WS: true, WSS: true, WSMUX: true, WSSMUX: true,
-	KCP: true, QUIC: true, UDP: true, UDPPAD: true, XDI: true, PCK: true,
+	KCP: true, QUIC: true, UDP: true, XDI: true, PCK: true,
 }
 
 // reverseTransports are the transports the reverse engine runs. spoof is not
@@ -37,7 +37,7 @@ var fallbackCapable = map[TransportType]bool{
 var reverseTransports = map[TransportType]bool{
 	TCP: true, TCPMUX: true, STEALTH: true,
 	WS: true, WSS: true, WSMUX: true, WSSMUX: true,
-	KCP: true, QUIC: true, UDP: true, UDPPAD: true, XDI: true, PCK: true,
+	KCP: true, QUIC: true, UDP: true, XDI: true, PCK: true,
 }
 
 // IsReverseTransport reports whether t is a transport the reverse engine runs.

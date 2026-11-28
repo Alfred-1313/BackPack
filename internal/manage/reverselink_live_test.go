@@ -23,7 +23,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/backpack/backpack/internal/manage/spec"
 	"github.com/backpack/backpack/internal/testport"
 )
 
@@ -50,7 +49,7 @@ func TestAKharejMadeFromTheSetupLinkCarriesTraffic(t *testing.T) {
 	}
 	cert, key := testCertPair(t)
 
-	transports := []string{"tcp", "tcpmux", "ws", "wss", "wsmux", "wssmux", "kcp", "quic", "udp", "udppad"}
+	transports := []string{"tcp", "tcpmux", "ws", "wss", "wsmux", "wssmux", "kcp", "quic", "udp"}
 	slots := make(chan struct{}, linkedPairsAtOnce)
 	var wg sync.WaitGroup
 	for _, tr := range transports {
@@ -77,7 +76,7 @@ func TestAKharejMadeFromTheSetupLinkCarriesTraffic(t *testing.T) {
 		variants["fine-tuned, slow heartbeat"] = fine(func(s *TunnelSpec) { s.Heartbeat = 30 })
 		variants["fine-tuned, short keepalive"] = fine(func(s *TunnelSpec) { s.KeepAlive = 5 })
 		variants["fine-tuned, small channel"] = fine(func(s *TunnelSpec) { s.ChannelSize = 16 })
-		variants["udp as well"] = func(s *TunnelSpec) { ApplyPreset(s, PresetTurbo); s.AcceptUDP = !spec.UDPOnly(tr) }
+		variants["udp as well"] = func(s *TunnelSpec) { ApplyPreset(s, PresetTurbo); s.AcceptUDP = tr != "udp" }
 		if isMuxTransport(tr) {
 			variants["fine-tuned, mux v1"] = fine(func(s *TunnelSpec) { s.MuxVersion = 1 })
 			variants["fine-tuned, mux buffers"] = fine(func(s *TunnelSpec) {
@@ -147,7 +146,7 @@ func runLinkedPair(t *testing.T, bin, transport string, variant func(*TunnelSpec
 func runLinkedPairVia(t *testing.T, bin, transport string, variant func(*TunnelSpec), path, cert, key, host string, extras linkExtras) (failure string, portClash bool) {
 	dir := t.TempDir()
 	tunnelPort, entryPort := freeTestPort(t), freeTestPort(t)
-	backend := startTestEcho(t, spec.UDPOnly(transport))
+	backend := startTestEcho(t, transport == "udp")
 
 	iran := TunnelSpec{
 		Role:      "server",
@@ -199,7 +198,7 @@ func runLinkedPairVia(t *testing.T, bin, transport string, variant func(*TunnelS
 		srvLog, _ := os.ReadFile(filepath.Join(dir, "iran.log"))
 		return strings.Contains(string(srvLog), "already listening") || strings.Contains(string(srvLog), "address already in use")
 	}
-	if err := awaitTestEcho(entry, spec.UDPOnly(transport), 20*time.Second); err != nil {
+	if err := awaitTestEcho(entry, transport == "udp", 20*time.Second); err != nil {
 		srvLog, _ := os.ReadFile(filepath.Join(dir, "iran.log"))
 		cliLog, _ := os.ReadFile(filepath.Join(dir, "kharej.log"))
 		return fmt.Sprintf("the tunnel never carried traffic: %v\n--- iran config\n%s\n--- kharej config\n%s\n--- iran log\n%s\n--- kharej log\n%s",
@@ -208,7 +207,7 @@ func runLinkedPairVia(t *testing.T, bin, transport string, variant func(*TunnelS
 	// Up is not the same as staying up: a kharej whose idea of the heartbeat or
 	// the keepalive differs from the server's comes up and then drops.
 	time.Sleep(25 * time.Second)
-	if err := awaitTestEcho(entry, spec.UDPOnly(transport), 3*time.Second); err != nil {
+	if err := awaitTestEcho(entry, transport == "udp", 3*time.Second); err != nil {
 		srvLog, _ := os.ReadFile(filepath.Join(dir, "iran.log"))
 		cliLog, _ := os.ReadFile(filepath.Join(dir, "kharej.log"))
 		return fmt.Sprintf("the tunnel came up and then stopped carrying traffic: %v\n--- iran config\n%s\n--- kharej config\n%s\n--- iran log\n%s\n--- kharej log\n%s",
@@ -399,7 +398,7 @@ func TestAKharejFromALinkFailsOverToTheLinksBackupAddress(t *testing.T) {
 		t.Fatalf("building the engine: %v", err)
 	}
 	cert, key := testCertPair(t)
-	for _, tr := range []string{"tcp", "tcpmux", "ws", "wss", "wsmux", "kcp", "quic", "udp", "udppad"} {
+	for _, tr := range []string{"tcp", "tcpmux", "ws", "wss", "wsmux", "kcp", "quic", "udp"} {
 		tr := tr
 		t.Run(tr, func(t *testing.T) {
 			t.Parallel()

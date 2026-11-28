@@ -72,7 +72,6 @@ type UdpTransport struct {
 }
 
 type UdpConfig struct {
-	Padding     bool
 	BindAddr    string
 	Token       string
 	SnifferLog  string
@@ -222,7 +221,7 @@ func (s *UdpTransport) acceptTunnelConn(g *udpGen, listener *net.UDPConn) {
 		case <-g.ctx.Done():
 			return
 		default:
-			data, addr, err := network.ReadTunnelUDP(listener, buf, s.config.Padding)
+			n, addr, err := listener.ReadFromUDP(buf)
 			if err != nil {
 				if errors.Is(err, net.ErrClosed) {
 					return // the generation ended and closed it
@@ -232,7 +231,6 @@ func (s *UdpTransport) acceptTunnelConn(g *udpGen, listener *net.UDPConn) {
 				continue
 			}
 
-			n := len(data)
 			// Create a unique identifier for the connection based on IP and port
 			key := addr.String()
 
@@ -255,7 +253,7 @@ func (s *UdpTransport) acceptTunnelConn(g *udpGen, listener *net.UDPConn) {
 
 				// Send the payload to the existing connection's payload channel
 				select {
-				case existingConn.payload <- append([]byte(nil), data...): // Copy the packet to avoid data overwriting
+				case existingConn.payload <- append([]byte(nil), buf[:n]...): // Copy the packet to avoid data overwriting
 					s.logger.Tracef("buffered %d bytes for existing connection %s", n, addr.String())
 
 				default:
@@ -267,7 +265,7 @@ func (s *UdpTransport) acceptTunnelConn(g *udpGen, listener *net.UDPConn) {
 
 			s.activeMu.Unlock()
 
-			if !tokenMatches(string(data), s.config.Token) { // For new connections, validate the token
+			if !tokenMatches(string(buf[:n]), s.config.Token) { // For new connections, validate the token
 				// Debug, not error: this port is public, and anything at all
 				// sent to it lands here. At error level every junk datagram
 				// was a journal line, so anyone could fill the disk and bury

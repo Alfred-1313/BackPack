@@ -330,7 +330,7 @@ export function addView(ctx, replaceName = '') {
          these combinations by name and a form that offers them is a form that
          collects an answer only to have it rejected. */
       const isWS = t => ['ws', 'wss', 'wsmux', 'wssmux'].includes(t);
-      const isDatagram = t => ['udp', 'udppad', 'kcp', 'xdi', 'quic', 'pck'].includes(t);
+      const isDatagram = t => ['udp', 'kcp', 'xdi', 'quic', 'pck'].includes(t);
 
       /* dw-ft fine tune · dw-sp spoof · dw-pk packet carrier · dw-cn connection */
       const drawer = id => root.querySelector('#dw-' + id);
@@ -380,7 +380,7 @@ export function addView(ctx, replaceName = '') {
         const proxyOK = ['tcp', 'tcpmux', 'kcp', 'wsmux', 'wssmux', 'stealth', 'quic', 'pck'].includes(t);
         set('[data-name="proxyProtocol"]', iran && proxyOK);
         // udp forwards UDP ports by nature; the managed helpers carry TCP only.
-        set('#ft-acceptUDP', !['udp', 'udppad'].includes(t) && !isManaged(t));
+        set('#ft-acceptUDP', t !== 'udp' && !isManaged(t));
         set('#ft-zeroCopy', t === 'tcp');
         set('#ft-mss', !isDatagram(t));
         // The pool is the dialling side's; Iran never opens one.
@@ -820,9 +820,7 @@ export function addView(ctx, replaceName = '') {
           setup && !setup.dagger && !setup.pengu && !reverseMatrix && !reverseEasyTier ? 'Forwarded TCP ports' : 'Forwarded ports';
         reverseForward.placeholder = setup?.pengu ? '443, 8443=443, udp:51820' : 'e.g. 443, 8443';
         reverseForward.closest('.f3').querySelector('.hint').textContent =
-          setup?.pengu ? 'Enter TCP ports or use udp: for UDP. Example: 8443=443, udp:51820.'
-            : chosen.transport === 'udppad' ? 'UDP only. For example, 51820=51821 sends Iran UDP port 51820 to port 51821 on Kharej.'
-              : forwardPortsHint;
+          setup?.pengu ? 'Enter TCP ports or use udp: for UDP. Example: 8443=443, udp:51820.' : forwardPortsHint;
         if (routed?.pengu) {
           directForward.placeholder = '443, 8443=443, udp:51820';
           directForward.closest('.f3').querySelector('.hint').textContent =
@@ -2030,7 +2028,7 @@ export function addView(ctx, replaceName = '') {
           const node = root.querySelector('input[name="' + name + '"]');
           return !!node?.checked && !node.dataset.drawn && relevant(node.parentElement);
         };
-        const udpOnly = !direct && ['udp', 'udppad'].includes(chosen.transport);
+        const udpOnly = !direct && chosen.transport === 'udp';
         const request = {
           ports: relevant(input) ? input.value.trim() : '',
           proxy: mtProxyMapping(),

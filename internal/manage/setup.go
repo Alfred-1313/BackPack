@@ -51,7 +51,6 @@ var transportGroups = []transportGroup{
 	}},
 	{"UDP", "lower latency, better on lossy or throttled links", []transportEntry{
 		{"UDP", "raw datagrams — for UDP-based services", "udp"},
-		{"UDP Padder", "UDP only; pads small datagrams to 1200 bytes at both ends", "udppad"},
 		{"UDP + KCP + FEC", "low-latency gaming tunnel — reliable UDP with always-on error correction", "kcp"},
 		{"UDP + QUIC", "encrypted TLS 1.3 streams over UDP — self-tuning, great under loss", "quic"},
 	}},

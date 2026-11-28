@@ -8,7 +8,6 @@ import (
 	"github.com/backpack/backpack/internal/controlwire"
 	"github.com/backpack/backpack/internal/metrics"
 	"github.com/backpack/backpack/internal/utils"
-	"github.com/backpack/backpack/internal/utils/network"
 )
 
 // The udp transport's control port: TCP, even though its data is not. Claims
@@ -190,8 +189,7 @@ func (s *UdpTransport) validControlClaim(g *udpGen, conn net.Conn) bool {
 	// Resetting the deadline (removes any existing deadline)
 	conn.SetReadDeadline(time.Time{})
 
-	token := network.UDPControlToken(s.config.Token, s.config.Padding)
-	if !tokenMatches(msg, token) {
+	if !tokenMatches(msg, s.config.Token) {
 		s.logger.Warnf("invalid security token received")
 		return false
 	}
@@ -202,7 +200,7 @@ func (s *UdpTransport) validControlClaim(g *udpGen, conn net.Conn) bool {
 		return false
 	}
 
-	if err := utils.SendBinaryTransportStringWithin(conn, token, utils.SG_Chan, 10*time.Second); err != nil {
+	if err := utils.SendBinaryTransportStringWithin(conn, s.config.Token, utils.SG_Chan, 10*time.Second); err != nil {
 		s.logger.Errorf("failed to send security token: %v", err)
 		return false
 	}
