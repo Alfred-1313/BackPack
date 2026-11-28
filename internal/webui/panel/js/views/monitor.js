@@ -73,8 +73,8 @@ export function alertsView(ctx) {
 }
 
 /* ---- health check --------------------------------------------------------
-   Grouped exactly as Diagnose returns them: System, Monitor, Web Panel, then
-   one group per tunnel. A check with a Fix carries it; one without does not. */
+   The API orders engine checks first, followed by system and tunnel diagnostics.
+   A check with a Fix carries it; one without does not. */
 export function healthView(ctx) {
   openScreen('monitor', {
     pick: '.dlg.hc2',

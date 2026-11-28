@@ -443,4 +443,4 @@ them both ends have to agree on. This says what exists.
 
 ---
 
-*Generated from `config/` on 2026-11-28. Last verified against Backpack v2.0.10.*
+*Generated from `config/` on 2026-11-28. Last verified against Backpack v2.0.11.*

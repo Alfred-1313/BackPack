@@ -13,7 +13,6 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"sync"
 	"time"
 )
@@ -88,17 +87,16 @@ func Binary(iran bool, protocol int) (string, error) {
 	return file, err
 }
 
-func InstalledVersions() string {
-	var versions []string
+func Installed(protocol int) bool {
+	if protocol == TestProtocol {
+		_, err := protocol17.verified()
+		return err == nil
+	}
 	if _, err := compatible.verified(); err == nil {
-		versions = append(versions, Version)
-	} else if _, err := standard.verified(); err == nil {
-		versions = append(versions, Version)
+		return true
 	}
-	if _, err := protocol17.verified(); err == nil {
-		versions = append(versions, Protocol17Version)
-	}
-	return strings.Join(versions, " · ")
+	_, err := standard.verified()
+	return err == nil
 }
 
 func Ensure(ctx context.Context, iran bool, protocol int) error {

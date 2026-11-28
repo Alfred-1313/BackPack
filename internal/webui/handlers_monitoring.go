@@ -51,13 +51,26 @@ func (s *server) handleHealth(w http.ResponseWriter, r *http.Request) {
 			engines[i].CoreUpdate = engines[i].Name == "Xray"
 		}
 	}
-	writeJSON(w, append(out, engines...))
+	writeJSON(w, append(engines, out...))
 }
 
 func relayEngineChecks(parent context.Context) []healthRow {
 	const group = "Tunnel engines"
 	checks := []healthRow{
 		{Group: group, Name: "BackPack", Level: "ok", Version: app.Version, Detail: "Includes built-in Backhaul transports"},
+	}
+	for _, core := range []struct {
+		name, version string
+		protocol      int
+	}{
+		{waterwall.Label, waterwall.Version, waterwall.DefaultProtocol},
+		{waterwall.Label + " · Protocol 17", waterwall.Protocol17Version, waterwall.TestProtocol},
+	} {
+		item := healthRow{Group: group, Name: core.name, Level: "fail", Detail: "Not installed"}
+		if waterwall.Installed(core.protocol) {
+			item.Level, item.Version, item.Detail = "ok", core.version, "Verified official core"
+		}
+		checks = append(checks, item)
 	}
 	dagger := healthRow{Group: group, Name: "DaggerConnect", Level: "ok",
 		Version: "Launcher " + daggerconnect.LauncherVersion,
@@ -84,11 +97,6 @@ func relayEngineChecks(parent context.Context) []healthRow {
 		padding.Level, padding.VersionLabel, padding.Detail = "fail", "", err.Error()
 	}
 	checks = append(checks, padding)
-	water := healthRow{Group: group, Name: waterwall.Label, Level: "fail", Detail: "Installed on first use"}
-	if versions := waterwall.InstalledVersions(); versions != "" {
-		water.Level, water.Version, water.Detail = "ok", versions, "Verified official core"
-	}
-	checks = append(checks, water)
 	omniRow := healthRow{Group: group, Name: "OmniTunnel", Level: "fail", Detail: "Not installed"}
 	if rev := omni.InstalledRevision(); rev != "" {
 		omniRow.Level, omniRow.Version, omniRow.Detail = "ok", "Revision "+rev[:7], "Installed"

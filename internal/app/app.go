@@ -13,7 +13,7 @@ const (
 	ConnTestParentPipe = "BACKPACK_CONNTEST_PARENT_PIPE"
 
 	// Version of the backpack engine.
-	Version = "v2.0.10"
+	Version = "v2.0.11"
 
 	// RepoOwner/RepoName identify the GitHub repository used by the installer
 	// and the release-based updater.
