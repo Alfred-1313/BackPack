@@ -10,6 +10,7 @@ import (
 
 	"github.com/backpack/backpack/config"
 	"github.com/backpack/backpack/internal/app"
+	"github.com/backpack/backpack/internal/manage/spec"
 	"github.com/backpack/backpack/internal/optimize"
 	"github.com/backpack/backpack/internal/tui"
 	"github.com/backpack/backpack/internal/utils/network"
@@ -142,7 +143,7 @@ func SetupServer() {
 	// TCP forwards. See config.ServerConfig.ForwardsUDP.
 	// The udp transport's forwarded ports are UDP by nature, so it has
 	// nothing to ask here.
-	if transport != "udp" && !managedTransport(transport) {
+	if !spec.UDPOnly(transport) && !managedTransport(transport) {
 		s.AcceptUDP = tui.Confirm("Carry UDP As Well As TCP On Those Ports", false)
 	}
 

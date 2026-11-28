@@ -238,7 +238,7 @@ func (s *UdpTransport) handleLoop(g *udpGen, udpChan chan *LocalUDPConn, activeC
 					tunnelConn.mu.Lock()
 
 					// Send the target addr over the connection
-					if _, err := tunnelConn.listener.WriteTo([]byte(localConn.remoteAddr), tunnelConn.addr); err != nil {
+					if _, err := network.WriteTunnelUDP(tunnelConn.listener, tunnelConn.addr, []byte(localConn.remoteAddr), s.config.Padding); err != nil {
 						s.logger.Errorf("%v", err)
 						// Release the lock and drop the connection whole before
 						// reaching for the next one. Leaving with neither done
@@ -392,7 +392,10 @@ func (s *UdpTransport) udpLocalCopy(g *udpGen, from *LocalUDPConn, to *TunnelUDP
 			packetSize := len(data)
 
 			// One write is one datagram, including an empty keepalive.
-			totalWritten, err := to.listener.WriteToUDP(data, to.addr)
+			totalWritten, err := network.WriteTunnelUDP(to.listener, to.addr, data, s.config.Padding)
+			if errors.Is(err, network.ErrPaddedUDPTooLarge) {
+				continue
+			}
 			if err == nil && totalWritten != packetSize {
 				err = io.ErrShortWrite
 			}
@@ -518,7 +521,7 @@ func (s *UdpTransport) keepAlive(g *udpGen, conn *TunnelUDPConn) {
 				s.logger.Trace("write operation in progress, stopping pingSender")
 				return
 			}
-			if _, err := conn.listener.WriteTo([]byte{utils.SG_Ping}, conn.addr); err != nil {
+			if _, err := network.WriteTunnelUDP(conn.listener, conn.addr, []byte{utils.SG_Ping}, s.config.Padding); err != nil {
 				conn.mu.Unlock()
 				return
 			}

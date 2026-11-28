@@ -42,14 +42,20 @@ func startUDPEchoBackend(t *testing.T) string {
 }
 
 func TestUDPTransportCarriesData(t *testing.T) {
+	for _, mode := range []string{"udp", "udppad"} {
+		t.Run(mode, func(t *testing.T) { testUDPTransportCarriesData(t, mode) })
+	}
+}
+
+func testUDPTransportCarriesData(t *testing.T, mode string) {
 	backendAddr := startUDPEchoBackend(t)
 
 	tunnelPort := freePort(t)
 	entryPort := freePort(t)
 	token := "udp-token-0123456789abcdefghij"
 
-	srvCfg := baseServerConfig("udp", tunnelPort, entryPort, backendAddr, token)
-	cliCfg := baseClientConfig("udp", fmt.Sprintf("127.0.0.1:%d", tunnelPort), token, nil)
+	srvCfg := baseServerConfig(mode, tunnelPort, entryPort, backendAddr, token)
+	cliCfg := baseClientConfig(mode, fmt.Sprintf("127.0.0.1:%d", tunnelPort), token, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	var wg sync.WaitGroup
@@ -74,9 +80,9 @@ func TestUDPTransportCarriesData(t *testing.T) {
 
 	// The same established flow must preserve large and empty packets, then
 	// carry a normal packet afterwards without restarting either endpoint.
-	for _, size := range []int{16384, 16385, 60000, 0, 7} {
+	for _, size := range []int{1197, 1198, 1199, 16384, 16385, 60000, 0, 7} {
 		t.Run(fmt.Sprint(size), func(t *testing.T) {
-			payload := bytes.Repeat([]byte{byte(size % 251)}, size)
+			payload := bytes.Repeat([]byte{'X'}, size)
 			if err := conn.SetDeadline(time.Now().Add(2 * time.Second)); err != nil {
 				t.Fatal(err)
 			}

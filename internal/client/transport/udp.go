@@ -22,6 +22,7 @@ type UdpTransport struct {
 	config *UdpConfig
 }
 type UdpConfig struct {
+	Padding    bool
 	RemoteAddr string
 	// Endpoints rotates through the server addresses (primary + fallbacks)
 	// so a filtered IP or blocked port does not stop the tunnel.
@@ -73,6 +74,7 @@ func (c *UdpTransport) channelDialer() {
 	// retries become exponential, so a sustained outage is probed a few times a
 	// minute rather than every second.
 	bo := newBackoff(c.config.RetryInterval)
+	token := network.UDPControlToken(c.config.Token, c.config.Padding)
 
 	for {
 		select {
@@ -92,7 +94,7 @@ func (c *UdpTransport) channelDialer() {
 			}
 
 			// Sending security token
-			err = utils.SendBinaryTransportStringWithin(tunnelTCPConn, c.config.Token, utils.SG_Chan, 10*time.Second)
+			err = utils.SendBinaryTransportStringWithin(tunnelTCPConn, token, utils.SG_Chan, 10*time.Second)
 			if err != nil {
 				c.logger.Errorf("failed to send security token: %v", err)
 				tunnelTCPConn.Close()
@@ -123,7 +125,7 @@ func (c *UdpTransport) channelDialer() {
 			// Resetting the deadline (removes any existing deadline)
 			tunnelTCPConn.SetReadDeadline(time.Time{})
 
-			if message == c.config.Token {
+			if message == token {
 				// See metrics.Snapshot.Connected.
 				metrics.ReportPeer(tunnelTCPConn.RemoteAddr().String())
 				c.state.SetConn(tunnelTCPConn)
@@ -212,7 +214,7 @@ func (c *UdpTransport) tunnelDialer() {
 
 func (c *UdpTransport) handleTunnelConnReady(tunConn *net.UDPConn, ready func()) {
 	// Send token message to the server
-	_, err := tunConn.Write([]byte(c.config.Token))
+	_, err := network.WriteTunnelUDP(tunConn, nil, []byte(c.config.Token), c.config.Padding)
 	if err != nil {
 		c.logger.Error("faliled to send token:", err)
 		return
@@ -223,10 +225,14 @@ func (c *UdpTransport) handleTunnelConnReady(tunConn *net.UDPConn, ready func())
 	ready()
 
 	// Prepare a buffer to receive the server's response
-	buffer := make([]byte, 47) // maximum buffer requried for store in IPv6:Port format
+	size := 47 // room for an IPv6 endpoint
+	if c.config.Padding {
+		size = network.UDPPaddedSize + 1 // detect a truncated or oversized control datagram
+	}
+	buffer := make([]byte, size)
 
 	for {
-		n, _, err := tunConn.ReadFromUDP(buffer)
+		data, _, err := network.ReadTunnelUDP(tunConn, buffer, c.config.Padding)
 		if err != nil {
 			c.logger.Error("failed to receive response from server:", err)
 
@@ -236,12 +242,12 @@ func (c *UdpTransport) handleTunnelConnReady(tunConn *net.UDPConn, ready func())
 		}
 
 		// Compare the received bytes with the expected SG_Ping message
-		if n == 1 && buffer[0] == utils.SG_Ping {
+		if len(data) == 1 && data[0] == utils.SG_Ping {
 			c.logger.Tracef("ping signal recieved for %s", tunConn.LocalAddr().String())
 			continue
 		}
 
-		port, remoteAddr, err := network.ResolveRemoteAddr(string(buffer[:n]))
+		port, remoteAddr, err := network.ResolveRemoteAddr(string(data))
 
 		// Decrement active connections after successful or failed connection
 		atomic.AddInt32(&c.poolConnections, -1)
@@ -323,7 +329,7 @@ func (c *UdpTransport) udpCopy(srcConn, dstConn *net.UDPConn, port int, dstIsTun
 		}
 
 		// Read from the UDP source connection
-		n, _, err := srcConn.ReadFromUDP(buf)
+		data, _, err := network.ReadTunnelUDP(srcConn, buf, c.config.Padding && !dstIsTunnel)
 		if err != nil {
 			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 				if time.Since(started)-time.Duration(activity.Load()) < readTimeout {
@@ -336,6 +342,7 @@ func (c *UdpTransport) udpCopy(srcConn, dstConn *net.UDPConn, port int, dstIsTun
 			return
 		}
 
+		n := len(data)
 		if !dstIsTunnel {
 			// Read off the tunnel. Counted here rather than after the write:
 			// these bytes crossed the tunnel whether or not the backend took
@@ -344,7 +351,10 @@ func (c *UdpTransport) udpCopy(srcConn, dstConn *net.UDPConn, port int, dstIsTun
 		}
 
 		// One write preserves the packet boundary and forwards empty datagrams.
-		totalWritten, err := dstConn.Write(buf[:n])
+		totalWritten, err := network.WriteTunnelUDP(dstConn, nil, data, c.config.Padding && dstIsTunnel)
+		if err == network.ErrPaddedUDPTooLarge {
+			continue
+		}
 		if err == nil && totalWritten != n {
 			err = io.ErrShortWrite
 		}

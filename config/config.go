@@ -11,6 +11,7 @@ const (
 	WSMUX  TransportType = "wsmux"
 	WSSMUX TransportType = "wssmux"
 	UDP    TransportType = "udp"
+	UDPPAD TransportType = "udppad"
 	KCP    TransportType = "kcp"
 	// QUIC carries the tunnel inside QUIC streams over UDP. Like KCP it survives
 	// paths where a long-lived TCP flow stalls, but it brings its own TLS 1.3,

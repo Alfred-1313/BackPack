@@ -351,8 +351,9 @@ func (s *Server) startTransport(ctx context.Context, tr config.TransportType) ru
 		go wsMuxServer.Start()
 		return wsMuxServer
 
-	case config.UDP:
+	case config.UDP, config.UDPPAD:
 		udpConfig := &transport.UdpConfig{
+			Padding:     s.config.Transport == config.UDPPAD,
 			BindAddr:    s.config.BindAddr,
 			Heartbeat:   time.Duration(s.config.Heartbeat) * time.Second,
 			Token:       s.config.Token,

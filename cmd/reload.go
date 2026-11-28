@@ -306,7 +306,7 @@ func portsInUse(cfg *config.Config) []listenerBinding {
 // own business, and this waits only for the web port alongside them.
 func tunnelNetwork(transport config.TransportType) string {
 	switch transport {
-	case config.UDP, config.KCP, config.QUIC:
+	case config.UDP, config.UDPPAD, config.KCP, config.QUIC:
 		return "udp"
 	case config.XDI, config.SPOOF, config.PCK:
 		return ""

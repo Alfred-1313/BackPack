@@ -36,6 +36,7 @@ import (
 	"github.com/backpack/backpack/config"
 	"github.com/backpack/backpack/internal/app"
 	"github.com/backpack/backpack/internal/backhaulpremium"
+	"github.com/backpack/backpack/internal/manage/spec"
 	"github.com/backpack/backpack/internal/matrix"
 	"github.com/backpack/backpack/internal/spooftest"
 	"github.com/backpack/backpack/internal/tunnel/l3"
@@ -80,7 +81,7 @@ const connTestKind = "test"
 // the direct ones when the operator names a source to forge (see
 // ConnTestOptions.SpoofSrc); pck, on either side, needs root on both servers.
 var (
-	connTestReverse = []string{"tcp", "tcpmux", "stealth", "pck", "ws", "wss", "wsmux", "wssmux", "kcp", "quic", "udp", "naive", "anytls", "xhttp", "reality"}
+	connTestReverse = []string{"tcp", "tcpmux", "stealth", "pck", "ws", "wss", "wsmux", "wssmux", "kcp", "quic", "udp", "udppad", "naive", "anytls", "xhttp", "reality"}
 	// GRE follows the address family of the path. Spoof joins these as above.
 	connTestDirect = []string{
 		l3.CarrierPck, l3.CarrierXdi, ctXdiFEC, "sni", l3.CarrierGRE,
@@ -553,7 +554,7 @@ func StartConnTestIran(o ConnTestOptions) (*ConnTestIran, string, error) {
 		if err := ctx.Err(); err != nil {
 			return fail(err)
 		}
-		c := &connTestCase{kind: "reverse", tr: tr, name: "ct-" + id + "-" + tr, udp: tr == "udp"}
+		c := &connTestCase{kind: "reverse", tr: tr, name: "ct-" + id + "-" + tr, udp: spec.UDPOnly(tr)}
 		if managedTransport(tr) {
 			s.startManagedCase(c, used, o)
 			s.cases = append(s.cases, c)

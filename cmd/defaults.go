@@ -66,7 +66,7 @@ func applyDefaults(cfg *config.Config) {
 		{cfg.Client.Transport, &cfg.Client.SO_RCVBUF, &cfg.Client.SO_SNDBUF},
 	} {
 		switch side.tr {
-		case config.KCP, config.XDI, config.PCK, config.QUIC, config.UDP:
+		case config.KCP, config.XDI, config.PCK, config.QUIC, config.UDP, config.UDPPAD:
 			if *side.rcv <= 0 {
 				*side.rcv = defaultDatagramSockBuf
 			}
@@ -206,7 +206,7 @@ func warnIgnoredProxyProtocol(cfg *config.Config) {
 		return
 	}
 	switch cfg.Server.Transport {
-	case config.WS, config.WSS, config.UDP:
+	case config.WS, config.WSS, config.UDP, config.UDPPAD:
 		logger.Warnf("proxy_protocol has no effect on the %s transport and is ignored: use tcp, tcpmux, stealth, kcp, pck, quic, wsmux or wssmux to pass the client's address to the service", cfg.Server.Transport)
 	}
 }
@@ -620,7 +620,7 @@ func checkOutbound(cfg *config.Config) error {
 // and the only defect this has ever had was a transport missing from the list.
 func transportIgnoresOutbound(t config.TransportType) bool {
 	switch t {
-	case config.UDP, config.KCP, config.XDI, config.PCK, config.QUIC, config.SPOOF:
+	case config.UDP, config.UDPPAD, config.KCP, config.XDI, config.PCK, config.QUIC, config.SPOOF:
 		return true
 	}
 	return false
