@@ -20,6 +20,7 @@ import (
 	"github.com/backpack/backpack/internal/pengutunnel"
 	"github.com/backpack/backpack/internal/tunhist"
 	"github.com/backpack/backpack/internal/udppadder"
+	"github.com/backpack/backpack/internal/waterwall"
 )
 
 // The read-only monitoring endpoints: health checks, alert history and the
@@ -83,6 +84,11 @@ func relayEngineChecks(parent context.Context) []healthRow {
 		padding.Level, padding.VersionLabel, padding.Detail = "fail", "", err.Error()
 	}
 	checks = append(checks, padding)
+	water := healthRow{Group: group, Name: waterwall.Label, Level: "fail", Detail: "Installed on first use"}
+	if waterwall.Installed() {
+		water.Level, water.Version, water.Detail = "ok", waterwall.Version, "Verified official core"
+	}
+	checks = append(checks, water)
 	omniRow := healthRow{Group: group, Name: "OmniTunnel", Level: "fail", Detail: "Not installed"}
 	if rev := omni.InstalledRevision(); rev != "" {
 		omniRow.Level, omniRow.Version, omniRow.Detail = "ok", "Revision "+rev[:7], "Installed"

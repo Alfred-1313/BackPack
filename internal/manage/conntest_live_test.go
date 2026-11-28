@@ -210,7 +210,7 @@ func TestTheConnectionTestAcrossAnIPv6OnlyPath(t *testing.T) {
 	for _, r := range rows {
 		unsupported := r.Kind == "spoof" || r.Transport == "pck" ||
 			ctDirectCarrier(r.Transport) == "xdi" || r.Transport == "sni" ||
-			r.Transport == l3.CarrierGRETAP || r.Transport == l3.CarrierL2TPv3
+			r.Transport == l3.CarrierGRETAP || r.Transport == l3.CarrierL2TPv3 || r.Transport == l3.CarrierWaterWall
 		if unsupported {
 			if r.Status != ctSkipped || !strings.Contains(r.Detail, "IPv6 is not supported") {
 				t.Errorf("raw IPv6 verdict: %+v", r)

@@ -463,7 +463,7 @@ func (n NewDirectTunnel) greSpecFor(side directSide, carrier, existing string) (
 	}
 
 	key := n.GREKey
-	if key == 0 && carrier != l3.CarrierGRETAP && carrier != l3.CarrierL2TPv3 {
+	if key == 0 && carrier != l3.CarrierGRETAP && carrier != l3.CarrierL2TPv3 && carrier != l3.CarrierWaterWall {
 		if side == sideKharej {
 			return l3Spec{}, fmt.Errorf("the GRE key is required on the kharej side, and must be the Iran " +
 				"server's: it is in its setup link, and under Edit there")
@@ -474,7 +474,7 @@ func (n NewDirectTunnel) greSpecFor(side directSide, carrier, existing string) (
 		if err := n.setL2TPIDs(); err != nil {
 			return l3Spec{}, err
 		}
-	} else if other := greTunnelJoining(carrier, host, key); other != "" && other != existing {
+	} else if other := greTunnelJoining(carrier, host, key); carrier != l3.CarrierWaterWall && other != "" && other != existing {
 		return l3Spec{}, fmt.Errorf("tunnel %s already joins %s using %s with key %d; choose another key on both ends",
 			other, host, carrierLabel(carrier), key)
 	}
@@ -524,7 +524,7 @@ func (n NewDirectTunnel) greSpecFor(side directSide, carrier, existing string) (
 	findL3Preset(strings.ToLower(strings.TrimSpace(n.Preset))).apply(&spec)
 	if side == sideIran {
 		spec.Ports = parsePorts(n.Ports)
-		if len(spec.Ports) == 0 && carrier != l3.CarrierGRETAP && carrier != l3.CarrierL2TPv3 {
+		if len(spec.Ports) == 0 && carrier != l3.CarrierGRETAP && carrier != l3.CarrierL2TPv3 && carrier != l3.CarrierWaterWall {
 			return l3Spec{}, fmt.Errorf("at least one forwarded port is required on the Iran side")
 		}
 		if err := validatePortSpecs(spec.Ports); err != nil {

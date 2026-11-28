@@ -1,0 +1,52 @@
+package manage
+
+import (
+	"testing"
+
+	"github.com/backpack/backpack/internal/tunnel/l3"
+	"github.com/backpack/backpack/internal/waterwall"
+)
+
+func TestWaterWallSetupLinkMirrorsThePacketTunnel(t *testing.T) {
+	form := NewDirectTunnel{
+		Carrier: l3.CarrierWaterWall, Name: "waterwall-fixture", Side: "iran",
+		GRELocal: "192.0.2.1", PeerAddr: "192.0.2.2", LocalIP: "10.213.252.1/30",
+		PeerIP: "10.213.252.2", Ports: "27443=443", MTU: 1400,
+	}
+	form.WaterWallProtocol, form.WaterWallWorkers = 18, 3
+	local, err := form.spec()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if local.Addr != form.PeerAddr || len(local.Ports) != 1 || local.GREKey != 0 {
+		t.Fatalf("unexpected Iran settings: %+v", local)
+	}
+	raw := pendingShareLinkFrom(local, form.GRELocal, linkExtras{})
+	link, err := DecodeShareLink(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	remote, err := MirrorForPeer(link).ToNewDirectTunnel().spec()
+	if err != nil {
+		t.Fatal(err)
+	}
+	table := decode(t, remote.Render()).L3
+	if table.Mode != "listen" || table.Carrier != form.Carrier || table.Addr != form.GRELocal ||
+		table.LocalIP != form.PeerIP+"/30" || table.PeerIP != "10.213.252.1" ||
+		table.MTU != form.MTU || table.WaterWallProtocol != 18 || table.WaterWallWorkers != 3 || len(table.Ports) != 0 {
+		t.Fatalf("unexpected Kharej settings: %+v", table)
+	}
+}
+
+func TestWaterWallConnectionTestUsesProtocol17(t *testing.T) {
+	iran := &ConnTestIran{}
+	c := &connTestCase{tr: l3.CarrierWaterWall, kind: "direct", name: "ct-waterwall-fixture"}
+	if err := iran.startPortlessCase(c, 99, c.tr, "192.0.2.1", "turbo"); err != nil {
+		t.Fatal(err)
+	}
+	peer := MirrorForPeer(c.link)
+	if c.l3.WaterWallProtocol != waterwall.TestProtocol || peer.WaterWallProtocol != waterwall.TestProtocol ||
+		peer.ServerAddr != "192.0.2.1" {
+		t.Fatal("both Connection Test endpoints must use the same IP protocol 17")
+	}
+}

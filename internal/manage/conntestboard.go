@@ -35,7 +35,7 @@ var ctTransportNames = map[string]string{
 	"tcp": "TCP", "tcpmux": "TCP MUX", "stealth": "Stealth", "pck": "PCK",
 	"ws": "WS", "wss": "WSS", "wsmux": "WS MUX", "wssmux": "WSS MUX",
 	"kcp": "KCP FEC", "quic": "QUIC", "udp": "UDP", "udp-padder": "UDP Padder", "xdi": "xDi", ctXdiFEC: "xDi + FEC", "sni": "SNI", "gre": "GRE",
-	"gretap": "GRETAP", "l2tpv3": "L2TPv3 (IP)", "easytier": "EasyTier / TCP",
+	"waterwall-packet": "Packet Tunnel / 17", "gretap": "GRETAP", "l2tpv3": "L2TPv3 (IP)", "easytier": "EasyTier / TCP",
 	"naive": "Naive / HTTP2", "anytls": "AnyTLS", "xhttp": "XHTTP / TLS", "reality": "REALITY / Vision", "gost": "GOST 3",
 	ctSpoofToKharej: "Iran→Kharej", ctSpoofToIran: "Kharej→Iran",
 }

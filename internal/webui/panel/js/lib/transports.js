@@ -8,6 +8,7 @@ const sources = new Map([
   ['backhaul-tun-ipx', 'Backhaul'],
   ['gretap', 'Gretap'],
   ['l2tpv3', 'VortexL2'],
+  ['waterwall-packet', 'WaterWall'],
 ]);
 
 const gostNames = new Map([

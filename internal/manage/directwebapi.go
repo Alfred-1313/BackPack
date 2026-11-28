@@ -179,7 +179,7 @@ func carrierNames() []string {
 // offeredCarrier reports whether a carrier is one the screens offer. ip6gre is
 // offered under GRE's entry.
 func offeredCarrier(name string) bool {
-	if name == l3.CarrierIP6GRE || name == l3.CarrierGRETAP || name == l3.CarrierL2TPv3 || name == l3.CarrierEasyTier {
+	if name == l3.CarrierIP6GRE || name == l3.CarrierGRETAP || name == l3.CarrierL2TPv3 || name == l3.CarrierEasyTier || name == l3.CarrierWaterWall {
 		return true
 	}
 	for _, c := range DirectCarriers() {
@@ -208,6 +208,9 @@ func PanelDirectCarriers() []map[string]string {
 	}, map[string]string{
 		"value": l3.CarrierEasyTier, "label": "EasyTier", "needsRoot": "1",
 		"desc": "Encrypted private EasyTier network",
+	}, map[string]string{
+		"value": l3.CarrierWaterWall, "label": "Packet Tunnel", "needsRoot": "1", "kernel": "1",
+		"desc": "WaterWall Packet Tunnel between IPv4 peers",
 	})
 }
 
@@ -300,7 +303,7 @@ func createDirectTunnel(n NewDirectTunnel) (service string, active bool, err err
 		// Not for PCK: its ports are dialled on its one kharej, and there is no
 		// peer address on a TUN to add a second kharej to (see eachIranL3Tunnel).
 		// A port another tunnel already holds is reported as in use, below.
-		if spec.Carrier != l3.CarrierPck {
+		if spec.Carrier != l3.CarrierPck && spec.Carrier != l3.CarrierWaterWall {
 			if spec.Ports, err = shareL3PortsQuietly(spec); err != nil {
 				return "", false, err
 			}
@@ -316,6 +319,11 @@ func createDirectTunnel(n NewDirectTunnel) (service string, active bool, err err
 	name, body, err := directBodyFromSpec(spec)
 	if err != nil {
 		return "", false, err
+	}
+	if spec.Carrier == l3.CarrierWaterWall {
+		if err := ensureWaterWallTunnel(spec.WaterWallProtocol, spec.Side == sideIran); err != nil {
+			return "", false, err
+		}
 	}
 	if err := routedLinkRunnable(spec.Carrier); err != nil {
 		return "", false, err
@@ -344,6 +352,11 @@ func ApplyDirectTunnel(n NewDirectTunnel) (service string, active bool, created 
 	}
 	if err := pckRunnable(n.Carrier); err != nil {
 		return "", false, false, err
+	}
+	if n.Carrier == l3.CarrierWaterWall {
+		if err := ensureWaterWallTunnel(n.WaterWallProtocol, n.Side == "iran"); err != nil {
+			return "", false, false, err
+		}
 	}
 	if err := routedLinkRunnable(n.Carrier); err != nil {
 		return "", false, false, err
@@ -465,6 +478,9 @@ func (n NewDirectTunnel) specFor(existing string) (l3Spec, error) {
 	}
 	// A kernel GRE link has no port and no token, and names the other server
 	// on both sides; see directgre.go.
+	if carrier == l3.CarrierWaterWall {
+		return n.waterWallSpec(side, existing)
+	}
 	if l3.PortlessLinkCarrier(carrier) {
 		return n.greSpecFor(side, carrier, existing)
 	}
@@ -840,6 +856,8 @@ func directSettingsFrom(name string, l config.L3Config) DirectSettings {
 // protect.
 func carrierFamily(carrier string) string {
 	switch {
+	case carrier == l3.CarrierWaterWall:
+		return "waterwall"
 	case carrier == l3.CarrierGRETAP || carrier == l3.CarrierL2TPv3 || carrier == l3.CarrierEasyTier:
 		return carrier
 	case l3.KernelCarrier(carrier):

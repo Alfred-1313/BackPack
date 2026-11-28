@@ -95,7 +95,7 @@ func (s L3Spec) DefaultName() string {
 }
 
 func (s L3Spec) Render() string {
-	if s.Carrier == l3.CarrierL2TPv3 || s.Carrier == l3.CarrierEasyTier {
+	if s.Carrier == l3.CarrierL2TPv3 || s.Carrier == l3.CarrierEasyTier || s.Carrier == l3.CarrierWaterWall {
 		return s.renderRoutedLink()
 	}
 	if l3.KernelCarrier(s.Carrier) {

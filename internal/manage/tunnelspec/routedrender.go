@@ -29,6 +29,12 @@ func (s L3Spec) renderRoutedLink() string {
 		writeKV(&b, "l2tp_peer_tunnel_id", fmt.Sprint(s.L2TPPeerTunnelID))
 		writeKV(&b, "l2tp_session_id", fmt.Sprint(s.L2TPSessionID))
 		writeKV(&b, "l2tp_peer_session_id", fmt.Sprint(s.L2TPPeerSessionID))
+	} else if s.Carrier == l3.CarrierWaterWall {
+		if s.GRELocal != "" {
+			writeKV(&b, "gre_local", quote(s.GRELocal))
+		}
+		writeKV(&b, "waterwall_protocol", fmt.Sprint(s.WaterWallProtocol))
+		writeKV(&b, "waterwall_workers", fmt.Sprint(s.WaterWallWorkers))
 	} else {
 		writeKV(&b, "token", quote(s.Token))
 		writeKV(&b, "easytier_network", quote(s.EasyTierNetwork))

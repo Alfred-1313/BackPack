@@ -21,6 +21,8 @@ func (t *Tunnel) runRoutedLink(ctx context.Context) error {
 	switch t.cfg.Carrier {
 	case CarrierL2TPv3:
 		return t.runL2TPv3(ctx)
+	case CarrierWaterWall:
+		return t.runWaterWall(ctx)
 	case CarrierEasyTier:
 		return t.runEasyTier(ctx)
 	default:

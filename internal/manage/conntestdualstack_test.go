@@ -175,7 +175,7 @@ func TestIPv6RawCarriersAreSkippedBeforeStartingAnEngine(t *testing.T) {
 	defer s.Close()
 	for _, c := range s.cases {
 		raw := c.kind == "spoof" || c.tr == "pck" || c.tr == "sni" ||
-			ctDirectCarrier(c.tr) == l3.CarrierXdi || c.tr == l3.CarrierGRETAP || c.tr == l3.CarrierL2TPv3
+			ctDirectCarrier(c.tr) == l3.CarrierXdi || c.tr == l3.CarrierGRETAP || c.tr == l3.CarrierL2TPv3 || c.tr == l3.CarrierWaterWall
 		if raw && !strings.Contains(c.skip, "IPv6 is not supported") {
 			t.Errorf("%s/%s not explicitly unsupported: %s", c.kind, c.tr, c.skip)
 		}

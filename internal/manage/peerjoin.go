@@ -316,7 +316,7 @@ func fetchPeerJoin(raw string) (peerJoinResult, error) {
 // checks in. Both ends are rendered by the regular Direct setup code.
 func StartDirectPeerSetup(ctx context.Context, form NewDirectTunnel) (SetupLinkInfo, error) {
 	switch form.Carrier {
-	case l3.CarrierGRETAP, l3.CarrierL2TPv3, l3.CarrierEasyTier, l3.CarrierGRE, l3.CarrierIP6GRE, "pck", "xdi", "sni":
+	case l3.CarrierGRETAP, l3.CarrierL2TPv3, l3.CarrierEasyTier, l3.CarrierWaterWall, l3.CarrierGRE, l3.CarrierIP6GRE, "pck", "xdi", "sni":
 	default:
 		return SetupLinkInfo{}, errors.New("this transport does not use automatic peer setup")
 	}

@@ -192,8 +192,20 @@ export function addView(ctx, replaceName = '') {
         const setup = reverseSetup() || directSetup();
         return setup?.dagger ? setup.mode : '';
       };
+      const waterWallSelected = () => chosen.direction === 'direct' && chosen.carrier === 'waterwall-packet';
+      const waterWallProtocol = el('select', { id: 'waterWallProtocol' }, [
+        el('option', { value: 136, text: '136 ? UDP-Lite' }),
+        el('option', { value: 18, text: '18 ? MUX' }),
+      ]);
+      const waterWallWorkers = el('input', { id: 'waterWallWorkers', type: 'number', min: 0, max: 64, placeholder: '0 ? automatic' });
+      const waterWallOptions = el('div', { class: 'f3 full', hidden: true },
+        el('label', { for: waterWallProtocol.id, text: 'Outer IP protocol' }), waterWallProtocol);
+      const waterWallWorkersRow = el('div', { class: 'f3 full', hidden: true },
+        el('label', { for: waterWallWorkers.id, text: 'WaterWall workers per server' }), waterWallWorkers,
+        el('div', { class: 'hint', text: 'Leave blank to size the worker pool on each server.' }));
+      root.querySelector('[name="peerAddr"]').closest('.f3').after(waterWallOptions, waterWallWorkersRow);
       const pairedDirect = () => chosen.side === 'server' && chosen.direction === 'direct' &&
-        ['gretap', 'l2tpv3', 'easytier'].includes(chosen.carrier);
+        ['gretap', 'l2tpv3', 'easytier', 'waterwall-packet'].includes(chosen.carrier);
       const setupProfile = () => opts.setupPerformance?.[chosen.direction === 'direct' ? chosen.carrier : chosen.transport];
       const setupChoices = new Map();
       let setupGroups, lastSetupProfile, daggerFields, penguFields;
@@ -684,6 +696,8 @@ export function addView(ctx, replaceName = '') {
         backhaulTUNFields.hidden = !tunMode;
         backhaulProfileRow.hidden = backhaulHealthRow.hidden = !ipx;
         const isEasyTier = easyTierSelected();
+        const isWaterWall = waterWallSelected();
+        waterWallOptions.hidden = waterWallWorkersRow.hidden = !isWaterWall;
         const isMatrix = matrixSelected();
         show('.step3rev', !direct);
         show('.step3direct', direct);
@@ -702,9 +716,10 @@ export function addView(ctx, replaceName = '') {
                   ? 'Direct: DaggerConnect pairs both IPv4 endpoints using the Setup command.'
                   : 'Direct: Iran connects to Kharej. Peer-to-peer carriers exchange packets in both directions.'
           : 'Reverse — the kharej dials in to Iran. Try this first.';
+        if (note && isWaterWall) note.textContent = 'Direct: WaterWall exchanges raw IPv4 packets between the two servers.';
         if (note && penguSetup()?.ipx) note.textContent = 'PenguTunnel IPX exchanges packets between fixed IPv4 endpoints.';
         const gretap = chosen.carrier === 'gretap';
-        root.querySelector('#greEncryptionNote').textContent = gretap
+        root.querySelector('#greEncryptionNote').textContent = isWaterWall ? 'WaterWall Packet Tunnel traffic is unencrypted.' : gretap
           ? 'GRETAP traffic is unencrypted. Use WireGuard, TLS or SSH inside it when encryption is needed.'
           : 'GRE traffic is unencrypted. Use WireGuard, TLS or SSH inside it when encryption is needed.';
         root.querySelector('#directGreKeyHint').textContent = gretap
@@ -723,7 +738,7 @@ export function addView(ctx, replaceName = '') {
            carrier was shown on every direct tunnel, on both sides — including
            the one telling the operator it was required. */
         const matchesCarrier = carrier => carrier === 'gre'
-          ? ['gre', 'ip6gre', 'gretap'].includes(chosen.carrier) || chosen.carrier === 'l2tpv3'
+          ? ['gre', 'ip6gre', 'gretap', 'l2tpv3', 'waterwall-packet'].includes(chosen.carrier)
           : chosen.carrier === carrier;
         root.querySelectorAll('[data-when]').forEach(n => {
           const when = n.dataset.when;
@@ -738,7 +753,8 @@ export function addView(ctx, replaceName = '') {
           });
           row.hidden = !ok;
         });
-        directPeer.placeholder = routed ? 'Automatically detected' : '203.0.113.9';
+        if (isWaterWall) root.querySelector('[name="greKey"]').closest('.f3').hidden = true;
+        directPeer.placeholder = routed || isWaterWall ? 'Automatically detected' : '203.0.113.9';
         directPeer.closest('.f3').querySelector('.hint').textContent = routed || pairedDirect()
           ? 'Leave blank to detect the address from the Setup connection.'
           : 'The server this side dials out to.';
@@ -768,7 +784,7 @@ export function addView(ctx, replaceName = '') {
           directForward.closest('.f3').hidden = !routed.forward;
         }
         const forwardRow = directForward.closest('.f3');
-        forwardRow.querySelector('label').textContent = ipx ? 'Forwarded TCP ports' : gost ? 'Forwarded TCP port' : 'Forwarded ports';
+        forwardRow.querySelector('label').textContent = ipx || isWaterWall ? 'Forwarded TCP ports' : gost ? 'Forwarded TCP port' : 'Forwarded ports';
         forwardRow.querySelector('.hint').textContent = gost
           ? 'Enter one TCP forward. For example, 443=8443 sends Iran port 443 to Kharej port 8443.'
           : ipx ? 'Optional. Forwards TCP to the Kharej tunnel address.'
@@ -1121,7 +1137,7 @@ export function addView(ctx, replaceName = '') {
             grid.after(box);
           }
           const direct = !!grid.closest('[data-mode="dir"], .step3direct');
-          box.hidden = direct && ['gretap', 'l2tpv3', 'easytier'].includes(chosen.carrier);
+          box.hidden = direct && ['gretap', 'l2tpv3', 'easytier', 'waterwall-packet'].includes(chosen.carrier);
           if (box.hidden) return;
           const p = chosen.preset || 'turbo';
           let cells;
@@ -2222,6 +2238,11 @@ export function addView(ctx, replaceName = '') {
             name: payload.name, transport: routed.mode, ports: payload.ports || '', secret: payload.token || '',
             peerAddr: payload.peerAddr || '', port: payload.tunnelPort || '', acceptUdp: !!payload.routedAcceptUdp, tuning,
           }, api.routedPeerSetup);
+        }
+        if (waterWallSelected()) {
+          if (!waterWallWorkers.checkValidity()) throw new Error('Enter 0 to 64 WaterWall workers.');
+          payload.waterwallProtocol = Number(waterWallProtocol.value);
+          payload.waterwallWorkers = Number(waterWallWorkers.value || 0);
         }
         if (automaticDirect()) {
           if (pairedDirect()) {

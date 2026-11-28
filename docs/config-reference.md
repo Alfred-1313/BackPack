@@ -144,6 +144,7 @@ them both ends have to agree on. This says what exists.
 | `family` | `string` | Family defaults to IPv4 and selects the listener address family. |
 | `header` | `string` | Header selects an optional PenguTunnel header for tcpfwd. |
 | `health_port` | `uint16` | HealthPort is the health port shared by both ends. |
+| `http_path` | `string` | HTTPPath is the shared POST path for xhttp and xhttps. |
 | `icmp_code` | `int` | ICMPCode selects the code used for the ICMP profile. |
 | `icmp_type` | `*int` | ICMPType selects the type used for the ICMP profile. |
 | `iran_host` | `string` | IranHost is the address of the Iran endpoint. |
@@ -173,6 +174,8 @@ them both ends have to agree on. This says what exists.
 | `l2tp_peer_tunnel_id` | `uint32` | L2TPPeerTunnelID matches the tunnel ID on the other endpoint. |
 | `l2tp_session_id` | `uint32` | L2TPSessionID identifies this endpoint's L2TPv3 Ethernet session. |
 | `l2tp_tunnel_id` | `uint32` | L2TPTunnelID identifies this endpoint's L2TPv3 tunnel. |
+| `waterwall_protocol` | `int` | WaterWallProtocol is the outer IPv4 protocol for Packet Tunnel (default 136). |
+| `waterwall_workers` | `int` | WaterWallWorkers is the core worker count. Zero enables automatic sizing. |
 
 ## [client.gost]
 
@@ -438,4 +441,4 @@ them both ends have to agree on. This says what exists.
 
 ---
 
-*Generated from `config/` on 2026-11-27. Last verified against Backpack v2.0.0.*
+*Generated from `config/` on 2026-11-28. Last verified against Backpack v2.0.6.*

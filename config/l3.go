@@ -2,8 +2,13 @@ package config
 
 import "strings"
 
-// RoutedLinkSettings holds the carrier-specific settings for L2TPv3 and EasyTier.
+// RoutedLinkSettings holds settings for external routed links.
 type RoutedLinkSettings struct {
+	// WaterWallProtocol is the outer IPv4 protocol for Packet Tunnel (default 136).
+	WaterWallProtocol int `toml:"waterwall_protocol" json:"waterwallProtocol,omitempty"`
+	// WaterWallWorkers is the core worker count. Zero enables automatic sizing.
+	WaterWallWorkers int `toml:"waterwall_workers" json:"waterwallWorkers,omitempty"`
+
 	// L2TPTunnelID identifies this endpoint's L2TPv3 tunnel.
 	L2TPTunnelID uint32 `toml:"l2tp_tunnel_id" json:"l2tpTunnelId,omitempty"`
 	// L2TPPeerTunnelID matches the tunnel ID on the other endpoint.

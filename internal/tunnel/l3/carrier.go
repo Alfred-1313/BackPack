@@ -64,7 +64,7 @@ const (
 // kernel GRE links are last: they are not datagram carriers, but a config names
 // them in the same key — see kernelgre.go.
 func Carriers() []string {
-	return append(DatagramCarriers(), CarrierGRE, CarrierIP6GRE, CarrierGRETAP, CarrierL2TPv3, CarrierEasyTier)
+	return append(DatagramCarriers(), CarrierGRE, CarrierIP6GRE, CarrierGRETAP, CarrierL2TPv3, CarrierEasyTier, CarrierWaterWall)
 }
 
 // DatagramCarriers is Carriers without the kernel GRE links: the carriers a
@@ -131,7 +131,7 @@ func KnownCarrier(name string) bool { return knownCarrier(name) }
 // refused before anything is created rather than after.
 func knownCarrier(name string) bool {
 	switch name {
-	case CarrierPck, CarrierXdi, CarrierSpoof, CarrierSNI, CarrierGRE, CarrierIP6GRE, CarrierGRETAP, CarrierL2TPv3, CarrierEasyTier:
+	case CarrierPck, CarrierXdi, CarrierSpoof, CarrierSNI, CarrierGRE, CarrierIP6GRE, CarrierGRETAP, CarrierL2TPv3, CarrierEasyTier, CarrierWaterWall:
 		return true
 	}
 	_, ok := testCarriers[name]
@@ -178,7 +178,7 @@ func openBareCarrier(ctx context.Context, cfg Config) (DatagramCarrier, net.Addr
 		// Run takes the kernel path before it would get here; a caller that
 		// does not is asking a link type for a socket it does not have.
 		return nil, nil, fmt.Errorf("l3: carrier %q is a kernel GRE link, not a datagram carrier", name)
-	case CarrierL2TPv3, CarrierEasyTier:
+	case CarrierL2TPv3, CarrierEasyTier, CarrierWaterWall:
 		return nil, nil, fmt.Errorf("l3: carrier %q owns its network interface, not a datagram socket", name)
 	}
 	if open, ok := testCarriers[name]; ok {

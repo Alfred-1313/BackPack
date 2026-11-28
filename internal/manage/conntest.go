@@ -85,7 +85,7 @@ var (
 	// GRE follows the address family of the path. Spoof joins these as above.
 	connTestDirect = []string{
 		l3.CarrierPck, l3.CarrierXdi, ctXdiFEC, "sni", l3.CarrierGRE,
-		l3.CarrierGRETAP, l3.CarrierL2TPv3, l3.CarrierEasyTier,
+		l3.CarrierGRETAP, l3.CarrierL2TPv3, l3.CarrierEasyTier, l3.CarrierWaterWall,
 	}
 )
 
@@ -626,6 +626,12 @@ func StartConnTestIran(o ConnTestOptions) (*ConnTestIran, string, error) {
 				c.skip = "needs root on both servers"
 				s.cases = append(s.cases, c)
 				continue
+			}
+			if carrier == l3.CarrierWaterWall {
+				if c.skip = ctWaterWallCore(ctx, true); c.skip != "" {
+					s.cases = append(s.cases, c)
+					continue
+				}
 			}
 			if l3.PortlessLinkCarrier(carrier) {
 				if err := s.startPortlessCase(c, i, carrier, host, preset); err != nil {
@@ -1169,7 +1175,7 @@ func (s *ConnTestIran) startDirectTestEngines(ctx context.Context, kharej string
 		_, body, err := directBodyFromSpec(c.l3)
 		if err == nil {
 			var e *ctEngine
-			if e, err = startCTEngine(s.dir, c.name, body); err == nil {
+			if e, err = startCTEngine(s.dir, c.name, body, waterWallTestEnv(c.l3.Carrier, s.link.L3)...); err == nil {
 				c.engine = e
 				s.mu.Lock()
 				s.engines = append(s.engines, e)
@@ -2658,6 +2664,12 @@ func runConnTestKharejLink(ctx context.Context, link ConnTestLink, out io.Writer
 				local[c.Kind+"/"+c.Tr] = why
 				continue
 			}
+			if built.Tr == l3.CarrierWaterWall {
+				if why := ctWaterWallCore(ctx, false); why != "" {
+					local[c.Kind+"/"+c.Tr] = why
+					continue
+				}
+			}
 			form := MirrorForPeer(built)
 			form.Name = name
 			if l3.PortlessLinkCarrier(built.Tr) && form.ServerAddr == "" {
@@ -2692,7 +2704,7 @@ func runConnTestKharejLink(ctx context.Context, link ConnTestLink, out io.Writer
 			}
 			echoes.l3(ctx, echoIP, link.L3)
 		}
-		e, err := startCTEngine(dir, name, body)
+		e, err := startCTEngine(dir, name, body, waterWallTestEnv(ctDirectCarrier(c.Tr), link.L3)...)
 		if err != nil {
 			local[c.Kind+"/"+c.Tr] = err.Error()
 			if managedTransport(c.Tr) {

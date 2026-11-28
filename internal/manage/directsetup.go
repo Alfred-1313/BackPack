@@ -720,6 +720,9 @@ func summariseL3(cfg l3Spec, link string) {
 // carrierLabel is the name a carrier has in the menu — PCK, ICMP — so the
 // summary says what the operator chose in the words they chose it in.
 func carrierLabel(value string) string {
+	if value == l3.CarrierWaterWall {
+		return "WaterWall Packet Tunnel"
+	}
 	// One menu entry, GRE, covers both kernel links; the IPv6 one is told apart
 	// wherever a tunnel is shown.
 	if value == l3.CarrierIP6GRE {

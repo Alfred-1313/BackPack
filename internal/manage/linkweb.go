@@ -104,7 +104,7 @@ func SetupLinkFor(name, host string) (SetupLinkInfo, error) {
 		info.GRETAPPeer, info.Where = &peer, "Add a tunnel → Direct → GRETAP"
 		return info, nil
 	}
-	if info.For == "iran" && l.Kind == "direct" && (l.Tr == l3.CarrierL2TPv3 || l.Tr == l3.CarrierEasyTier) {
+	if info.For == "iran" && l.Kind == "direct" && (l.Tr == l3.CarrierL2TPv3 || l.Tr == l3.CarrierEasyTier || l.Tr == l3.CarrierWaterWall) {
 		peer := MirrorForPeer(l)
 		info.PanelDirectPeer, info.Where = &peer, "Add a tunnel → Direct → "+carrierLabel(l.Tr)
 		return info, nil

@@ -116,6 +116,8 @@ type ShareLink struct {
 	EasyTierNetwork   string `json:"en,omitempty"`
 	EasyTierProtocol  string `json:"ep,omitempty"`
 	EasyTierReverse   bool   `json:"er,omitempty"`
+	WaterWallProtocol int    `json:"wwp,omitempty"`
+	WaterWallWorkers  int    `json:"www,omitempty"`
 
 	// Imported transports' extra peer settings.
 	PeerHost        string `json:"ph,omitempty"`
@@ -503,7 +505,7 @@ func MirrorForPeer(l ShareLink) PeerForm {
 		// The private network's two addresses swap: the producer's local is the
 		// receiver's peer.
 		f.LocalIP, f.PeerIP = l.PeerIP, hostOf(l.LocalIP)
-		if l.Tr == l3.CarrierGRETAP || l.Tr == l3.CarrierL2TPv3 || l.Tr == l3.CarrierEasyTier {
+		if l.Tr == l3.CarrierGRETAP || l.Tr == l3.CarrierL2TPv3 || l.Tr == l3.CarrierEasyTier || l.Tr == l3.CarrierWaterWall {
 			if _, prefix, ok := strings.Cut(l.LocalIP, "/"); ok && f.LocalIP != "" && !strings.Contains(f.LocalIP, "/") {
 				f.LocalIP += "/" + prefix
 			}
@@ -538,6 +540,9 @@ func MirrorForPeer(l ShareLink) PeerForm {
 			f.AcceptUDP = l.AcceptUDP
 		}
 		switch l.Tr {
+		case l3.CarrierWaterWall:
+			f.WaterWallProtocol, f.WaterWallWorkers = l.WaterWallProtocol, l.WaterWallWorkers
+			paired = append(paired, "waterwallProtocol", "waterwallWorkers")
 		case l3.CarrierL2TPv3:
 			f.L2TPTunnelID, f.L2TPPeerTunnelID = l.L2TPPeerTunnelID, l.L2TPTunnelID
 			f.L2TPSessionID, f.L2TPPeerSessionID = l.L2TPPeerSessionID, l.L2TPSessionID
@@ -766,6 +771,7 @@ func shareLinkOf(name, host string, cfg config.Config) (string, error) {
 		l.GREKey, l.L3MSS, l.AutoMTU = cfg.L3.GREKey, cfg.L3.MSSClamp, cfg.L3.AutoMTU
 		l.L2TPTunnelID, l.L2TPPeerTunnelID = cfg.L3.L2TPTunnelID, cfg.L3.L2TPPeerTunnelID
 		l.L2TPSessionID, l.L2TPPeerSessionID = cfg.L3.L2TPSessionID, cfg.L3.L2TPPeerSessionID
+		l.WaterWallProtocol, l.WaterWallWorkers = cfg.L3.WaterWallProtocol, cfg.L3.WaterWallWorkers
 		l.EasyTierNetwork = cfg.L3.EasyTierNetwork
 		if l.Tr == l3.CarrierEasyTier {
 			l.EasyTierProtocol, l.EasyTierReverse = cfg.L3.EasyTierProtocol, cfg.L3.EasyTierReverse

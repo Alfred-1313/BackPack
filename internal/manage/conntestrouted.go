@@ -1,11 +1,14 @@
 package manage
 
 import (
+	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/backpack/backpack/internal/easytier"
 	"github.com/backpack/backpack/internal/tunnel/l3"
+	"github.com/backpack/backpack/internal/waterwall"
 )
 
 func ctDirectPrerequisite(carrier, host string) string {
@@ -47,6 +50,9 @@ func (s *ConnTestIran) startPortlessCase(c *connTestCase, i int, carrier, host, 
 			return err
 		}
 		c.l3.RoutedLinkSettings = form.RoutedLinkSettings
+	} else if carrier == l3.CarrierWaterWall {
+		c.l3.WaterWallProtocol = waterwall.TestProtocol
+		c.l3.MTU = 1400
 	} else {
 		c.l3.GREKey = freeGREKey()
 	}
@@ -58,4 +64,20 @@ func (s *ConnTestIran) startPortlessCase(c *connTestCase, i int, carrier, host, 
 	link.Host, link.Name = strings.Trim(host, "[]"), c.name
 	c.link = link
 	return nil
+}
+
+func waterWallTestEnv(carrier string, port int) []string {
+	if carrier != l3.CarrierWaterWall {
+		return nil
+	}
+	return []string{fmt.Sprintf("BACKPACK_WATERWALL_TEST_PORT=%d", port)}
+}
+
+func ctWaterWallCore(ctx context.Context, iran bool) string {
+	ctx, cancel := context.WithTimeout(ctx, 12*time.Second)
+	defer cancel()
+	if err := waterwall.Ensure(ctx, iran); err != nil {
+		return err.Error()
+	}
+	return ""
 }

@@ -99,6 +99,9 @@ func buildSetupPerformance() map[string]SetupPerformance {
 		m[carrier] = p
 	}
 	m["easytier-reverse"] = m["easytier"]
+	packet := performance("MTU (bytes)", 1300, 1400, 1500, 576, 1500)
+	packet.OverrideLabel = "MTU (bytes)"
+	m["waterwall-packet"] = packet
 	return m
 }
 

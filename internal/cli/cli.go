@@ -704,7 +704,7 @@ func ReportLink(done manage.LinkApplied) Result {
 		return Result{Out: b.String()}
 	}
 	if done.AwaitPeer == nil && done.Kind == "direct" && done.Transport != l3.CarrierGRETAP &&
-		done.Transport != l3.CarrierL2TPv3 && done.Transport != l3.CarrierEasyTier {
+		done.Transport != l3.CarrierL2TPv3 && done.Transport != l3.CarrierEasyTier && done.Transport != l3.CarrierWaterWall {
 		if l3.KernelCarrier(done.Transport) {
 			// Neither end of a GRE link dials: each names the other, and the
 			// link carries traffic once both are up.
