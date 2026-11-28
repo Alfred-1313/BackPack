@@ -19,6 +19,7 @@ import (
 	"github.com/backpack/backpack/internal/omni"
 	"github.com/backpack/backpack/internal/pengutunnel"
 	"github.com/backpack/backpack/internal/tunhist"
+	"github.com/backpack/backpack/internal/udppadder"
 )
 
 // The read-only monitoring endpoints: health checks, alert history and the
@@ -77,6 +78,11 @@ func relayEngineChecks(parent context.Context) []healthRow {
 		}
 	}
 	checks = append(checks, pengu)
+	padding := healthRow{Group: group, Name: udppadder.Label, Level: "ok", VersionLabel: "v1.8", Detail: "Supplied binaries verified"}
+	if err := udppadder.BinaryStatus(); err != nil {
+		padding.Level, padding.VersionLabel, padding.Detail = "fail", "", err.Error()
+	}
+	checks = append(checks, padding)
 	omniRow := healthRow{Group: group, Name: "OmniTunnel", Level: "fail", Detail: "Not installed"}
 	if rev := omni.InstalledRevision(); rev != "" {
 		omniRow.Level, omniRow.Version, omniRow.Detail = "ok", "Revision "+rev[:7], "Installed"

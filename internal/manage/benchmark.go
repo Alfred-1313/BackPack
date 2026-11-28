@@ -425,7 +425,7 @@ const (
 
 func needsUDP(transport string) bool {
 	switch transport {
-	case "kcp", "quic", "udp", "xdi":
+	case "kcp", "quic", "udp", "udp-padder", "xdi":
 		return true
 	}
 	return false

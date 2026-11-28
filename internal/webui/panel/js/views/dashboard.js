@@ -205,7 +205,7 @@ function card(t, idx) {
   const label = stateLabel(t);
   const hasPing = t.ping !== undefined && t.ping >= 0;
   const dir = t.direction === 'direct' ? 'Direct' : t.transport === 'matrix' && !t.direction ? '' : 'Reverse';
-  const carrier = t.transport === 'matrix' ? 'Tinc' : (t.carrier || t.transport || '').toUpperCase();
+  const carrier = t.transport === 'matrix' ? 'Tinc' : t.transport === 'udp-padder' ? 'UDP Padder' : (t.carrier || t.transport || '').toUpperCase();
   // ports arrives as one ", "-joined string, not a list — an empty one is
   // falsy and so used to fall through to a harmless [], which is why only a
   // tunnel that actually forwards a port ever hit this.

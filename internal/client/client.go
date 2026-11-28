@@ -360,7 +360,7 @@ func (c *Client) startTransport(ctx context.Context, tr config.TransportType, en
 		go wsMuxClient.Start()
 		return wsMuxClient
 
-	case config.UDP:
+	case config.UDP, config.UDPPadder:
 		udpConfig := &transport.UdpConfig{
 			RemoteAddr:     c.config.RemoteAddr,
 			Endpoints:      endpoints,

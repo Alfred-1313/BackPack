@@ -40,6 +40,7 @@ import (
 	"github.com/backpack/backpack/internal/spooftest"
 	"github.com/backpack/backpack/internal/tunnel/l3"
 	"github.com/backpack/backpack/internal/tunnel/naive"
+	"github.com/backpack/backpack/internal/udppadder"
 	"github.com/backpack/backpack/internal/utils/network"
 	"github.com/backpack/backpack/internal/xraycore"
 	"github.com/sirupsen/logrus"
@@ -80,7 +81,7 @@ const connTestKind = "test"
 // the direct ones when the operator names a source to forge (see
 // ConnTestOptions.SpoofSrc); pck, on either side, needs root on both servers.
 var (
-	connTestReverse = []string{"tcp", "tcpmux", "stealth", "pck", "ws", "wss", "wsmux", "wssmux", "kcp", "quic", "udp", "naive", "anytls", "xhttp", "reality"}
+	connTestReverse = []string{"tcp", "tcpmux", "stealth", "pck", "ws", "wss", "wsmux", "wssmux", "kcp", "quic", "udp", "udp-padder", "naive", "anytls", "xhttp", "reality"}
 	// GRE follows the address family of the path. Spoof joins these as above.
 	connTestDirect = []string{
 		l3.CarrierPck, l3.CarrierXdi, ctXdiFEC, "sni", l3.CarrierGRE,
@@ -103,7 +104,7 @@ func ctDirectCarrier(tr string) string {
 }
 
 // connTestNeedsRoot is a reverse transport that builds its own packets.
-func connTestNeedsRoot(tr string) bool { return tr == "pck" }
+func connTestNeedsRoot(tr string) bool { return tr == "pck" || tr == "udp-padder" }
 
 // Variables rather than constants so a test can run the whole thing in
 // seconds.
@@ -553,7 +554,7 @@ func StartConnTestIran(o ConnTestOptions) (*ConnTestIran, string, error) {
 		if err := ctx.Err(); err != nil {
 			return fail(err)
 		}
-		c := &connTestCase{kind: "reverse", tr: tr, name: "ct-" + id + "-" + tr, udp: tr == "udp"}
+		c := &connTestCase{kind: "reverse", tr: tr, name: "ct-" + id + "-" + tr, udp: tr == "udp" || tr == "udp-padder"}
 		if managedTransport(tr) {
 			s.startManagedCase(c, used, o)
 			s.cases = append(s.cases, c)
@@ -568,6 +569,13 @@ func StartConnTestIran(o ConnTestOptions) (*ConnTestIran, string, error) {
 			c.skip = "needs root on both servers"
 			s.cases = append(s.cases, c)
 			continue
+		}
+		if tr == "udp-padder" {
+			if err := udppadder.Available(ctx); err != nil {
+				c.skip = err.Error()
+				s.cases = append(s.cases, c)
+				continue
+			}
 		}
 		port := ctPickPort(used, true)
 		c.entry = ctPickPort(used, true)
@@ -2607,6 +2615,13 @@ func runConnTestKharejLink(ctx context.Context, link ConnTestLink, out io.Writer
 			if connTestNeedsRoot(c.Tr) && !root {
 				local[c.Kind+"/"+c.Tr] = "needs root"
 				continue
+			}
+			if c.Tr == "udp-padder" {
+				if err := udppadder.Available(ctx); err != nil {
+					local[c.Kind+"/"+c.Tr] = err.Error()
+					_, _ = ctAskContext(ctx, link.Host, link.Coord, "skip "+link.Tok+" reverse/"+c.Tr)
+					continue
+				}
 			}
 			var spec TunnelSpec
 			var err error

@@ -44,7 +44,7 @@ func IsDatagram(t string) bool {
 		// probe is exactly the right thing for them.
 		return false
 	}
-	return t == "udp" || t == "kcp" || t == "xdi" || t == "quic" || t == "pck"
+	return UDPOnly(t) || t == "kcp" || t == "xdi" || t == "quic" || t == "pck"
 }
 
 // SupportsProxyProtocol reports whether a transport can carry the PROXY
@@ -72,8 +72,11 @@ func NeedsTLS(t string) bool {
 // carriers.
 func ValidTransport(t string) bool {
 	switch t {
-	case "tcp", "tcpmux", "udp", "kcp", "ws", "wss", "wsmux", "wssmux", "stealth", "xdi", "quic", "pck":
+	case "tcp", "tcpmux", "udp", "udp-padder", "kcp", "ws", "wss", "wsmux", "wssmux", "stealth", "xdi", "quic", "pck":
 		return true
 	}
 	return false
 }
+
+// UDPOnly denotes reverse carriers for UDP services.
+func UDPOnly(t string) bool { return t == "udp" || t == "udp-padder" }

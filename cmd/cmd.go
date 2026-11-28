@@ -18,6 +18,7 @@ import (
 	"github.com/backpack/backpack/internal/pengutunnel"
 
 	"github.com/backpack/backpack/internal/server"
+	"github.com/backpack/backpack/internal/udppadder"
 	"github.com/backpack/backpack/internal/utils"
 	"github.com/backpack/backpack/internal/utils/handlers"
 	"github.com/backpack/backpack/internal/utils/network"
@@ -211,6 +212,26 @@ func Run(configPath string, ctx context.Context) {
 		runCtx = ctl.helperContext(runCtx)
 		go func() {
 			defer close(done)
+			if running.Server.Transport == config.UDPPadder || running.Client.Transport == config.UDPPadder {
+				endpoint, dial := running.Server.BindAddr, false
+				if running.Client.Transport == config.UDPPadder {
+					endpoint, dial = running.Client.RemoteAddr, true
+				}
+				pair, err := udppadder.Start(runCtx, endpoint, dial)
+				if err != nil {
+					if runCtx.Err() == nil {
+						logger.Fatalf("UDP Padder: %v", err)
+					}
+					return
+				}
+				defer pair.Stop()
+				go func() {
+					if err := pair.Wait(runCtx); err != nil && runCtx.Err() == nil {
+						logger.Errorf("UDP Padder: %v", err)
+						cancel()
+					}
+				}()
+			}
 			runEngine(&running, runCtx, configPath, applyTuning)
 		}()
 		go watchQuota(runCtx, configPath, cancel)

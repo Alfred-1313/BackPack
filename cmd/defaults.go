@@ -12,6 +12,7 @@ import (
 	"github.com/backpack/backpack/internal/app"
 	"github.com/backpack/backpack/internal/tunnel/l3"
 	"github.com/backpack/backpack/internal/tunnel/naive"
+	"github.com/backpack/backpack/internal/udppadder"
 	"github.com/backpack/backpack/internal/utils/network"
 
 	"github.com/sirupsen/logrus"
@@ -66,7 +67,7 @@ func applyDefaults(cfg *config.Config) {
 		{cfg.Client.Transport, &cfg.Client.SO_RCVBUF, &cfg.Client.SO_SNDBUF},
 	} {
 		switch side.tr {
-		case config.KCP, config.XDI, config.PCK, config.QUIC, config.UDP:
+		case config.KCP, config.XDI, config.PCK, config.QUIC, config.UDP, config.UDPPadder:
 			if *side.rcv <= 0 {
 				*side.rcv = defaultDatagramSockBuf
 			}
@@ -206,7 +207,7 @@ func warnIgnoredProxyProtocol(cfg *config.Config) {
 		return
 	}
 	switch cfg.Server.Transport {
-	case config.WS, config.WSS, config.UDP:
+	case config.WS, config.WSS, config.UDP, config.UDPPadder:
 		logger.Warnf("proxy_protocol has no effect on the %s transport and is ignored: use tcp, tcpmux, stealth, kcp, pck, quic, wsmux or wssmux to pass the client's address to the service", cfg.Server.Transport)
 	}
 }
@@ -221,6 +222,14 @@ func warnIgnoredProxyProtocol(cfg *config.Config) {
 // exited again. The first load still treats an error as fatal; a reload logs
 // it and keeps what is running. See reload.go.
 func validateConfig(cfg *config.Config) error {
+	if cfg.Client.Transport == config.UDPPadder && len(cfg.Client.FallbackAddrs) > 0 {
+		return fmt.Errorf("UDP Padder requires one peer address")
+	}
+	if cfg.Server.Transport == config.UDPPadder || cfg.Client.Transport == config.UDPPadder {
+		if err := udppadder.BinaryStatus(); err != nil {
+			return fmt.Errorf("UDP Padder: %w", err)
+		}
+	}
 	for _, check := range []func(*config.Config) error{
 		checkNaive,
 		checkXray,
@@ -620,7 +629,7 @@ func checkOutbound(cfg *config.Config) error {
 // and the only defect this has ever had was a transport missing from the list.
 func transportIgnoresOutbound(t config.TransportType) bool {
 	switch t {
-	case config.UDP, config.KCP, config.XDI, config.PCK, config.QUIC, config.SPOOF:
+	case config.UDP, config.UDPPadder, config.KCP, config.XDI, config.PCK, config.QUIC, config.SPOOF:
 		return true
 	}
 	return false

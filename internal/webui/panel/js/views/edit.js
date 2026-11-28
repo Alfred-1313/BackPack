@@ -268,7 +268,7 @@ function read(root) {
 const isMux = t => ['tcpmux', 'wsmux', 'wssmux', 'kcp', 'xdi', 'spoof', 'pck'].includes(t);
 const needsTLS = t => ['wss', 'wssmux'].includes(t);
 const isKCP = t => ['kcp', 'xdi', 'spoof', 'pck'].includes(t);
-const isDatagram = t => ['udp', 'kcp', 'xdi', 'quic', 'pck'].includes(t);
+const isDatagram = t => ['udp', 'udp-padder', 'kcp', 'xdi', 'quic', 'pck'].includes(t);
 const takesProxyProtocol = t =>
   ['tcp', 'tcpmux', 'kcp', 'wsmux', 'wssmux', 'stealth', 'quic', 'pck'].includes(t);
 
