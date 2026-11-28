@@ -26,7 +26,8 @@ export function addView(ctx, replaceName = '') {
   return openScreen('add', {
     pick: '.dlg',
     bind: async (root, close) => {
-      ctx.setTeardown(close);
+      let stopSetupStatus = () => {};
+      ctx.setTeardown(() => { stopSetupStatus(); close(); });
       let replacement;
       try {
         replacement = replaceName ? await api.tunnelRebuildInfo(replaceName) : null;
@@ -1036,6 +1037,29 @@ export function addView(ctx, replaceName = '') {
             bindSetupLink(result);
             if (mtMode.value) result.append(el('p', { class: 'hint', text: 'After Kharej joins, open MTProxy from the tunnel card.' }));
           }
+          if (waterWallSelected() && !replacement) {
+            let closed = false;
+            let hasTunnel = false;
+            const unsubscribe = store.subscribe(({ tunnels }) => {
+              const tunnel = tunnels.find(t => t.name === (r.name || name));
+              if (!tunnel) return;
+              const connected = isUp(tunnel);
+              if (title) title.textContent = connected ? 'Tunnel connected' : 'Tunnel created on Iran';
+              if (sub) sub.textContent = connected ? 'Both ends are exchanging traffic.'
+                : 'The local tunnel is ready. Waiting for a reply over WaterWall.';
+              if (label) label.textContent = 'Local configuration created';
+              if (!hasTunnel) {
+                hasTunnel = true;
+                api.tunnelLink(tunnel.name).then(info => {
+                  if (closed || info.pending) return;
+                  const setup = result?.querySelector('.sl');
+                  if (setup) setup.outerHTML = setupLinkHTML(info);
+                }).catch(() => {});
+              }
+            });
+            stopSetupStatus = () => { closed = true; unsubscribe(); };
+            store.loadTunnels();
+          }
           building = false;
           return;
         }
@@ -1075,6 +1099,7 @@ export function addView(ctx, replaceName = '') {
       /* The numbered header moved with the step in the preview; it is wired to
          the same event the Back and Continue buttons raise. */
       root.addEventListener('step', ev => {
+        stopSetupStatus();
         const { at, of } = ev.detail;
         if (skipEmpty(at)) return;
         lastStep = at;

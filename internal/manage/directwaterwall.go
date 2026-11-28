@@ -6,9 +6,13 @@ import (
 	"math/rand/v2"
 	"net"
 	"net/netip"
+	"os"
 	"strings"
+	"syscall"
 	"time"
 
+	"github.com/backpack/backpack/config"
+	"github.com/backpack/backpack/internal/app"
 	"github.com/backpack/backpack/internal/tunnel/l3"
 	"github.com/backpack/backpack/internal/waterwall"
 )
@@ -142,6 +146,55 @@ func waterWallSubnetFree(block, previous netip.Prefix, used []netip.Prefix) bool
 		}
 	}
 	return true
+}
+
+// A repeated Setup link describes the listener already occupying the subnet.
+// Reuse it only if it represents the same peer, addresses and settings.
+func applyWaterWallPeer(n NewDirectTunnel) (LinkApplied, error) {
+	var out LinkApplied
+	if err := os.MkdirAll(app.ConfigDir, 0755); err != nil {
+		return out, err
+	}
+	lock, err := os.OpenFile(app.ConfigDir+"/.waterwall-peer.lock", os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		return out, err
+	}
+	defer lock.Close()
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
+		return out, err
+	}
+	if existing := l3BlockOwner(n.LocalIP); existing != "" {
+		cfg, err := LoadTunnelConfig(existing)
+		if err != nil {
+			return out, err
+		}
+		desired := n
+		desired.Name = existing
+		spec, err := desired.waterWallSpec(sideKharej, existing)
+		if err != nil {
+			return out, err
+		}
+		if sameWaterWallPeer(cfg.L3, spec) {
+			unit := app.ServiceName(existing)
+			if !IsActive(unit) {
+				if err := StartService(unit); err != nil {
+					return out, err
+				}
+			}
+			return LinkApplied{Name: existing, Service: unit, Kind: "direct", Transport: l3.CarrierWaterWall,
+				Active: IsActive(unit), Existing: true}, nil
+		}
+	}
+	n.Name = freeName(n.Name)
+	svc, active, err := CreateDirectTunnel(n)
+	return LinkApplied{Name: n.Name, Service: svc, Kind: "direct", Transport: l3.CarrierWaterWall, Active: active}, err
+}
+
+func sameWaterWallPeer(have config.L3Config, want l3Spec) bool {
+	return have.Carrier == l3.CarrierWaterWall && have.Mode == "listen" &&
+		sameGREEndpoint(have.Addr, want.Addr) && have.LocalIP == want.LocalIP &&
+		hostOf(have.PeerIP) == hostOf(want.PeerIP) && have.MTU == want.MTU &&
+		have.WaterWallProtocol == want.WaterWallProtocol && have.WaterWallWorkers == want.WaterWallWorkers
 }
 
 func ensureWaterWallTunnel(protocol int, iran bool) error {

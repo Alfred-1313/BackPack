@@ -301,6 +301,8 @@ func applyDirectLink(link ShareLink, o LinkApplyOptions) (LinkApplied, error) {
 	}
 	if n := form.ToNewDirectTunnel(); n.isGREPeer() {
 		return applyGREPeer(n, true)
+	} else if n.Carrier == l3.CarrierWaterWall {
+		return applyWaterWallPeer(n)
 	}
 	form.Name = freeName(form.Name)
 	n := form.ToNewDirectTunnel()

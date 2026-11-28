@@ -104,3 +104,38 @@ func TestWaterWallRandomSubnetUsesUsablePair(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestWaterWallSetupReplayMatchesOnlyTheSamePeer(t *testing.T) {
+	form := NewDirectTunnel{
+		Carrier: l3.CarrierWaterWall, Name: "waterwall-replay-fixture", Side: "kharej",
+		PeerAddr: "192.0.2.1", LocalIP: "10.213.251.2/30", PeerIP: "10.213.251.1",
+		MTU: 1400,
+	}
+	form.WaterWallProtocol, form.WaterWallWorkers = 17, 2
+	spec, err := form.spec()
+	if err != nil {
+		t.Fatal(err)
+	}
+	have := decode(t, spec.Render()).L3
+	if !sameWaterWallPeer(have, spec) {
+		t.Fatal("replaying the same WaterWall setup should reuse the listener")
+	}
+	for _, tc := range []struct {
+		name   string
+		change func(*l3Spec)
+	}{
+		{"another remote", func(want *l3Spec) { want.Addr = "192.0.2.2" }},
+		{"another address on the same subnet", func(want *l3Spec) { want.PeerIP = "10.213.251.3" }},
+		{"different outer protocol", func(want *l3Spec) { want.WaterWallProtocol = 136 }},
+		{"different workers", func(want *l3Spec) { want.WaterWallWorkers++ }},
+		{"different MTU", func(want *l3Spec) { want.MTU -= 200 }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			want := spec
+			tc.change(&want)
+			if sameWaterWallPeer(have, want) {
+				t.Fatal("a matching subnet alone must not reuse this listener")
+			}
+		})
+	}
+}
