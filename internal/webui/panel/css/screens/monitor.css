@@ -355,12 +355,15 @@ body[data-t="light"]{
   padding-left:9px;border-left:2px solid var(--ln2);line-height:1.55}
 .dlg .hcrun{padding:40px;text-align:center;color:var(--dim);font-size:12.5px}
 .dlg .hcupdate{align-self:center;margin-left:auto;flex:none;padding:6px 10px;font-size:11px;white-space:nowrap}
-.dlg.xray-core{position:fixed;inset:0;margin:auto;width:min(480px,calc(100% - 32px));color:var(--tx);padding:0}
-.dlg.xray-core:not([open]){display:none}
-.dlg.xray-core::backdrop{background:rgba(0,0,0,.4)}
-.xray-core form{display:flex;flex-direction:column;min-height:0}
+.dlg.core-update{position:fixed;inset:0;margin:auto;width:min(480px,calc(100% - 32px));color:var(--tx);padding:0}
+.dlg.core-update:not([open]){display:none}
+.dlg.core-update::backdrop{background:rgba(0,0,0,.4)}
+.core-update form{display:flex;flex-direction:column;min-height:0}
 .xray-core .sel{display:block}
-.xray-core .sel:focus-visible,.xray-core input:focus-visible{outline:2px solid var(--ln3);outline-offset:2px}
-.xray-core .xr-note,.xray-core .xr-status{font-size:11.5px;line-height:1.5;color:var(--dim);margin:0}
-.xray-core .xr-status:not(:empty){margin-top:8px}
-.xray-core .xr-status.error{color:var(--er)}
+.xray-core .sel:focus-visible,.core-update input:focus-visible{outline:2px solid var(--ln3);outline-offset:2px}
+.core-update .xr-note,.core-update .xr-status{font-size:11.5px;line-height:1.5;color:var(--dim);margin:0}
+.core-update .xr-status:not(:empty){margin-top:8px}
+.core-update .xr-status.error{color:var(--er)}
+.waterwall-core .waterwall-restart,.waterwall-core .waterwall-command{margin-top:12px}
+.waterwall-core .waterwall-copy{display:flex;align-items:center;gap:8px}
+.waterwall-core .waterwall-copy input{min-width:0;font-family:monospace}

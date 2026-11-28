@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"debug/elf"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,6 +16,8 @@ import (
 	"runtime"
 	"sync"
 	"time"
+
+	"github.com/backpack/backpack/internal/app"
 )
 
 const (
@@ -25,6 +28,8 @@ const (
 	TestProtocol      = 17
 	DefaultMTU        = 1500
 	maxCoreSize       = 16 << 20
+	coreDir           = "/usr/local/lib/backpack/helpers/waterwall"
+	releasesURL       = "https://github.com/radkesvat/WaterWall/releases"
 )
 
 type build struct {
@@ -43,7 +48,7 @@ var protocol17 = build{Protocol17Version, "Waterwall-linux-gcc-x64-old-cpu",
 var installMu sync.Mutex
 
 func (b build) binary() string {
-	return filepath.Join("/usr/local/lib/backpack/helpers/waterwall", b.version, b.name, "Waterwall")
+	return filepath.Join(coreDir, b.version, b.name, "Waterwall")
 }
 
 func (b build) verified() (string, error) {
@@ -75,102 +80,109 @@ func selectedBuild(iran bool, protocol int) build {
 	return standard
 }
 
-func Binary(iran bool, protocol int) (string, error) {
+func Binary(iran bool, protocol int) (file, version string, err error) {
 	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
-		return "", fmt.Errorf("WaterWall Packet Tunnel requires Linux amd64")
+		return "", "", fmt.Errorf("WaterWall Packet Tunnel requires Linux amd64")
 	}
 	b := selectedBuild(iran, protocol)
-	file, err := b.verified()
-	if os.IsNotExist(err) && b == standard {
-		return compatible.verified()
+	if protocol == TestProtocol {
+		file, err = b.verified()
+		return file, b.version, err
 	}
-	return file, err
+	file, version, err = installedBuild(b)
+	if os.IsNotExist(err) && b == standard {
+		return installedBuild(compatible)
+	}
+	return file, version, err
 }
 
-func Installed(protocol int) bool {
-	if protocol == TestProtocol {
-		_, err := protocol17.verified()
-		return err == nil
+func InstalledVersion(iran bool) string {
+	_, version, err := Binary(iran, DefaultProtocol)
+	if err != nil {
+		return ""
 	}
-	if _, err := compatible.verified(); err == nil {
-		return true
-	}
-	_, err := standard.verified()
+	return version
+}
+
+func Protocol17Installed() bool {
+	_, err := protocol17.verified()
 	return err == nil
 }
 
 func Ensure(ctx context.Context, iran bool, protocol int) error {
 	installMu.Lock()
 	defer installMu.Unlock()
-	if _, err := Binary(iran, protocol); err == nil {
+	if _, _, err := Binary(iran, protocol); err == nil {
 		return nil
 	}
 	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
 		return fmt.Errorf("WaterWall Packet Tunnel requires Linux amd64")
 	}
-	b := selectedBuild(iran, protocol)
-	url := "https://github.com/radkesvat/WaterWall/releases/download/" + b.version + "/" + b.name + ".zip"
+	_, err := selectedBuild(iran, protocol).download(ctx)
+	return err
+}
+
+func (b build) download(ctx context.Context) (build, error) {
+	url := releasesURL + "/download/" + b.version + "/" + b.name + ".zip"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return err
+		return b, err
 	}
 	res, err := (&http.Client{Timeout: 60 * time.Second}).Do(req)
 	if err != nil {
-		return fmt.Errorf("download WaterWall: %w", err)
+		return b, fmt.Errorf("download WaterWall: %w", err)
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
-		return fmt.Errorf("download WaterWall: HTTP %d", res.StatusCode)
+		return b, fmt.Errorf("download WaterWall: HTTP %d", res.StatusCode)
 	}
-	data, err := io.ReadAll(io.LimitReader(res.Body, maxCoreSize))
+	data, err := io.ReadAll(io.LimitReader(res.Body, maxCoreSize+1))
 	if err != nil {
-		return err
+		return b, err
 	}
-	if fmt.Sprintf("%x", sha256.Sum256(data)) != b.archiveHash {
-		return fmt.Errorf("WaterWall release archive checksum mismatch")
+	return b.unpack(data)
+}
+
+func (b build) unpack(data []byte) (build, error) {
+	if len(data) > maxCoreSize || fmt.Sprintf("%x", sha256.Sum256(data)) != b.archiveHash {
+		return b, fmt.Errorf("WaterWall release archive checksum mismatch or archive too large")
 	}
 	archive, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
-		return err
+		return b, err
 	}
 	for _, entry := range archive.File {
 		if path.Base(entry.Name) == "Waterwall" && entry.Mode().IsRegular() && entry.UncompressedSize64 <= maxCoreSize {
-			return b.install(entry)
+			return b.extract(entry)
 		}
 	}
-	return fmt.Errorf("WaterWall release archive has no core binary")
+	return b, fmt.Errorf("WaterWall release archive has no core binary")
 }
 
-func (b build) install(entry *zip.File) error {
+func (b build) extract(entry *zip.File) (build, error) {
 	in, err := entry.Open()
 	if err != nil {
-		return err
+		return b, err
 	}
 	defer in.Close()
-	dest := b.binary()
-	if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
-		return err
-	}
-	out, err := os.CreateTemp(filepath.Dir(dest), ".core-*")
+	data, err := io.ReadAll(io.LimitReader(in, maxCoreSize+1))
 	if err != nil {
-		return err
+		return b, err
 	}
-	defer os.Remove(out.Name())
-	defer out.Close()
-	hash := sha256.New()
-	if _, err := io.Copy(io.MultiWriter(out, hash), in); err != nil {
-		return err
+	hash := fmt.Sprintf("%x", sha256.Sum256(data))
+	if len(data) > maxCoreSize || b.binaryHash != "" && hash != b.binaryHash {
+		return b, fmt.Errorf("WaterWall binary checksum mismatch or binary too large")
 	}
-	if fmt.Sprintf("%x", hash.Sum(nil)) != b.binaryHash {
-		return fmt.Errorf("WaterWall binary checksum mismatch")
+	core, err := elf.NewFile(bytes.NewReader(data))
+	if err != nil {
+		return b, fmt.Errorf("invalid WaterWall executable: %w", err)
 	}
-	if err := out.Chmod(0755); err != nil {
-		return err
+	defer core.Close()
+	if core.Class != elf.ELFCLASS64 || core.Machine != elf.EM_X86_64 || core.Type != elf.ET_EXEC && core.Type != elf.ET_DYN {
+		return b, fmt.Errorf("WaterWall release asset is not a Linux amd64 executable")
 	}
-	if err := out.Close(); err != nil {
-		return err
-	}
-	return os.Rename(out.Name(), dest)
+	b.binaryHash = hash
+	return b, app.WriteFileAtomic(b.binary(), data, 0755)
 }
 
 // RuntimeConfig renders the supplied packet chain. TCP/transport stays in

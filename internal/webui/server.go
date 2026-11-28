@@ -460,6 +460,8 @@ func (s *server) routes() *http.ServeMux {
 	mux.HandleFunc("/api/health", s.requireAuth(s.handleHealth))
 	mux.HandleFunc("/api/xray/releases", s.requireAdmin(s.handleXrayReleases))
 	mux.HandleFunc("/api/xray/core", s.requireAdmin(s.handleXrayCore))
+	mux.HandleFunc("/api/waterwall/update", s.requireAdmin(s.handleWaterWallUpdateCheck))
+	mux.HandleFunc("/api/waterwall/core", s.requireAdmin(s.handleWaterWallCore))
 	mux.HandleFunc("/api/mtproxy", s.requireAdmin(s.handleMTProxy))
 	mux.HandleFunc("/api/alerts", s.requireReadAuth(s.handleAlerts))
 	mux.HandleFunc("/api/linktest", s.requireAuth(s.handleLinkTest))

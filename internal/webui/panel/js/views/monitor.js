@@ -4,7 +4,7 @@
  * CLI: Manage → Health Check, and the alert history.
  */
 
-import { $$, esc } from '../lib/dom.js';
+import { $$, copyText, esc } from '../lib/dom.js';
 import { ago } from '../lib/format.js';
 import * as api from '../api.js';
 import * as store from '../store.js';
@@ -128,12 +128,14 @@ export function healthView(ctx) {
                     <span>${esc(c.Detail || c.detail || '')}</span>
                     ${(c.Fix || c.fix) ? `<i class="hcfix">${esc(c.Fix || c.fix)}</i>` : ''}
                   </div>
-                  ${c.coreUpdate ? `<button type="button" class="bt hcupdate" data-version="${esc(c.version || '')}">Update core</button>` : ''}
+                  ${c.coreUpdate ? `<button type="button" class="bt hcupdate" data-core="xray" data-version="${esc(c.version || '')}">Update core</button>` : ''}
+                  ${c.coreCheckUpdate ? '<button type="button" class="bt hcupdate" data-core="waterwall">Check update</button>' : ''}
                 </div>`).join('')}
             </div>`).join('');
-        body.querySelector('.hcupdate')?.addEventListener('click', ev => {
+        body.querySelector('[data-core="xray"]')?.addEventListener('click', ev => {
           xrayCoreDialog(ev.currentTarget.dataset.version, load);
         });
+        body.querySelector('[data-core="waterwall"]')?.addEventListener('click', () => waterWallCoreDialog(load));
         /* The footer counted the preview's own example run. */
         const foot = root.querySelector('.df .note');
         if (foot) {
@@ -157,7 +159,7 @@ export function healthView(ctx) {
 
 function xrayCoreDialog(current, reload) {
   const dialog = document.createElement('dialog');
-  dialog.className = 'dlg xray-core';
+  dialog.className = 'dlg xray-core core-update';
   dialog.setAttribute('aria-labelledby', 'xray-core-title');
   dialog.innerHTML = `
     <form>
@@ -266,4 +268,126 @@ function xrayCoreDialog(current, reload) {
     releaseNote.textContent = 'Could not load releases. You can enter a version manually.';
     releaseNote.title = e.message;
   });
+}
+
+function waterWallCoreDialog(reload) {
+  const dialog = document.createElement('dialog');
+  dialog.className = 'dlg waterwall-core core-update';
+  dialog.setAttribute('aria-labelledby', 'waterwall-core-title');
+  dialog.innerHTML = `
+    <form>
+      <div class="dh">
+        <div class="ttl"><strong id="waterwall-core-title">WaterWall core update</strong></div>
+        <button class="x" type="button" aria-label="Close dialog">${svg('close')}</button>
+      </div>
+      <div class="panes pane">
+        <p class="xr-note waterwall-versions" hidden></p>
+        <p class="xr-status" role="status">Checking the official WaterWall releases…</p>
+        <p class="xr-note waterwall-restart" hidden>Running WaterWall tunnels use the updated core the next time they start.</p>
+        <div class="f waterwall-command" hidden>
+          <label for="waterwall-kharej-update">Run on Kharej · Linux amd64</label>
+          <div class="waterwall-copy">
+            <input id="waterwall-kharej-update" type="text" readonly>
+            <button class="bt" type="button">Copy</button>
+          </div>
+        </div>
+      </div>
+      <div class="df">
+        <span class="sp"></span>
+        <button class="bt waterwall-dismiss" type="button">Close</button>
+        <button class="bt primary" type="submit" hidden>Update core</button>
+      </div>
+    </form>`;
+
+  const versions = dialog.querySelector('.waterwall-versions');
+  const status = dialog.querySelector('.xr-status');
+  const restart = dialog.querySelector('.waterwall-restart');
+  const command = dialog.querySelector('.waterwall-command');
+  const input = command.querySelector('input');
+  const submit = dialog.querySelector('[type="submit"]');
+  const dismiss = dialog.querySelector('.waterwall-dismiss');
+  let confirmedVersion = '';
+
+  function showStatus(message, error = false) {
+    status.textContent = message;
+    status.classList.toggle('error', error);
+  }
+
+  function showCommand(value) {
+    input.value = value;
+    command.hidden = !value;
+  }
+
+  async function watch(job) {
+    submit.hidden = true;
+    dismiss.textContent = 'Close';
+    while (dialog.open && job.running) {
+      showStatus(job.step || `Preparing WaterWall ${job.target}…`);
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      if (!dialog.open) return;
+      job = await api.waterWallCoreStatus(job.id);
+    }
+    if (!dialog.open) return;
+    if (!job.succeeded) throw new Error(job.error || 'The WaterWall update was interrupted.');
+    versions.textContent = `Installed on Iran · ${job.target}`;
+    versions.hidden = restart.hidden = false;
+    showStatus(`WaterWall ${job.target} installed on Iran.`);
+    showCommand(job.command);
+    reload().catch(oops);
+  }
+
+  async function check() {
+    try {
+      const job = await api.waterWallCoreStatus();
+      if (!dialog.open) return;
+      if (job) {
+        await watch(job);
+        return;
+      }
+      const result = await api.waterWallUpdateCheck();
+      if (!dialog.open) return;
+      versions.textContent = `Installed on Iran · ${result.installed || 'Missing'} · Latest · ${result.latest}`;
+      versions.hidden = false;
+      if (result.installed === result.latest) {
+        showStatus('WaterWall is up to date.');
+        showCommand(result.command);
+        return;
+      }
+      confirmedVersion = result.latest;
+      showStatus(`Install ${result.asset} for ${result.latest} on Iran?`);
+      restart.hidden = submit.hidden = false;
+      dismiss.textContent = 'Cancel';
+    } catch (e) {
+      showStatus(e.message, true);
+    }
+  }
+
+  dialog.querySelector('form').addEventListener('submit', async event => {
+    event.preventDefault();
+    if (!confirmedVersion || submit.disabled || submit.hidden) return;
+    submit.disabled = true;
+    showStatus(`Starting update to ${confirmedVersion}…`);
+    try {
+      await watch(await api.waterWallCoreUpdate(confirmedVersion));
+    } catch (e) {
+      showStatus(e.message, true);
+      submit.hidden = false;
+      dismiss.textContent = 'Cancel';
+    } finally {
+      submit.disabled = false;
+    }
+  });
+  command.querySelector('button').addEventListener('click', async () => {
+    if (await copyText(input.value)) toast('Command copied');
+    else input.select();
+  });
+  dismiss.addEventListener('click', () => dialog.close());
+  dialog.querySelector('.dh button').addEventListener('click', () => dialog.close());
+  dialog.addEventListener('keydown', event => {
+    if (event.key === 'Escape') event.stopPropagation();
+  });
+  dialog.addEventListener('close', () => dialog.remove(), { once: true });
+  document.body.append(dialog);
+  dialog.showModal();
+  check();
 }

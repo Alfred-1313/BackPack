@@ -85,6 +85,8 @@ const usage = `backpack — non-interactive commands
   backpack proxy enable <socks5|http> <port> [--user U --pass P]
   backpack proxy disable | status [--json]
                                         the built-in proxy a tunnel's port forwards to
+  backpack waterwall update '<update token>'
+                                        install the selected WaterWall release on Kharej
   backpack version [--json]
 
 Run backpack with no arguments for the interactive menu.
@@ -113,6 +115,8 @@ func Run(args []string) Result {
 		return runLink(args[1:])
 	case "proxy":
 		return runProxy(args[1:])
+	case "waterwall":
+		return runWaterWall(args[1:])
 	case "version":
 		return runVersion(args[1:])
 	case "help", "-h", "--help":
@@ -497,7 +501,7 @@ func takeJSONFlag(args []string) (bool, []string) {
 // drifting — a command added below is routable immediately.
 func IsCommand(s string) bool {
 	switch s {
-	case "tunnel", "check", "version", "link", "proxy":
+	case "tunnel", "check", "version", "link", "proxy", "waterwall":
 		return true
 	}
 	return false

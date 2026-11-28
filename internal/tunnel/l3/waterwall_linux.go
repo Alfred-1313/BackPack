@@ -30,7 +30,7 @@ const waterWallDSCP = "0x2f"
 
 func (t *Tunnel) runWaterWall(ctx context.Context) error {
 	c := t.cfg
-	path, err := waterwall.Binary(c.Mode == ModeDial, c.WaterWallProtocol)
+	path, version, err := waterwall.Binary(c.Mode == ModeDial, c.WaterWallProtocol)
 	if err != nil {
 		return fmt.Errorf("WaterWall core: %w", err)
 	}
@@ -76,9 +76,7 @@ func (t *Tunnel) runWaterWall(ctx context.Context) error {
 	var testPort int
 	var packetMark uint32
 	var legacyEndpoint string
-	version := waterwall.Version
 	if c.WaterWallProtocol == waterwall.TestProtocol {
-		version = waterwall.Protocol17Version
 		packetMark = (rand.Uint32() & 0x3fffffff) | 0x40000000
 		legacyEndpoint = local.String()
 		if value := os.Getenv("BACKPACK_WATERWALL_TEST_PORT"); value != "" {

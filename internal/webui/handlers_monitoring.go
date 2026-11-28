@@ -29,14 +29,15 @@ import (
 // adds no judgement of its own, so the two can never disagree.
 
 type healthRow struct {
-	Group        string `json:"group"`
-	Name         string `json:"name"`
-	Level        string `json:"level"`
-	Detail       string `json:"detail"`
-	Fix          string `json:"fix"`
-	Version      string `json:"version,omitempty"`
-	VersionLabel string `json:"versionLabel,omitempty"`
-	CoreUpdate   bool   `json:"coreUpdate,omitempty"`
+	Group           string `json:"group"`
+	Name            string `json:"name"`
+	Level           string `json:"level"`
+	Detail          string `json:"detail"`
+	Fix             string `json:"fix"`
+	Version         string `json:"version,omitempty"`
+	VersionLabel    string `json:"versionLabel,omitempty"`
+	CoreUpdate      bool   `json:"coreUpdate,omitempty"`
+	CoreCheckUpdate bool   `json:"coreCheckUpdate,omitempty"`
 }
 
 // handleHealth runs the full diagnostic pass when the Health modal opens.
@@ -50,6 +51,7 @@ func (s *server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	if who, ok := s.identify(r); ok && who.Scope >= ScopeAdmin {
 		for i := range engines {
 			engines[i].CoreUpdate = engines[i].Name == "Xray"
+			engines[i].CoreCheckUpdate = engines[i].Name == waterwall.Label
 		}
 	}
 	writeJSON(w, append(engines, out...))
@@ -61,10 +63,14 @@ func relayEngineChecks(parent context.Context) []healthRow {
 		{Group: group, Name: "BackPack", Level: "ok", Version: app.Version, Detail: "Includes built-in Backhaul transports"},
 	}
 	water := healthRow{Group: group, Name: waterwall.Label, Level: "fail", Detail: "Official core not installed"}
-	if waterwall.Installed(waterwall.DefaultProtocol) {
-		water.Level, water.Version, water.Detail = "ok", waterwall.Version, "Verified official core"
+	version := waterwall.InstalledVersion(true)
+	if version == "" {
+		version = waterwall.InstalledVersion(false)
 	}
-	if waterwall.Installed(waterwall.TestProtocol) {
+	if version != "" {
+		water.Level, water.Version, water.Detail = "ok", version, "Verified official core"
+	}
+	if waterwall.Protocol17Installed() {
 		if water.Level == "fail" {
 			water.Level = "warn"
 		}
