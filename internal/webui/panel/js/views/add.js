@@ -202,22 +202,29 @@ export function addView(ctx, replaceName = '') {
       const wwIranWorkers = waterWallField('waterWallIranWorkers', 'Iran workers', 0, 64);
       const wwPeerWorkers = waterWallField('waterWallPeerWorkers', 'Kharej workers', 0, 64);
       wwIranWorkers.input.placeholder = wwPeerWorkers.input.placeholder = '0 (automatic)';
-      const waterWallProtocol = el('input', { id: 'waterWallProtocol', type: 'number', min: 1, max: 254, value: 136 });
+      const waterWallProtocol = el('input', { id: 'waterWallProtocol', type: 'number', min: 1, max: 254, value: 17,
+        'aria-describedby': 'waterWallProtocolHint' });
+      const waterWallProtocolHint = el('span', { id: 'waterWallProtocolHint',
+        text: '17 is test-only with WaterWall v1.6.0.' });
+      waterWallProtocol.addEventListener('input', () => {
+        waterWallProtocolHint.hidden = waterWallProtocol.valueAsNumber !== 17;
+      });
       const waterWallProtocolRow = el('div', { class: 'f3' },
         el('label', { for: waterWallProtocol.id, text: 'Outer IP protocol number' }), waterWallProtocol,
         el('div', { class: 'hint' }, [
           el('a', { href: 'https://en.wikipedia.org/wiki/List_of_IP_protocol_numbers', target: '_blank',
             rel: 'noopener noreferrer', text: 'List of IP protocol numbers' }),
+          ' ', waterWallProtocolHint,
         ]));
       const waterWallIranIP = el('input', { id: 'waterWallIranIP', type: 'text', placeholder: 'Automatic', spellcheck: 'false' });
       const waterWallPeerIP = el('input', { id: 'waterWallPeerIP', type: 'text', placeholder: 'Automatic', spellcheck: 'false' });
-      const waterWallRandom = el('button', { type: 'button', class: 'mini3 rnd', text: 'Random',
+      const waterWallRandom = el('button', { type: 'button', class: 'mini3 waterwall-random', text: 'Random',
         'aria-label': 'Choose a random private IPv4 subnet for both sides', 'aria-controls': waterWallIranIP.id + ' ' + waterWallPeerIP.id });
       const waterWallOptions = el('div', { class: 'fgrid waterwall-options', hidden: true }, [
         waterWallProtocolRow,
-        el('div', { class: 'f3' }, el('label', { for: waterWallIranIP.id, text: 'Iran tunnel IPv4/CIDR' }),
-          el('div', { class: 'withb' }, waterWallIranIP, waterWallRandom)),
+        el('div', { class: 'f3' }, el('label', { for: waterWallIranIP.id, text: 'Iran tunnel IPv4/CIDR' }), waterWallIranIP),
         el('div', { class: 'f3' }, el('label', { for: waterWallPeerIP.id, text: 'Kharej tunnel IPv4/CIDR' }), waterWallPeerIP),
+        waterWallRandom,
         wwIranWorkers.row, wwPeerWorkers.row,
       ]);
       waterWallRandom.addEventListener('click', async () => {

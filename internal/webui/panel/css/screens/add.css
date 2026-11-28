@@ -254,6 +254,7 @@ body[data-t="light"] .dlg.add select{
 .dlg.add .fgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .dlg.add .waterwall-options{grid-column:1/-1;grid-template-columns:minmax(0,1fr)}
 .dlg.add .waterwall-options[hidden]{display:none}
+.dlg.add .waterwall-random{justify-self:end;padding:8px 13px}
 @media (max-width:640px){ .dlg.add .fgrid{grid-template-columns:1fr} }
 .dlg.add .fnote{grid-column:1/-1;font-size:11px;color:var(--tx2);line-height:1.6;padding:10px 12px;
   background:var(--sunk);border-radius:9px;margin-bottom:4px}
