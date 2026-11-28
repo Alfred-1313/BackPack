@@ -1,11 +1,28 @@
 package health
 
 import (
+	"encoding/base64"
 	"testing"
 
+	"github.com/backpack/backpack/config"
 	"github.com/backpack/backpack/internal/manage/core"
 	"github.com/backpack/backpack/internal/metrics"
 )
+
+func TestNativeDaggerHTTPSConfigCheck(t *testing.T) {
+	cfg := config.BackhaulConfig{
+		Native: true, Role: "server", Mode: "dagger-https", IranHost: "192.0.2.1",
+		Port: 443, Token: base64.StdEncoding.EncodeToString(make([]byte, 32)),
+		Ports: []string{"8443"},
+	}
+	if got := nativeConfigCheck("Tunnel: fixture", cfg); got.Level != CheckOK || got.Fix != "" {
+		t.Fatalf("valid native server config reported an error: %+v", got)
+	}
+	cfg.Token = ""
+	if got := nativeConfigCheck("Tunnel: fixture", cfg); got.Level != CheckFail {
+		t.Fatalf("invalid native config must fail validation: %+v", got)
+	}
+}
 
 func TestManagedPoolDiagnosisUsesEngineEvidence(t *testing.T) {
 	for _, tc := range []struct {

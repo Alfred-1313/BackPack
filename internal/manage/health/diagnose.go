@@ -21,6 +21,7 @@ import (
 
 	"github.com/backpack/backpack/config"
 	"github.com/backpack/backpack/internal/app"
+	"github.com/backpack/backpack/internal/nativebackhaul"
 	"github.com/backpack/backpack/internal/tunnel/l3"
 	"github.com/backpack/backpack/internal/utils/network"
 )
@@ -360,6 +361,14 @@ func tunnelChecksFor(t core.Tunnel, pairs [][2]string) []Check {
 	// was reading the wrong half of it.
 	if tunnelspec.IsDirectKind(t) {
 		return append(out, directChecks(g, t)...)
+	}
+	if strings.HasPrefix(t.Transport, "native/") {
+		cfg, err := core.LoadTunnelConfig(t.Name)
+		if err != nil {
+			return append(out, Check{Group: g, Name: "Config", Level: CheckFail,
+				Detail: "unreadable: " + err.Error(), Fix: "restore from a backup"})
+		}
+		return append(out, nativeConfigCheck(g, cfg.Backhaul))
 	}
 
 	// Config parses and is complete.
@@ -728,6 +737,18 @@ func Locations() []Location {
 		)
 	}
 	return out
+}
+
+// Native transports use the [backhaul] table, including native Dagger HTTPS.
+func nativeConfigCheck(group string, c config.BackhaulConfig) Check {
+	if !c.Native {
+		return Check{Group: group, Name: "Config", Level: CheckFail, Detail: "native tunnel configuration missing"}
+	}
+	if err := nativebackhaul.Validate(c); err != nil {
+		return Check{Group: group, Name: "Config", Level: CheckFail, Detail: err.Error(),
+			Fix: "check the tunnel settings in Edit"}
+	}
+	return Check{Group: group, Name: "Config", Level: CheckOK, Detail: "valid native " + c.Mode + " configuration"}
 }
 
 // directChecks are the per-tunnel checks for a direct or layer-3 tunnel.
