@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
@@ -248,7 +249,18 @@ func EngineHelperStatus(ctx context.Context, tool string) (version string, insta
 			if matched && len(fields) != 0 {
 				number := strings.TrimPrefix(fields[0], "v")
 				if engineVersionToken.MatchString(number) {
-					return "v" + number, true
+					version := "v" + number
+					// NaiveProxy reports the Chromium version. The installed
+					// release directory also carries the NaiveProxy revision.
+					if tool == "naive" {
+						dir := filepath.Base(filepath.Dir(path))
+						tag, pinned := strings.CutSuffix(dir, "-"+runtime.GOARCH)
+						if pinned && strings.HasPrefix(tag, version+"-") &&
+							engineVersionToken.MatchString(strings.TrimPrefix(tag, "v")) {
+							version = tag
+						}
+					}
+					return version, true
 				}
 			}
 		}

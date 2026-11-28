@@ -16,7 +16,8 @@ import (
 	"time"
 )
 
-const release = "v2.6.4"
+// ReleaseVersion is the version pinned by the installer.
+const ReleaseVersion = "v2.6.4"
 
 // EncryptedMTUOverhead is what the pinned helper reserves from --mtu when
 // creating its encrypted TUN interface.
@@ -49,7 +50,7 @@ func releaseAsset() (dir, digest string, err error) {
 }
 
 func binaryPath() string {
-	return filepath.Join("/usr/local/lib/backpack/helpers/easytier", release+"-"+runtime.GOARCH, "easytier-core")
+	return filepath.Join("/usr/local/lib/backpack/helpers/easytier", ReleaseVersion+"-"+runtime.GOARCH, "easytier-core")
 }
 
 func Binary() (string, error) {
@@ -82,7 +83,7 @@ func Ensure(ctx context.Context) error {
 	}
 	defer os.Remove(tmp.Name())
 	defer tmp.Close()
-	url := "https://github.com/EasyTier/EasyTier/releases/download/" + release + "/" + dir + "-" + release + ".zip"
+	url := "https://github.com/EasyTier/EasyTier/releases/download/" + ReleaseVersion + "/" + dir + "-" + ReleaseVersion + ".zip"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return err

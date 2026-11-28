@@ -54,6 +54,7 @@ export function transportKey(label) {
 }
 
 export function transportOption(id, label, key = id) {
+  if (id === 'waterwall-packet') return '<b>WaterWall</b>' + transportKey('Packet Tunnel');
   const { name, source } = transportDisplay(id, label);
   return '<b>' + esc(name) + '</b>' + transportKey(source ?? key);
 }

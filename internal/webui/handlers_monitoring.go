@@ -13,6 +13,7 @@ import (
 	"github.com/backpack/backpack/internal/app"
 	"github.com/backpack/backpack/internal/control"
 	"github.com/backpack/backpack/internal/daggerconnect"
+	"github.com/backpack/backpack/internal/easytier"
 	"github.com/backpack/backpack/internal/manage"
 	"github.com/backpack/backpack/internal/matrix"
 	"github.com/backpack/backpack/internal/node"
@@ -59,29 +60,28 @@ func relayEngineChecks(parent context.Context) []healthRow {
 	checks := []healthRow{
 		{Group: group, Name: "BackPack", Level: "ok", Version: app.Version, Detail: "Includes built-in Backhaul transports"},
 	}
-	for _, core := range []struct {
-		name, version string
-		protocol      int
-	}{
-		{waterwall.Label, waterwall.Version, waterwall.DefaultProtocol},
-		{waterwall.Label + " · Protocol 17", waterwall.Protocol17Version, waterwall.TestProtocol},
-	} {
-		item := healthRow{Group: group, Name: core.name, Level: "fail", Detail: "Not installed"}
-		if waterwall.Installed(core.protocol) {
-			item.Level, item.Version, item.Detail = "ok", core.version, "Verified official core"
-		}
-		checks = append(checks, item)
+	water := healthRow{Group: group, Name: waterwall.Label, Level: "fail", Detail: "Official core not installed"}
+	if waterwall.Installed(waterwall.DefaultProtocol) {
+		water.Level, water.Version, water.Detail = "ok", waterwall.Version, "Verified official core"
 	}
+	if waterwall.Installed(waterwall.TestProtocol) {
+		if water.Level == "fail" {
+			water.Level = "warn"
+		}
+		water.Detail += ". Protocol 17 helper " + waterwall.Protocol17Version + " verified."
+	} else if water.Level == "ok" {
+		water.Level = "warn"
+		water.Detail += ". Protocol 17 helper not installed."
+	}
+	checks = append(checks, water)
 	dagger := healthRow{Group: group, Name: "DaggerConnect", Level: "ok",
-		Version: "Launcher " + daggerconnect.LauncherVersion,
-		Detail:  "Licensed core is fetched when the tunnel starts"}
+		Version: daggerconnect.CoreVersion,
+		Detail:  "Configured core version. Official launcher " + daggerconnect.LauncherVersion + " verified."}
 	if err := daggerconnect.LauncherStatus(); err != nil {
 		dagger.Level, dagger.Version, dagger.Detail = "fail", "", "Official launcher missing or unusable"
 		if !os.IsNotExist(err) {
 			dagger.Detail += ". " + err.Error()
 		}
-	} else {
-		dagger.VersionLabel = "v4.3.1"
 	}
 	checks = append(checks, dagger)
 	pengu := healthRow{Group: group, Name: pengutunnel.Label, Level: "ok", Version: pengutunnel.Version, Detail: "Installed"}
@@ -102,6 +102,11 @@ func relayEngineChecks(parent context.Context) []healthRow {
 		omniRow.Level, omniRow.Version, omniRow.Detail = "ok", "Revision "+rev[:7], "Installed"
 	}
 	checks = append(checks, omniRow)
+	easy := healthRow{Group: group, Name: "EasyTier", Level: "fail", Detail: "Not installed"}
+	if _, err := easytier.Binary(); err == nil {
+		easy.Level, easy.Version, easy.Detail = "ok", easytier.ReleaseVersion, "Installed"
+	}
+	checks = append(checks, easy)
 
 	helpers := []struct {
 		name string
@@ -126,7 +131,7 @@ func relayEngineChecks(parent context.Context) []healthRow {
 	var pending sync.WaitGroup
 	for i, helper := range helpers {
 		pending.Go(func() {
-			item := healthRow{Group: group, Name: helper.name, Level: "fail", Detail: "Not installed"}
+			item := healthRow{Group: group, Name: helper.name, Level: "fail", Detail: "Configured helper not installed"}
 			if version, installed := manage.EngineHelperStatus(ctx, helper.tool); installed {
 				item.Level, item.Version, item.Detail = "ok", version, "Installed"
 				if version == "" {
