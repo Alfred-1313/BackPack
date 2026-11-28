@@ -4,7 +4,7 @@
  * CLI: Manage → Health Check, and the alert history.
  */
 
-import { $$, copyText, esc } from '../lib/dom.js';
+import { $$, copyText, esc, flashCopied } from '../lib/dom.js';
 import { ago } from '../lib/format.js';
 import * as api from '../api.js';
 import * as store from '../store.js';
@@ -377,9 +377,16 @@ function waterWallCoreDialog(reload) {
       submit.disabled = false;
     }
   });
-  command.querySelector('button').addEventListener('click', async () => {
-    if (await copyText(input.value)) toast('Command copied');
-    else input.select();
+  const copy = command.querySelector('button');
+  copy.addEventListener('click', async () => {
+    const copied = await copyText(input.value, dialog);
+    flashCopied(copy, copied);
+    if (copied) {
+      copy.focus({ preventScroll: true });
+    } else {
+      input.focus();
+      input.select();
+    }
   });
   dismiss.addEventListener('click', () => dialog.close());
   dialog.querySelector('.dh button').addEventListener('click', () => dialog.close());

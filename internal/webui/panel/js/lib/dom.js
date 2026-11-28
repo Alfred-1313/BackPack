@@ -55,7 +55,7 @@ export function delegate(root, event, selector, handler) {
  * and a panel served over plain HTTP on a bare IP is neither. That is the
  * default install, so every Copy button there threw and did nothing. The old
  * execCommand path is deprecated and still works everywhere this does not. */
-export async function copyText(text) {
+export async function copyText(text, container = document.body) {
   if (!text) return false;
   try {
     if (navigator.clipboard && window.isSecureContext) {
@@ -67,7 +67,8 @@ export async function copyText(text) {
   ta.value = text;
   ta.setAttribute('readonly', '');
   ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none';
-  document.body.append(ta);
+  // Native modals make the rest of the page inert.
+  container.append(ta);
   ta.select();
   ta.setSelectionRange(0, text.length);
   let ok = false;
