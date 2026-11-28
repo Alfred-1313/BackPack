@@ -3,6 +3,7 @@ package l3
 import (
 	"context"
 	"fmt"
+	"math/rand/v2"
 	"net"
 	"os"
 	"os/exec"
@@ -22,9 +23,14 @@ import (
 // interface. A TCP handshake confirms the configured outer protocol carried it.
 const waterWallProbePort = "49318"
 
+// Reserve one DSCP from the experimental/local-use pool for protocol 17.
+// The old WaterWall core swaps the protocol byte but keeps the TCP header.
+// Marking only that core's raw socket keeps ordinary UDP out of its queue.
+const waterWallDSCP = "0x2f"
+
 func (t *Tunnel) runWaterWall(ctx context.Context) error {
 	c := t.cfg
-	path, err := waterwall.Binary(c.Mode == ModeDial)
+	path, err := waterwall.Binary(c.Mode == ModeDial, c.WaterWallProtocol)
 	if err != nil {
 		return fmt.Errorf("WaterWall core: %w", err)
 	}
@@ -68,13 +74,21 @@ func (t *Tunnel) runWaterWall(ctx context.Context) error {
 		mtu = pathMTU
 	}
 	var testPort int
+	var packetMark uint32
+	var legacyEndpoint string
+	version := waterwall.Version
 	if c.WaterWallProtocol == waterwall.TestProtocol {
-		testPort, err = strconv.Atoi(os.Getenv("BACKPACK_WATERWALL_TEST_PORT"))
-		if err != nil || testPort < 1024 || testPort > 65535 {
-			return fmt.Errorf("WaterWall protocol 17 requires an isolated Connection Test port")
+		version = waterwall.Protocol17Version
+		packetMark = (rand.Uint32() & 0x3fffffff) | 0x40000000
+		legacyEndpoint = local.String()
+		if value := os.Getenv("BACKPACK_WATERWALL_TEST_PORT"); value != "" {
+			testPort, err = strconv.Atoi(value)
+			if err != nil || testPort < 1024 || testPort > 65535 {
+				return fmt.Errorf("invalid WaterWall Connection Test port")
+			}
 		}
 	}
-	firewallEnv, cleanup, err := waterWallFirewall(dir, testPort)
+	firewallEnv, cleanup, err := waterWallFirewall(dir, testPort, legacyEndpoint)
 	if err != nil {
 		return err
 	}
@@ -84,10 +98,29 @@ func (t *Tunnel) runWaterWall(ctx context.Context) error {
 	if err := check.Run(); err != nil {
 		return fmt.Errorf("WaterWall firewall wrapper is unavailable: %w", err)
 	}
+	if packetMark != 0 {
+		match := []string{"-p", "17", "-s", local.String(), "-d", remote.String(),
+			"-m", "mark", "--mark", fmt.Sprintf("%d", packetMark)}
+		for _, rule := range []struct {
+			table  string
+			target []string
+		}{
+			{"mangle", []string{"DSCP", "--set-dscp", waterWallDSCP}},
+			{"raw", []string{"CT", "--notrack"}},
+		} {
+			args := append([]string{"-t", rule.table, "-I", "OUTPUT"}, match...)
+			args = append(append(args, "-j"), rule.target...)
+			cmd := exec.CommandContext(ctx, filepath.Join(dir, "iptables"), args...)
+			cmd.Env = append(os.Environ(), firewallEnv...)
+			if output, err := cmd.CombinedOutput(); err != nil {
+				return fmt.Errorf("set up WaterWall protocol 17 firewall: %w: %s", err, strings.TrimSpace(string(output)))
+			}
+		}
+	}
 	settings := waterwall.RuntimeConfig{
 		Interface: c.Iface, LocalCIDR: c.LocalIP, PeerIP: hostPart(c.PeerIP),
 		LocalEndpoint: local.String(), RemoteEndpoint: remote.String(),
-		Protocol: c.WaterWallProtocol, Workers: c.WaterWallWorkers, MTU: mtu,
+		Protocol: c.WaterWallProtocol, Workers: c.WaterWallWorkers, MTU: mtu, SocketMark: packetMark,
 	}
 	if err := settings.Write(dir); err != nil {
 		return err
@@ -165,7 +198,7 @@ exec "$1"`
 	} else {
 		t.log.Warnf("WaterWall could not listen for peer checks: %v", err)
 	}
-	t.log.Infof("WaterWall %s up on %s with IP protocol %d and MTU %d", waterwall.Version, c.Iface, c.WaterWallProtocol, mtu)
+	t.log.Infof("WaterWall %s up on %s with IP protocol %d and MTU %d", version, c.Iface, c.WaterWallProtocol, mtu)
 	target := net.JoinHostPort(hostPart(c.PeerIP), waterWallProbePort)
 	dial := net.Dialer{Timeout: 1200 * time.Millisecond, LocalAddr: &net.TCPAddr{IP: net.ParseIP(hostPart(c.LocalIP))}}
 	tick := time.NewTicker(3 * time.Second)
@@ -190,9 +223,9 @@ exec "$1"`
 }
 
 // Record only rules installed by this child so BackPack can remove them if
-// WaterWall exits without cleanup. Protocol 17 additionally matches the echo
-// port's two directions, leaving regular UDP on all other ports alone.
-func waterWallFirewall(dir string, testPort int) ([]string, func(), error) {
+// WaterWall exits without cleanup. Limit protocol 17's older capture rule to
+// this endpoint's marked traffic, and the echo port when used in a test.
+func waterWallFirewall(dir string, testPort int, legacyEndpoint string) ([]string, func(), error) {
 	iptables, err := exec.LookPath("iptables")
 	if err != nil {
 		return nil, nil, err
@@ -209,6 +242,12 @@ for arg in "$@"; do
 	case "$arg" in
 		-I|-A) record=1 ;;
 		NFQUEUE)
+			if [ -n "$BACKPACK_WW_LEGACY_ENDPOINT" ]; then
+				[ "$#" -eq 8 ] && [ "$2" = INPUT ] && [ "$3" = -s ] &&
+					[ "$5" = -j ] && [ "$6" = NFQUEUE ] && [ "$7" = --queue-num ] || exit 1
+				set -- -t raw "$1" PREROUTING -p 17 -s "$4" -d "$BACKPACK_WW_LEGACY_ENDPOINT" \
+					-m dscp --dscp "$BACKPACK_WW_DSCP" -j NFQUEUE --queue-num "$8" --queue-bypass
+			fi
 			if [ -n "$BACKPACK_WW_TEST_FILTER" ]; then
 				set -- "$@" -m bpf --bytecode "$BACKPACK_WW_TEST_FILTER"
 			fi
@@ -236,6 +275,8 @@ fi
 		"BACKPACK_WW_IPTABLES=" + iptables,
 		"BACKPACK_WW_TEST_FILTER=" + filter,
 		"BACKPACK_WW_RULES=" + dir,
+		"BACKPACK_WW_LEGACY_ENDPOINT=" + legacyEndpoint,
+		"BACKPACK_WW_DSCP=" + waterWallDSCP,
 	}, func() { cleanWaterWallRules(iptables, dir) }, nil
 }
 

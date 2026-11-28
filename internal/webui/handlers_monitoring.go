@@ -85,8 +85,8 @@ func relayEngineChecks(parent context.Context) []healthRow {
 	}
 	checks = append(checks, padding)
 	water := healthRow{Group: group, Name: waterwall.Label, Level: "fail", Detail: "Installed on first use"}
-	if waterwall.Installed() {
-		water.Level, water.Version, water.Detail = "ok", waterwall.Version, "Verified official core"
+	if versions := waterwall.InstalledVersions(); versions != "" {
+		water.Level, water.Version, water.Detail = "ok", versions, "Verified official core"
 	}
 	checks = append(checks, water)
 	omniRow := healthRow{Group: group, Name: "OmniTunnel", Level: "fail", Detail: "Not installed"}

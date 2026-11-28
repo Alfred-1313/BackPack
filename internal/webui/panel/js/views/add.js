@@ -202,19 +202,12 @@ export function addView(ctx, replaceName = '') {
       const wwIranWorkers = waterWallField('waterWallIranWorkers', 'Iran workers', 0, 64);
       const wwPeerWorkers = waterWallField('waterWallPeerWorkers', 'Kharej workers', 0, 64);
       wwIranWorkers.input.placeholder = wwPeerWorkers.input.placeholder = '0 (automatic)';
-      const waterWallProtocol = el('input', { id: 'waterWallProtocol', type: 'number', min: 1, max: 254, value: 17,
-        'aria-describedby': 'waterWallProtocolHint' });
-      const waterWallProtocolHint = el('span', { id: 'waterWallProtocolHint',
-        text: '17 is test-only with WaterWall v1.6.0.' });
-      waterWallProtocol.addEventListener('input', () => {
-        waterWallProtocolHint.hidden = waterWallProtocol.valueAsNumber !== 17;
-      });
+      const waterWallProtocol = el('input', { id: 'waterWallProtocol', type: 'number', min: 1, max: 254, value: 17 });
       const waterWallProtocolRow = el('div', { class: 'f3' },
         el('label', { for: waterWallProtocol.id, text: 'Outer IP protocol number' }), waterWallProtocol,
         el('div', { class: 'hint' }, [
           el('a', { href: 'https://en.wikipedia.org/wiki/List_of_IP_protocol_numbers', target: '_blank',
             rel: 'noopener noreferrer', text: 'List of IP protocol numbers' }),
-          ' ', waterWallProtocolHint,
         ]));
       const waterWallIranIP = el('input', { id: 'waterWallIranIP', type: 'text', placeholder: 'Automatic', spellcheck: 'false' });
       const waterWallPeerIP = el('input', { id: 'waterWallPeerIP', type: 'text', placeholder: 'Automatic', spellcheck: 'false' });
@@ -2293,8 +2286,8 @@ export function addView(ctx, replaceName = '') {
           if (!waterWallProtocol.checkValidity() || !Number.isInteger(protocol)) {
             throw new Error('Enter an IP protocol number from 1 to 254.');
           }
-          if (protocol === 6 || protocol === 17) {
-            throw new Error('WaterWall v1.6.0 cannot use IP protocol ' + protocol + ' for tunnel creation.');
+          if (protocol === 6) {
+            throw new Error("Choose an IP protocol other than 6 to keep the peer's native TCP traffic separate.");
           }
           const localIp = waterWallIranIP.value.trim(), peerIp = waterWallPeerIP.value.trim();
           if (Boolean(localIp) !== Boolean(peerIp)) throw new Error('Enter both tunnel IPv4 addresses or leave both empty.');

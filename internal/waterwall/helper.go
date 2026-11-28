@@ -13,32 +13,38 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 )
 
 const (
-	Label           = "WaterWall"
-	Version         = "v1.6.0"
-	DefaultProtocol = 136
-	TestProtocol    = 17
-	DefaultMTU      = 1500
+	Label             = "WaterWall"
+	Version           = "v1.6.0"
+	Protocol17Version = "v1.44.3"
+	DefaultProtocol   = 136
+	TestProtocol      = 17
+	DefaultMTU        = 1500
+	maxCoreSize       = 16 << 20
 )
 
 type build struct {
-	name, archiveHash, binaryHash string
+	version, name, archiveHash, binaryHash string
 }
 
-var compatible = build{"Waterwall-linux-gcc-x64-old-cpu",
+var compatible = build{Version, "Waterwall-linux-gcc-x64-old-cpu",
 	"0121139392483e7308c8521ce37c4393afd28a394473fec22ebab776f720bab3",
 	"865278836d49fa20d1764a6b1022a7ad195aeb153e50f8921ac7e13b93aaf4bc"}
-var standard = build{"Waterwall-linux-gcc-x64",
+var standard = build{Version, "Waterwall-linux-gcc-x64",
 	"530c5305df44f5b2995e92fd6811125cb9e0543a3182c570561e53076a94c269",
 	"561ef059d41cc272b2b73f90b628069df6327fc07ede26d181baa490ea26a1d9"}
+var protocol17 = build{Protocol17Version, "Waterwall-linux-gcc-x64-old-cpu",
+	"f8159c807712cecdd24014c549542e4ceddc5b9b2e341c9042b0711c402a19e2",
+	"bf574f5f59dc2d3aa5de5b7eb358fe3e12265660ea2ab9d6a315cf9a827da9fa"}
 var installMu sync.Mutex
 
 func (b build) binary() string {
-	return filepath.Join("/usr/local/lib/backpack/helpers/waterwall", Version, b.name, "Waterwall")
+	return filepath.Join("/usr/local/lib/backpack/helpers/waterwall", b.version, b.name, "Waterwall")
 }
 
 func (b build) verified() (string, error) {
@@ -47,7 +53,7 @@ func (b build) verified() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if !info.Mode().IsRegular() || info.Mode().Perm()&0111 == 0 || info.Mode().Perm()&022 != 0 || info.Size() > 8<<20 {
+	if !info.Mode().IsRegular() || info.Mode().Perm()&0111 == 0 || info.Mode().Perm()&022 != 0 || info.Size() > maxCoreSize {
 		return "", fmt.Errorf("WaterWall %s must be a regular, protected executable", file)
 	}
 	data, err := os.ReadFile(file)
@@ -60,18 +66,21 @@ func (b build) verified() (string, error) {
 	return file, nil
 }
 
-func selectedBuild(iran bool) build {
+func selectedBuild(iran bool, protocol int) build {
+	if protocol == TestProtocol {
+		return protocol17
+	}
 	if iran || !standardCPU() {
 		return compatible
 	}
 	return standard
 }
 
-func Binary(iran bool) (string, error) {
+func Binary(iran bool, protocol int) (string, error) {
 	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
 		return "", fmt.Errorf("WaterWall Packet Tunnel requires Linux amd64")
 	}
-	b := selectedBuild(iran)
+	b := selectedBuild(iran, protocol)
 	file, err := b.verified()
 	if os.IsNotExist(err) && b == standard {
 		return compatible.verified()
@@ -79,26 +88,30 @@ func Binary(iran bool) (string, error) {
 	return file, err
 }
 
-func Installed() bool {
-	_, err := compatible.verified()
-	if err == nil {
-		return true
+func InstalledVersions() string {
+	var versions []string
+	if _, err := compatible.verified(); err == nil {
+		versions = append(versions, Version)
+	} else if _, err := standard.verified(); err == nil {
+		versions = append(versions, Version)
 	}
-	_, err = standard.verified()
-	return err == nil
+	if _, err := protocol17.verified(); err == nil {
+		versions = append(versions, Protocol17Version)
+	}
+	return strings.Join(versions, " · ")
 }
 
-func Ensure(ctx context.Context, iran bool) error {
+func Ensure(ctx context.Context, iran bool, protocol int) error {
 	installMu.Lock()
 	defer installMu.Unlock()
-	if _, err := Binary(iran); err == nil {
+	if _, err := Binary(iran, protocol); err == nil {
 		return nil
 	}
 	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
 		return fmt.Errorf("WaterWall Packet Tunnel requires Linux amd64")
 	}
-	b := selectedBuild(iran)
-	url := "https://github.com/radkesvat/WaterWall/releases/download/" + Version + "/" + b.name + ".zip"
+	b := selectedBuild(iran, protocol)
+	url := "https://github.com/radkesvat/WaterWall/releases/download/" + b.version + "/" + b.name + ".zip"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return err
@@ -111,7 +124,7 @@ func Ensure(ctx context.Context, iran bool) error {
 	if res.StatusCode != http.StatusOK {
 		return fmt.Errorf("download WaterWall: HTTP %d", res.StatusCode)
 	}
-	data, err := io.ReadAll(io.LimitReader(res.Body, 12<<20))
+	data, err := io.ReadAll(io.LimitReader(res.Body, maxCoreSize))
 	if err != nil {
 		return err
 	}
@@ -123,7 +136,7 @@ func Ensure(ctx context.Context, iran bool) error {
 		return err
 	}
 	for _, entry := range archive.File {
-		if path.Base(entry.Name) == "Waterwall" && entry.Mode().IsRegular() && entry.UncompressedSize64 < 8<<20 {
+		if path.Base(entry.Name) == "Waterwall" && entry.Mode().IsRegular() && entry.UncompressedSize64 <= maxCoreSize {
 			return b.install(entry)
 		}
 	}
@@ -167,6 +180,7 @@ func (b build) install(entry *zip.File) error {
 type RuntimeConfig struct {
 	Interface, LocalCIDR, PeerIP, LocalEndpoint, RemoteEndpoint string
 	Protocol, Workers, MTU                                      int
+	SocketMark                                                  uint32
 }
 
 func (c RuntimeConfig) Write(dir string) error {
@@ -181,6 +195,14 @@ func (c RuntimeConfig) Write(dir string) error {
 	overwrite := func(name, next, direction, key, value string) fields {
 		return node(name, "IpOverrider", next, fields{"direction": direction, "mode": key, "ipv4": value})
 	}
+	rawSettings := fields{
+		"capture-filter-mode": "source-ip", "capture-ip": c.RemoteEndpoint,
+		"capture-protocols": []int{c.Protocol}, "skip-sysctl": true,
+		"capture-device-name": c.Interface, "raw-device-name": c.Interface,
+	}
+	if c.SocketMark != 0 {
+		rawSettings["mark"] = c.SocketMark
+	}
 	tunnel := fields{"name": "BackPack Packet Tunnel", "nodes": []fields{
 		node("tun", "TunDevice", "wire-source", fields{
 			"device-name": c.Interface, "device-ip": c.LocalCIDR, "device-mtu": c.MTU,
@@ -190,11 +212,7 @@ func (c RuntimeConfig) Write(dir string) error {
 		node("protocol", "IpManipulator", "inner-source", fields{"protoswap": c.Protocol}),
 		overwrite("inner-source", "inner-destination", "down", "source-ip", c.PeerIP),
 		overwrite("inner-destination", "raw", "down", "dest-ip", localIP(c.LocalCIDR)),
-		node("raw", "RawSocket", "", fields{
-			"capture-filter-mode": "source-ip", "capture-ip": c.RemoteEndpoint,
-			"capture-protocols": []int{c.Protocol}, "skip-sysctl": true,
-			"capture-device-name": c.Interface, "raw-device-name": c.Interface,
-		}),
+		node("raw", "RawSocket", "", rawSettings),
 	}}
 	core := fields{
 		"configs": []string{"packet.json"},

@@ -76,7 +76,7 @@ func waterWallTestEnv(carrier string, port int) []string {
 func ctWaterWallCore(ctx context.Context, iran bool) string {
 	ctx, cancel := context.WithTimeout(ctx, 12*time.Second)
 	defer cancel()
-	if err := waterwall.Ensure(ctx, iran); err != nil {
+	if err := waterwall.Ensure(ctx, iran, waterwall.TestProtocol); err != nil {
 		return err.Error()
 	}
 	return ""

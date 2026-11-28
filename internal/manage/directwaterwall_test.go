@@ -58,7 +58,7 @@ func TestWaterWallLinkCarriesIndependentSettings(t *testing.T) {
 		GRELocal: "192.0.2.1", PeerAddr: "192.0.2.2", LocalIP: "10.213.253.1/30",
 		PeerIP: "10.213.253.2/30", Ports: "27443=443", MTU: 1328,
 	}
-	form.WaterWallProtocol, form.WaterWallWorkers = 253, 3
+	form.WaterWallProtocol, form.WaterWallWorkers = 17, 3
 	form.WaterWallPeerWorkers, form.WaterWallPeerMTU = &peerWorkers, 1452
 	local, err := form.spec()
 	if err != nil {
@@ -78,12 +78,9 @@ func TestWaterWallLinkCarriesIndependentSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := decode(t, peer.Render()).L3
-	if got.MTU != 1452 || got.WaterWallWorkers != 0 || got.WaterWallProtocol != 253 ||
+	if got.MTU != 1452 || got.WaterWallWorkers != 0 || got.WaterWallProtocol != 17 ||
 		got.LocalIP != "10.213.253.2/30" || got.PeerIP != "10.213.253.1" {
 		t.Fatalf("Kharej config did not get its own setup values: %+v", got)
-	}
-	if err := validateWaterWallTunnelProtocol(17); err == nil {
-		t.Fatal("protocol 17 belongs only to Connection Test with this WaterWall core")
 	}
 	if err := waterwall.Validate(6, 3); err == nil {
 		t.Fatal("protocol 6 would capture native TCP")

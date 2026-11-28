@@ -144,18 +144,8 @@ func waterWallSubnetFree(block, previous netip.Prefix, used []netip.Prefix) bool
 	return true
 }
 
-func validateWaterWallTunnelProtocol(protocol int) error {
-	if protocol == waterwall.TestProtocol {
-		return fmt.Errorf("WaterWall %s does not pass TCP payload over IP protocol 17", waterwall.Version)
-	}
-	return nil
-}
-
 func ensureWaterWallTunnel(protocol int, iran bool) error {
-	if err := validateWaterWallTunnelProtocol(protocol); err != nil {
-		return err
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), 65*time.Second)
 	defer cancel()
-	return waterwall.Ensure(ctx, iran)
+	return waterwall.Ensure(ctx, iran, protocol)
 }
